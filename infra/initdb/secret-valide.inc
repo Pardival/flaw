@@ -2,9 +2,10 @@
 # 01-role-applicatif.sh. Déposé dans initdb/ : le montage postgres le rend
 # disponible à l'init, et l'entrypoint ignore ce fichier (ni .sh, ni .sql).
 # Retire un seul \r\n ou \n final. Longueur et caractères distincts : octets.
+# LC_ALL=C : gawk compte sinon des caractères, pas des octets UTF-8.
 
 _secret_awk() {
-  printf '%s' "$1" | awk -v mode="$2" '
+  printf '%s' "$1" | LC_ALL=C awk -v mode="$2" '
 BEGIN { RS = "\0"; got = 0 }
 {
   got = 1
