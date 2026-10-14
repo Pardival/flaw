@@ -34,4 +34,8 @@ REVOKE ALL ON SCHEMA public FROM PUBLIC;
 CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app;
 ALTER ROLE flaw_app SET search_path = flaw;
 GRANT CONNECT ON DATABASE :"dbname" TO flaw_app;
+-- drizzle-orm migrate() exécute CREATE SCHEMA IF NOT EXISTS même si flaw existe.
+-- PostgreSQL 18 exige alors CREATE sur la base. Sans ce droit, flaw_app ne peut
+-- pas enregistrer le journal de migrations. Rôle DDL distinct : avant public.
+GRANT CREATE ON DATABASE :"dbname" TO flaw_app;
 SQL

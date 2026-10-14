@@ -1,16 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- fixture Semgrep SEC-DB-03, non exécutée */
-// sql local : même forme d'appel que drizzle-orm, sans ajouter la dépendance.
-const sql = Object.assign(
-  (strings: TemplateStringsArray, ...values: readonly unknown[]): unknown => ({ strings, values }),
-  {
-    raw(value: unknown): unknown {
-      return value;
-    },
-    identifier(value: unknown): unknown {
-      return value;
-    },
-  },
-);
+import { sql } from "drizzle-orm";
 
 export async function bad1(db: any, req: any) {
   const q = "SELECT * FROM documents WHERE title = '" + req.query.title + "'";

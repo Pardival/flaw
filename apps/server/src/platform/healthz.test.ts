@@ -6,7 +6,7 @@ import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import {
   readSecretFile,
   resolvedClientIp,
@@ -142,6 +142,41 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
   const root = fileURLToPath(new URL("../../../../", import.meta.url));
   const creerSecrets = readFileSync(join(root, "infra/creer-secrets.sh"), "utf8");
   const initdb = readFileSync(join(root, "infra/initdb/01-role-applicatif.sh"), "utf8");
+  // Q-007 : l'awk qui valide en production est celui de l'image postgres épinglée
+  // (busybox), pas celui de l'hôte CI. LC_ALL=C ne fige que la largeur des
+  // caractères de gawk ; mawk, nawk et busybox divergent encore. Le digest
+  // fige le binaire (SEC-CONT-01), le même que docker-compose.yml.
+  const postgresImage =
+    "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
+  const awkContainer = `flaw-secret-awk-${process.pid}`;
+
+  before(() => {
+    const started = spawnSync(
+      "docker",
+      [
+        "run",
+        "-d",
+        "--name",
+        awkContainer,
+        "--network",
+        "none",
+        "--entrypoint",
+        "sleep",
+        "-v",
+        `${root}:/work:ro`,
+        postgresImage,
+        "300",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(started.status, 0, started.stderr);
+    const ready = spawnSync("docker", ["exec", awkContainer, "true"], { encoding: "utf8" });
+    assert.equal(ready.status, 0, ready.stderr);
+  });
+
+  after(() => {
+    spawnSync("docker", ["rm", "-f", awkContainer], { encoding: "utf8" });
+  });
 
   const preludes = {
     "creer-secrets.sh": [
@@ -162,10 +197,10 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
       'norm=$(secret_normalise "$SECRET"; printf x)',
       "printf '%s' \"${norm%x}\"",
     ].join("\n");
-    const result = spawnSync("sh", ["-c", script], {
-      cwd: root,
-      env: { ...process.env, ROOT: root, SECRET: raw },
-    });
+    const result = spawnSync(
+      "docker",
+      ["exec", "-e", `SECRET=${raw}`, "-e", "ROOT=/work", awkContainer, "sh", "-c", script],
+    );
     assert.equal(result.status, 0, result.stderr.toString("utf8"));
     const stdout = result.stdout;
     const split = stdout.indexOf(0x0a);

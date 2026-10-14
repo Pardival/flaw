@@ -2,12 +2,13 @@
   "name": "@flaw/server",
   "private": true,
   "version": "0.0.0",
-  "description": "Squelette Fastify (T-004) et sonde T-002. Le schéma applicatif arrive en T-005.",
+  "description": "Serveur Fastify (T-004) et schéma Drizzle (T-005).",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "drizzle-orm": "0.45.3",
     "fastify": "5.12.5",
     "pg": "8.16.3",
     "zod": "4.6.5"

@@ -90,9 +90,8 @@ services:
     <<: *defaults
     restart: "no"
     image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
-    # dist/server/migrate.js arrive en T-005. Ici : vérification du rôle flaw_app,
-    # sans fichier de schéma (arbitrage 11).
-    command: ["node", "src/platform/healthz.ts", "migrate"]
+    # Migrations Drizzle (T-005), en flaw_app (arbitrage T-002 #5).
+    command: ["node", "apps/server/src/db/migrate.ts"]
     user: "10001:10001"
     environment:
       NODE_ENV: production

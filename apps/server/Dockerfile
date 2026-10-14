@@ -1,6 +1,6 @@
 # SEC-CONT-01 — image minimale, version figée, multi-étapes, sans secret.
 # SEC-CONT-02 — UID 10001. Le CMD est le serveur Fastify : node apps/server/src/app.ts.
-# src/platform/healthz.ts reste copié pour la commande migrate du compose (hors cette bascule).
+# Le service migrate lance apps/server/src/db/migrate.ts et lit apps/server/drizzle.
 
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 
@@ -26,11 +26,11 @@ WORKDIR /app
 COPY --from=build /out/ /app/
 COPY --from=build /src/apps/server/package.json /app/apps/server/package.json
 COPY --from=build /src/apps/server/src /app/apps/server/src
-COPY --from=build /src/apps/server/src/platform/healthz.ts /app/src/platform/healthz.ts
+COPY --from=build /src/apps/server/drizzle /app/apps/server/drizzle
 RUN chown -R root:root /app \
   && chmod -R a-w /app \
   && chmod -R a+rX /app \
-  && node --input-type=module -e "import('pg').then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); })"
+  && node --input-type=module -e "import('pg').then(() => import('drizzle-orm')).then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); })"
 
 USER 10001:10001
 ENV NODE_ENV=production
