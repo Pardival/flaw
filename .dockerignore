@@ -1,0 +1,25 @@
+# SEC-CONT-09 — contexte d'image sans secrets, historique ni dépendances locales.
+.git
+.github
+**/.git
+**/.github
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+.env
+.env.*
+**/.env
+**/.env.*
+infra/secrets
+infra/run
+coverage
+.eslintcache
+.pnpm-debug.log*
+**/.DS_Store
+fixtures
+docs
+**/*.md
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+.pre-commit-config.yaml

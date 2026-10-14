@@ -2,9 +2,16 @@
   "name": "@flaw/server",
   "private": true,
   "version": "0.0.0",
-  "description": "Placeholder serveur (A-019). Aucune dépendance applicative en T-001.",
+  "description": "Sonde healthz et vérification migrate (T-002). Le schéma applicatif arrive en T-005.",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "pg": "8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "@types/pg": "8.15.5"
   }
 }

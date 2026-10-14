@@ -1,0 +1,197 @@
+# =============================================================================
+# infra/docker-compose.yml — Flaw (modèle d'architecture v0.4, chemins infra/)
+# -----------------------------------------------------------------------------
+# Production mono-serveur : Caddy (HTTPS) -> app (Node.js) -> PostgreSQL 18.
+# Les sauvegardes (pg_dump, restic) sont hors de ce fichier : tâche T-042.
+#
+# Utilisation (depuis infra/) :
+#   cp .env.example .env && chmod 600 .env
+#   sudo sh creer-secrets.sh
+#   docker compose up -d
+#
+# Seuls les ports 80/443 sont publiés. La base n'est jamais exposée.
+# Images épinglées par version ET empreinte (SEC-CONT-01).
+# Secrets en fichiers sous /run/secrets (SEC-SECRET-06), propriétaire = UID
+# lecteur (G1). Domaine : une seule variable, FLAW_DOMAIN.
+# =============================================================================
+name: flaw
+
+x-defaults: &defaults
+  restart: unless-stopped
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
+x-app-env: &app-env
+  NODE_ENV: production
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  TZ: UTC
+  PORT: "3000"
+  PUBLIC_URL: https://${FLAW_DOMAIN:?FLAW_DOMAIN manquant}
+  TRUSTED_ORIGINS: https://${FLAW_DOMAIN}
+  TRUSTED_PROXY_CIDR: ${CADDY_IP:-172.31.250.10}/32
+  DATABASE_HOST: db
+  DATABASE_NAME: ${POSTGRES_DB:-flaw}
+  DATABASE_USER: flaw_app
+  DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+  BETTER_AUTH_SECRET_FILE: /run/secrets/better_auth_secret
+  BETTER_AUTH_URL: https://${FLAW_DOMAIN}
+  FLAW_KEK_FILE: /run/secrets/flaw_kek
+  FLAW_KEK_ID: ${FLAW_KEK_ID:-kek-2026-10}
+  RECOVERY_PEPPER_FILE: /run/secrets/recovery_pepper
+  RECOVERY_PEPPER_ID: ${RECOVERY_PEPPER_ID:-pep-2026-10}
+  RECOVERY_PEPPER_OLD_IDS: ${RECOVERY_PEPPER_OLD_IDS:-}
+  ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
+  SESSION_IDLE_DAYS: ${SESSION_IDLE_DAYS:-30}
+  SESSION_MAX_DAYS: ${SESSION_MAX_DAYS:-90}
+  SESSION_REVALIDATE_SECONDS: ${SESSION_REVALIDATE_SECONDS:-30}
+  MAX_DOCUMENT_SIZE_MB: ${MAX_DOCUMENT_SIZE_MB:-10}
+  MAX_WS_MESSAGE_MB: ${MAX_WS_MESSAGE_MB:-10}
+  EXPORT_TIMEOUT_SECONDS: ${EXPORT_TIMEOUT_SECONDS:-60}
+  EXPORT_MAX_CONCURRENCY: ${EXPORT_MAX_CONCURRENCY:-1}
+  EXPORT_MAX_RSS_MB: ${EXPORT_MAX_RSS_MB:-900}
+  PASSWORD_MIN_LENGTH: ${PASSWORD_MIN_LENGTH:-15}
+  TEMP_PASSWORD_TTL_HOURS: 24
+  TRASH_RETENTION_DAYS: 30
+  SNAPSHOT_RETENTION_DAYS: ${SNAPSHOT_RETENTION_DAYS:-30}
+  ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+
+services:
+  caddy:
+    <<: *defaults
+    image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      FLAW_DOMAIN: ${FLAW_DOMAIN:?FLAW_DOMAIN manquant}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL manquant}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    pids_limit: 100
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+      edge:
+        ipv4_address: ${CADDY_IP:-172.31.250.10}
+
+  migrate:
+    <<: *defaults
+    restart: "no"
+    image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
+    # dist/server/migrate.js arrive en T-005. Ici : vérification du rôle flaw_app,
+    # sans fichier de schéma (arbitrage 11).
+    command: ["node", "src/platform/healthz.ts", "migrate"]
+    user: "10001:10001"
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DATABASE_HOST: db
+      DATABASE_NAME: ${POSTGRES_DB:-flaw}
+      DATABASE_USER: flaw_app
+      DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
+    secrets: [app_db_password]
+    read_only: true
+    cap_drop: [ALL]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  app:
+    <<: *defaults
+    image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
+    user: "10001:10001"
+    environment: *app-env
+    secrets: [app_db_password, better_auth_secret, flaw_kek, recovery_pepper]
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    pids_limit: 200
+    expose:
+      - "3000"
+    healthcheck:
+      # dist/server/healthcheck.js arrive avec l'écoute applicative (T-003).
+      # La sonde API-023 est src/platform/healthz.ts.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks:
+      - edge
+      - internal
+    mem_limit: 1536m
+
+  db:
+    <<: *defaults
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    user: "70:70"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-flaw}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
+    secrets: [postgres_password, app_db_password]
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    shm_size: 128m
+    pids_limit: 200
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - internal
+    mem_limit: 512m
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+  app_db_password:
+    file: ./secrets/app_db_password
+  better_auth_secret:
+    file: ./secrets/better_auth_secret
+  flaw_kek:
+    file: ./secrets/flaw_kek
+  recovery_pepper:
+    file: ./secrets/recovery_pepper
+
+networks:
+  edge:
+    ipam:
+      config:
+        - subnet: ${EDGE_SUBNET:-172.31.250.0/24}
+  internal:
+    internal: true
+
+volumes:
+  pgdata: {}
+  caddy_data: {}
+  caddy_config: {}

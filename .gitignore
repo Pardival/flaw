@@ -3,10 +3,12 @@ node_modules/
 dist/
 *.tsbuildinfo
 
-# Secrets (SEC-SECRET-01)
+# Secrets (SEC-SECRET-01, SEC-SECRET-05)
 .env
 .env.*
 !.env.example
+infra/secrets/
+infra/run/
 
 # Outils
 coverage/
