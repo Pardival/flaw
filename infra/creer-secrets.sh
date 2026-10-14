@@ -13,10 +13,13 @@
 # Usage (depuis infra/) :
 #   sudo sh creer-secrets.sh
 #   sudo sh creer-secrets.sh --verifier
-# Le validateur retire seulement CR/LF, puis exige >= 32 octets, >= 16 caractères
-# distincts, et refuse les sous-chaînes de l'Expert (identique à healthz.ts).
+# SEC-SECRET-07 : retire uniquement le \r\n ou le \n final (aucun autre trim).
+# Longueur et caractères distincts en octets UTF-8, comme healthz.ts.
+# Le validateur est infra/initdb/secret-valide.inc (même fichier que l'init postgres).
 set -eu
 umask 077
+_here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+. "$_here/initdb/secret-valide.inc"
 D="${SECRETS_DIR:-./secrets}"
 
 SPEC='postgres_password 70:70 400 hex32
@@ -25,30 +28,15 @@ better_auth_secret 10001:10001 400 b64_48
 flaw_kek 10001:10001 400 kek
 recovery_pepper 10001:10001 400 kek'
 
-secret_valide() {
-  raw=$(printf '%s' "$1" | tr -d '\r\n')
-  len=$(printf '%s' "$raw" | wc -c | tr -d ' ')
-  [ "$len" -ge 32 ] || return 1
-  distinct=$(printf '%s' "$raw" | fold -w1 | sort -u | wc -l | tr -d ' ')
-  [ "$distinct" -ge 16 ] || return 1
-  low=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-  for word in change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic; do
-    case "$low" in
-      *"$word"*) return 1 ;;
-    esac
-  done
-  return 0
-}
-
 gen() {
   kind=$1
   n=0
   while [ "$n" -lt 200 ]; do
     n=$((n + 1))
     case "$kind" in
-      hex32) candidate=$(openssl rand -hex 32 | tr -d '\r\n') ;;
-      b64_48) candidate=$(openssl rand -base64 48 | tr -d '\r\n') ;;
-      kek) candidate=$(openssl rand -base64 32 | tr -d '\r\n') ;;
+      hex32) candidate=$(openssl rand -hex 32) ;;
+      b64_48) candidate=$(openssl rand -base64 48) ;;
+      kek) candidate=$(openssl rand -base64 32) ;;
       *) echo "générateur inconnu" >&2; return 1 ;;
     esac
     secret_valide "$candidate" || continue
@@ -70,8 +58,9 @@ if [ "${1:-}" = "--verifier" ]; then
     [ -e "$f" ] || { echo "MANQUANT  $f"; exit 1; }
     cur="$(stat -c '%u:%g %a' "$f")"
     [ "$cur" = "$own $mode" ] || { echo "ÉCART     $f ($cur, attendu $own $mode)"; exit 1; }
-    val=$(tr -d '\r\n' < "$f")
-    secret_valide "$val" || { echo "ÉCART     $f (contenu)"; exit 1; }
+    raw=$(cat "$f"; printf x)
+    raw=${raw%x}
+    secret_valide "$raw" || { echo "ÉCART     $f (contenu)"; exit 1; }
     echo "OK        $f ($cur)"
   done || ok=1
   m="$(stat -c '%a' "$D")"

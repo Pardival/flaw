@@ -1,6 +1,6 @@
 # SEC-CONT-01 — image minimale, version figée, multi-étapes, sans secret.
-# SEC-CONT-02 — UID 10001. API-023 — le processus est src/platform/healthz.ts.
-# Aucun serveur de santé n'est écrit dans cette image.
+# SEC-CONT-02 — UID 10001. Le CMD est le serveur Fastify : node apps/server/src/app.ts.
+# src/platform/healthz.ts reste copié pour la commande migrate du compose (hors cette bascule).
 
 FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS build
 
@@ -24,6 +24,8 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack 
 
 WORKDIR /app
 COPY --from=build /out/ /app/
+COPY --from=build /src/apps/server/package.json /app/apps/server/package.json
+COPY --from=build /src/apps/server/src /app/apps/server/src
 COPY --from=build /src/apps/server/src/platform/healthz.ts /app/src/platform/healthz.ts
 RUN chown -R root:root /app \
   && chmod -R a-w /app \
@@ -34,4 +36,4 @@ USER 10001:10001
 ENV NODE_ENV=production
 ENV HOME=/tmp
 EXPOSE 3000
-CMD ["node", "src/platform/healthz.ts"]
+CMD ["node", "apps/server/src/app.ts"]

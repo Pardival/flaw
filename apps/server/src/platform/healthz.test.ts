@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
   readSecretFile,
   resolvedClientIp,
-  stripCrLf,
+  stripFinalNewline,
   validateKeyMaterial,
   validateSecret,
   worldReadable,
@@ -17,10 +19,48 @@ import {
 const HEX = "0123456789abcdef0123456789abcdef";
 
 describe("validateur de secrets", () => {
-  it("retire uniquement CR et LF", () => {
-    assert.equal(stripCrLf("abc \r\n"), "abc ");
+  it("retire uniquement le saut de ligne final", () => {
+    assert.equal(stripFinalNewline("abc \r\n"), "abc ");
+    assert.equal(stripFinalNewline(`${HEX}\r\n`), HEX);
+    assert.equal(stripFinalNewline(`${HEX}\n`), HEX);
     assert.equal(validateSecret(`${HEX}\r\n`), null);
+    assert.equal(validateSecret(`${HEX}\n`), null);
     assert.equal(validateSecret(`${HEX} `), null);
+  });
+
+  it("ne modifie pas une valeur suivie d'un espace", () => {
+    const withSpace = `${HEX} `;
+    assert.equal(stripFinalNewline(withSpace), withSpace);
+    assert.equal(Buffer.byteLength(withSpace, "utf8"), 33);
+    assert.equal(validateSecret(withSpace), null);
+
+    const fifteen = "0123456789abcde0123456789abcde01";
+    const spaceCounts = "0123456789abcde0123456789abcde0 ";
+    assert.equal(fifteen.length, 32);
+    assert.equal(spaceCounts.length, 32);
+    assert.equal(validateSecret(fifteen), "secret invalide");
+    assert.equal(validateSecret(spaceCounts), null);
+    assert.equal(stripFinalNewline(spaceCounts), spaceCounts);
+
+    const directory = mkdtempSync(join(tmpdir(), "flaw-healthz-"));
+    const file = join(directory, "secret");
+    try {
+      writeFileSync(file, withSpace);
+      chmodSync(file, 0o600);
+      const result = readSecretFile(file, "secret");
+      assert.equal(result.ok, true);
+      if (result.ok) {
+        assert.equal(result.value, withSpace);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuse 31 octets", () => {
+    const value = "0123456789abcdef0123456789abcde";
+    assert.equal(Buffer.byteLength(value, "utf8"), 31);
+    assert.equal(validateSecret(value), "secret invalide");
   });
 
   it("refuse une valeur trop courte", () => {
@@ -33,6 +73,20 @@ describe("validateur de secrets", () => {
 
   it("refuse une sous-chaîne interdite sans tenir compte de la casse", () => {
     assert.equal(validateSecret("0123456789abcdefFLAW0123456789ab"), "secret invalide");
+    assert.equal(validateSecret("0123456789abcdefAdmin0123456789ab"), "secret invalide");
+    assert.equal(validateSecret("0123456789abcdefTEST0123456789abcd"), "secret invalide");
+  });
+
+  it("refuse un CR ou un LF qui n'est pas le saut de ligne final", () => {
+    const embeddedNl = `${HEX.slice(0, 16)}\n${HEX.slice(16)}`;
+    const embeddedCr = `${HEX.slice(0, 16)}\r${HEX.slice(16)}`;
+    assert.equal(stripFinalNewline(embeddedNl), embeddedNl);
+    assert.equal(stripFinalNewline(embeddedCr), embeddedCr);
+    assert.equal(validateSecret(embeddedNl), "secret invalide");
+    assert.equal(validateSecret(embeddedCr), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\n\n`), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\r\n\r\n`), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\r`), "secret invalide");
   });
 
   it("accepte 32 octets hexadécimaux distincts", () => {
@@ -82,6 +136,75 @@ describe("proxy de confiance", () => {
     assert.equal(resolvedClientIp("172.31.250.10", "pas-une-ip", cidr), "172.31.250.10");
     assert.equal(resolvedClientIp("172.31.250.10", undefined, cidr), "172.31.250.10");
   });
+});
+
+describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
+  const root = fileURLToPath(new URL("../../../../", import.meta.url));
+  const creerSecrets = readFileSync(join(root, "infra/creer-secrets.sh"), "utf8");
+  const initdb = readFileSync(join(root, "infra/initdb/01-role-applicatif.sh"), "utf8");
+
+  const preludes = {
+    "creer-secrets.sh": [
+      '_here=$(CDPATH= cd -- "$(dirname "$ROOT/infra/creer-secrets.sh")" && pwd)',
+      '. "$_here/initdb/secret-valide.inc"',
+    ].join("\n"),
+    "initdb": [
+      '_here=$(CDPATH= cd -- "$(dirname "$ROOT/infra/initdb/01-role-applicatif.sh")" && pwd)',
+      '. "$_here/secret-valide.inc"',
+    ].join("\n"),
+  };
+
+  function shellVerdict(prelude: string, raw: string): { ok: boolean; normalised: Buffer } {
+    const script = [
+      prelude,
+      'if secret_valide "$SECRET"; then code=0; else code=1; fi',
+      "printf '%s\\n' \"$code\"",
+      'norm=$(secret_normalise "$SECRET"; printf x)',
+      "printf '%s' \"${norm%x}\"",
+    ].join("\n");
+    const result = spawnSync("sh", ["-c", script], {
+      cwd: root,
+      env: { ...process.env, ROOT: root, SECRET: raw },
+    });
+    assert.equal(result.status, 0, result.stderr.toString("utf8"));
+    const stdout = result.stdout;
+    const split = stdout.indexOf(0x0a);
+    assert.ok(split >= 0);
+    return { ok: stdout.subarray(0, split).toString("utf8") === "0", normalised: stdout.subarray(split + 1) };
+  }
+
+  it("source le même validateur et ne retire plus tous les CR/LF", () => {
+    assert.match(creerSecrets, /initdb\/secret-valide\.inc/);
+    assert.match(initdb, /secret-valide\.inc/);
+    assert.match(initdb, /secret_normalise/);
+    assert.equal(creerSecrets.includes("tr -d '\\r\\n'"), false);
+    assert.equal(initdb.includes("tr -d '\\r\\n'"), false);
+  });
+
+  const cases: Array<{ name: string; raw: string }> = [
+    { name: "espace final conservé", raw: `${HEX} ` },
+    { name: "espace final compté", raw: "0123456789abcde0123456789abcde0 " },
+    { name: "\\r\\n final retiré", raw: `${HEX}\r\n` },
+    { name: "\\n final retiré", raw: `${HEX}\n` },
+    { name: "CR interne refusé", raw: `${HEX.slice(0, 16)}\r${HEX.slice(16)}` },
+    { name: "LF interne refusé", raw: `${HEX.slice(0, 16)}\n${HEX.slice(16)}` },
+    { name: "31 octets", raw: "0123456789abcdef0123456789abcde" },
+    { name: "Admin", raw: "0123456789abcdefAdmin0123456789ab" },
+    { name: "TEST", raw: "0123456789abcdefTEST0123456789abcd" },
+    { name: "octets UTF-8 acceptés", raw: `0123456789abcdef${"é".repeat(16)}` },
+    { name: "longueur en octets UTF-8", raw: "0123456789abcde0123456789abcdeé" },
+  ];
+
+  for (const [origin, prelude] of Object.entries(preludes)) {
+    for (const sample of cases) {
+      it(`${origin} : ${sample.name}`, () => {
+        const expected = stripFinalNewline(sample.raw);
+        const shell = shellVerdict(prelude, sample.raw);
+        assert.equal(shell.ok, validateSecret(sample.raw) === null);
+        assert.deepEqual(shell.normalised, Buffer.from(expected, "utf8"));
+      });
+    }
+  }
 });
 
 describe("lecture des fichiers", () => {

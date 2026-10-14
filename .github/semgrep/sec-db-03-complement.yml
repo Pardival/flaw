@@ -1,0 +1,47 @@
+rules:
+  - id: sec-db-03-query-non-literal
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SEC-DB-03 : query/execute n'accepte qu'une chaîne littérale (paramètres $1..$n
+      en second argument) ou un template taggé sql`` (Drizzle). Toute autre forme
+      exige une revue humaine (nosemgrep: sec-db-03-query-non-literal + justification).
+    metadata: {category: security, cwe: "CWE-89", confidence: MEDIUM}
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query($Q, ...)
+          - pattern: $DB.execute($Q, ...)
+      - pattern-not: $DB.$M("...", ...)
+      - pattern-not: $DB.$M(`...`, ...)
+      - pattern-not: $DB.$M(sql`...`, ...)
+      - pattern-not: '$DB.$M({text: "...", ...}, ...)'
+      - pattern-not-inside: |
+          $T = sql`...`;
+          ...
+
+  - id: sec-db-03-taint
+    mode: taint
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: "SEC-DB-03 : donnée d'entrée propagée jusqu'à une requête SQL non paramétrée."
+    metadata: {category: security, cwe: "CWE-89", confidence: HIGH}
+    pattern-sources:
+      - pattern-either:
+          - pattern: $REQ.query
+          - pattern: $REQ.params
+          - pattern: $REQ.body
+          - pattern: $REQ.headers
+          - pattern: process.env
+          - patterns:
+              - pattern-inside: function $F(..., $P, ...) { ... }
+              - pattern: $P
+    pattern-sanitizers:
+      - pattern: sql`...`
+      - pattern: sql.identifier(...)
+    pattern-sinks:
+      - patterns:
+          - pattern-either:
+              - pattern: $DB.query($SINK, ...)
+              - pattern: $DB.execute($SINK, ...)
+              - pattern: sql.raw($SINK)
+          - focus-metavariable: $SINK

@@ -93,7 +93,91 @@ jobs:
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: gitleaks
-        run: gitleaks detect --source . --redact --no-banner
+        run: gitleaks detect --source . --redact --no-banner --report-format json --report-path "$RUNNER_TEMP/gitleaks.json"
+
+      - name: Preuve allowlist gitleaks
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          import json, os, pathlib
+          report = pathlib.Path(os.environ["RUNNER_TEMP"]) / "gitleaks.json"
+          raw = report.read_text(encoding="utf-8").strip()
+          data = json.loads(raw) if raw else []
+          findings = data if isinstance(data, list) else data.get("findings", [])
+          if findings:
+              print(f"gitleaks : {len(findings)} fuite(s).")
+              raise SystemExit(1)
+          print("gitleaks : aucune fuite.")
+          PY
+          tmp="$(mktemp -d)"
+          cp .gitleaks.toml "$tmp/.gitleaks.toml"
+          python3 - "$tmp" << 'PY'
+          import json, pathlib, secrets, string, subprocess, sys
+          tmp = pathlib.Path(sys.argv[1])
+          marker = "MARQUEUR" + "CONNEXION9f3a"
+          hex_value = "0123456789abcde" + "f0123456789abcdef"
+          (tmp / "markers.test.ts").write_text(
+              f'const secret = "{hex_value}";\nconst token = "{marker}";\n',
+              encoding="utf-8",
+          )
+          (tmp / "markers.ts").write_text(
+              f'const secret = "{hex_value}";\n',
+              encoding="utf-8",
+          )
+          config = str(tmp / ".gitleaks.toml")
+          def scan(source, report):
+              proc = subprocess.run(
+                  [
+                      "gitleaks", "detect", "--no-git",
+                      "--source", str(source),
+                      "--config", config,
+                      "--redact", "--no-banner",
+                      "--report-format", "json",
+                      "--report-path", str(report),
+                  ],
+                  check=False,
+                  text=True,
+                  capture_output=True,
+              )
+              raw = report.read_text(encoding="utf-8").strip() if report.exists() else ""
+              data = json.loads(raw) if raw else []
+              findings = data if isinstance(data, list) else []
+              return proc.returncode, findings, proc.stderr
+          status, findings, err = scan(tmp / "markers.test.ts", tmp / "markers.json")
+          if status != 0 or findings:
+              print(err)
+              print("allowlist : un marqueur dans un .test.ts a été signalé.")
+              raise SystemExit(1)
+          status, findings, err = scan(tmp / "markers.ts", tmp / "plain.json")
+          if status == 0 or not findings:
+              print(err)
+              print("allowlist : un marqueur hors .test.ts aurait dû être signalé.")
+              raise SystemExit(1)
+          alphabet = string.ascii_uppercase + string.digits
+          access = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+          secret = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
+          leak = tmp / "leak.test.ts"
+          leak.write_text(
+              "\n".join([
+                  f"aws_access_key_id={access}",
+                  f"aws_secret_access_key={secret}",
+                  f'const token = "{marker}";',
+                  f'const secret = "{hex_value}";',
+                  "",
+              ]),
+              encoding="utf-8",
+          )
+          status, findings, err = scan(leak, tmp / "leak.json")
+          if status == 0 or not findings:
+              print(err)
+              print("SEC-SECRET-02 : un vrai secret dans un .test.ts aurait dû être détecté.")
+              raise SystemExit(1)
+          for item in findings:
+              if item.get("StartLine") in {3, 4}:
+                  print("marqueur signalé", item.get("RuleID"), item.get("StartLine"))
+                  raise SystemExit(1)
+          print("SEC-SECRET-02 : vrai secret détecté dans un .test.ts, marqueurs ignorés.")
+          PY
 
       - name: Preuve SEC-SECRET-02
         run: |
@@ -137,9 +221,11 @@ jobs:
               --config p/default \
               --config .github/semgrep/sec-web-07.yml \
               --config .github/semgrep/sec-db-03.yml \
+              --config .github/semgrep/sec-db-03-complement.yml \
               --error \
               --metrics=off \
-              --exclude 'fixtures/**'
+              --exclude 'fixtures/**' \
+              --exclude 'apps/server/src/db/sec-db-03-proof.ts'
 
       - name: Preuve SEC-WEB-07
         run: |
@@ -215,6 +301,64 @@ jobs:
             "$SEMGREP_IMAGE" \
             semgrep scan --config /rules/sec-db-03.yml --error --metrics=off /work/ok.ts
           echo 'SEC-DB-03 : concaténation, template et sql.raw signalés ; sql`` et sql.identifier autorisés.'
+
+      - name: Preuve SEC-DB-03 complément
+        run: |
+          set -euo pipefail
+          report="$(mktemp)"
+          set +e
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -w /src \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan \
+              --config .github/semgrep/sec-db-03-complement.yml \
+              --json \
+              --metrics=off \
+              --quiet \
+              apps/server/src/db/sec-db-03-proof.ts > "$report"
+          set -e
+          python3 - "$report" apps/server/src/db/sec-db-03-proof.ts << 'PY'
+          import json, pathlib, sys
+          raw = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8").strip()
+          report = json.loads(raw) if raw else {}
+          source = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8").splitlines()
+          order = []
+          starts = {}
+          for index, line in enumerate(source, 1):
+              if line.startswith("export async function "):
+                  name = line.split("(", 1)[0].split()[-1]
+                  starts[name] = index
+                  order.append(name)
+          ranges = {}
+          for index, name in enumerate(order):
+              end = starts[order[index + 1]] - 1 if index + 1 < len(order) else len(source)
+              ranges[name] = (starts[name], end)
+          results = report.get("results", [])
+          def hits(name):
+              start, end = ranges[name]
+              return [item for item in results if start <= item["start"]["line"] <= end]
+          failed = False
+          for name in ("bad1", "bad2", "bad3", "bad4"):
+              found = hits(name)
+              ids = sorted({item["check_id"].rsplit(".", 1)[-1] for item in found})
+              print(f"{name}: {ids or 'AUCUN'}")
+              if not found:
+                  failed = True
+          for name in ("ok1", "ok2", "ok3", "ok4"):
+              found = hits(name)
+              if found:
+                  ids = sorted({item["check_id"].rsplit(".", 1)[-1] for item in found})
+                  print(f"{name}: signalé à tort {ids}")
+                  failed = True
+              else:
+                  print(f"{name}: non signalé")
+          if failed:
+              raise SystemExit(1)
+          print("SEC-DB-03 complément : bad1…bad4 signalés, ok1…ok4 non signalés.")
+          PY
 
   codeql:
     name: codeql
