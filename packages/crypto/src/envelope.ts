@@ -5,36 +5,32 @@ import { CryptoError } from "./errors.ts";
 /**
  * Enveloppe KEK → DEK → contenu (A-013, SEC-DATA-05).
  *
- * AAD contenu = identifiant du texte ‖ owner_id ‖ type (paquet et A-013).
- * AAD de la DEK = user_id ‖ kek_id (SEC-DATA-05).
+ * Noms alignés sur T-005 : wrapped_ct, wrapped_nonce, key_id, enc_version.
+ * key_id est l'identifiant de la KEK. status vaut active ou retired.
  *
- * Encodage provisoire de « ‖ », figé par enc_version = 1 : le paquet n'a pas
- * de gabarit d'octets. Domaine ASCII, octet 0, puis chaque champ en
- * uint32 grand-boutien + UTF-8. Un champ vide est refusé.
+ * AAD d'une colonne = id de la ligne ‖ nom de colonne.
+ * AAD de la DEK = user_id ‖ key_id (identifiant de la KEK).
  *
- * Noms du paquet : dek_ct, dek_nonce, kek_id. Le schéma T-005 fusionné nomme
- * wrapped_ct, wrapped_nonce, key_id et n'a pas de colonne status.
- * L'API conserve les deux identifiants (kekId et la clé de contenu).
- * status : valeurs non spécifiées, champ absent (BLOCKER).
+ * Encodage de « ‖ » figé (arbitrage T-006) : le domaine, puis pour chaque
+ * champ sa longueur en uint32 big-endian et ses octets UTF-8.
+ * Un champ vide est refusé. enc_version 1 fige ce gabarit.
  */
 const CONTENT_DOMAIN = utf8("flaw/aad/v1");
 const DEK_DOMAIN = utf8("flaw/dek-aad/v1");
-const SEPARATOR = Uint8Array.of(0);
 
-export const CONTENT_TYPE = {
-  projection: "projection",
-  state: "state",
-  update: "update",
-  version: "version",
-  label: "label",
-  totp: "totp",
-  audit: "audit",
+export const COLUMN = {
+  projectionCt: "projection_ct",
+  stateCt: "state_ct",
+  updateCt: "update_ct",
+  versionCt: "version_ct",
+  labelCt: "label_ct",
 } as const;
 
+export type KeyStatus = "active" | "retired";
+
 export type ContentBinding = {
-  textId: string;
-  ownerId: string;
-  type: string;
+  rowId: string;
+  column: string;
 };
 
 export type Sealed = {
@@ -45,10 +41,11 @@ export type Sealed = {
 };
 
 export type WrappedDek = {
-  dekCt: Uint8Array;
-  dekNonce: Uint8Array;
-  kekId: string;
+  wrappedCt: Uint8Array;
+  wrappedNonce: Uint8Array;
+  keyId: string;
   encVersion: number;
+  status: KeyStatus;
 };
 
 export type DekLookup = (keyId: string) => Uint8Array | undefined;
@@ -65,17 +62,11 @@ function champ(value: string): Uint8Array {
 }
 
 export function contentAad(binding: ContentBinding): Uint8Array {
-  return concat([
-    CONTENT_DOMAIN,
-    SEPARATOR,
-    champ(binding.textId),
-    champ(binding.ownerId),
-    champ(binding.type),
-  ]);
+  return concat([CONTENT_DOMAIN, champ(binding.rowId), champ(binding.column)]);
 }
 
-export function dekAad(userId: string, kekId: string): Uint8Array {
-  return concat([DEK_DOMAIN, SEPARATOR, champ(userId), champ(kekId)]);
+export function dekAad(userId: string, keyId: string): Uint8Array {
+  return concat([DEK_DOMAIN, champ(userId), champ(keyId)]);
 }
 
 export function generateDek(): Uint8Array {
@@ -84,7 +75,7 @@ export function generateDek(): Uint8Array {
 
 export function wrapDek(
   kek: Uint8Array,
-  kekId: string,
+  keyId: string,
   userId: string,
   dek: Uint8Array,
   nonce: Uint8Array = randomBytes(NONCE_LENGTH),
@@ -94,23 +85,20 @@ export function wrapDek(
     throw new CryptoError("invalid_key_length");
   }
   return {
-    dekCt: sealXChaCha(kek, nonce, dek, dekAad(userId, kekId)),
-    dekNonce: nonce,
-    kekId,
+    wrappedCt: sealXChaCha(kek, nonce, dek, dekAad(userId, keyId)),
+    wrappedNonce: nonce,
+    keyId,
     encVersion: ENC_VERSION,
+    status: "active",
   };
 }
 
-export function unwrapDek(
-  kek: Uint8Array,
-  userId: string,
-  wrapped: WrappedDek,
-): Uint8Array {
+export function unwrapDek(kek: Uint8Array, userId: string, wrapped: WrappedDek): Uint8Array {
   assertKey(kek);
   if (wrapped.encVersion !== ENC_VERSION) {
     throw new CryptoError("unsupported_version");
   }
-  return openXChaCha(kek, wrapped.dekNonce, wrapped.dekCt, dekAad(userId, wrapped.kekId));
+  return openXChaCha(kek, wrapped.wrappedNonce, wrapped.wrappedCt, dekAad(userId, wrapped.keyId));
 }
 
 export function sealContent(

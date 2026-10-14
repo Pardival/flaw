@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  CONTENT_TYPE,
+  COLUMN,
   CryptoError,
   DERIVED_KEY_LENGTH,
   ENC_VERSION,
   KEY_LENGTH,
+  contentAad,
+  dekAad,
   deriveIdentifierHmacKey,
   deriveRecoveryCodeKey,
   generateDek,
@@ -106,6 +108,14 @@ describe("HKDF — dérivations Flaw", () => {
       "invalid_key_length",
     );
   });
+
+  it("fige le sel omis : il vaut HashLen octets nuls (RFC 5869)", () => {
+    const info = new TextEncoder().encode("flaw/hmac-identifiants/v1|pep-hmac-vecteur-1");
+    const omitted = hkdfSha256(pepper, info, 32);
+    const zeros = hkdfSha256(pepper, info, 32, new Uint8Array(32));
+    expect(hex(omitted)).toBe("a87a5ab0e5693726ea63e40cb65826db845c362178654c196ea8ad6a953ff201");
+    expect(hex(zeros)).toBe(hex(omitted));
+  });
 });
 
 describe("XChaCha20-Poly1305 — draft-irtf-cfrg-xchacha-03 A.3.1", () => {
@@ -150,9 +160,8 @@ describe("enveloppe KEK → DEK → contenu", () => {
   const kek = octets("11".repeat(32));
   const userId = "11111111-1111-7111-8111-111111111111";
   const kekId = "kek-2026-10";
-  const textA = "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa";
-  const textB = "bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb";
-  const owner = "cccccccc-cccc-7ccc-8ccc-cccccccccccc";
+  const rowA = "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa";
+  const rowB = "bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb";
   const clairA = utf8Clair("texte-synthetique-a");
   const clairB = utf8Clair("texte-synthetique-b");
 
@@ -160,42 +169,51 @@ describe("enveloppe KEK → DEK → contenu", () => {
     return (id) => (id === keyId ? dek : undefined);
   }
 
-  it("enveloppe une DEK et retrouve le clair lié à l'AAD", () => {
+  it("fige l'encodage AAD : domaine, puis uint32be et UTF-8", () => {
+    expect(hex(contentAad({ rowId: rowA, column: COLUMN.labelCt }))).toBe(
+      "666c61772f6161642f76310000002461616161616161612d616161612d376161612d386161612d616161616161616161616161000000086c6162656c5f6374",
+    );
+    expect(hex(dekAad(userId, kekId))).toBe(
+      "666c61772f64656b2d6161642f76310000002431313131313131312d313131312d373131312d383131312d3131313131313131313131310000000b6b656b2d323032362d3130",
+    );
+  });
+
+  it("enveloppe une DEK et retrouve le clair lié à la colonne", () => {
     const dek = generateDek();
     const keyId = "dddddddd-dddd-7ddd-8ddd-dddddddddddd";
     const wrapped = wrapDek(kek, kekId, userId, dek);
     expect(wrapped.encVersion).toBe(ENC_VERSION);
-    expect(wrapped.kekId).toBe(kekId);
+    expect(wrapped.keyId).toBe(kekId);
+    expect(wrapped.status).toBe("active");
+    expect(wrapped.wrappedNonce.length).toBe(24);
     expect(hex(unwrapDek(kek, userId, wrapped))).toBe(hex(dek));
-    const sealed = sealContent(dek, keyId, { textId: textA, ownerId: owner, type: CONTENT_TYPE.projection }, clairA);
-    const opened = openContent(
-      { textId: textA, ownerId: owner, type: CONTENT_TYPE.projection },
-      sealed,
-      trousseau(dek, keyId),
-    );
+    const binding = { rowId: rowA, column: COLUMN.labelCt };
+    const sealed = sealContent(dek, keyId, binding, clairA);
+    const opened = openContent(binding, sealed, trousseau(dek, keyId));
     expect(hex(opened)).toBe(hex(clairA));
-    expect(hex(wrapped.dekCt)).not.toContain(hex(kek));
+    expect(hex(wrapped.wrappedCt)).not.toContain(hex(kek));
     expect(hex(sealed.ciphertext)).not.toContain(hex(kek));
     expect(hex(sealed.ciphertext)).not.toContain(hex(dek));
   });
 
-  it("SEC-DATA-05 : copier le chiffré du texte A vers le texte B échoue", () => {
+  it("échoue si le chiffré label_ct est déplacé vers une autre ligne", () => {
     const dek = octets("22".repeat(32));
     const keyId = "dek-a";
     const sealed = sealContent(
       dek,
       keyId,
-      { textId: textA, ownerId: owner, type: CONTENT_TYPE.projection },
+      { rowId: rowA, column: COLUMN.labelCt },
       clairA,
       octets("33".repeat(24)),
     );
     expect(
       code(() =>
-        openContent(
-          { textId: textB, ownerId: owner, type: CONTENT_TYPE.projection },
-          sealed,
-          trousseau(dek, keyId),
-        ),
+        openContent({ rowId: rowB, column: COLUMN.labelCt }, sealed, trousseau(dek, keyId)),
+      ),
+    ).toBe("authentication_failed");
+    expect(
+      code(() =>
+        openContent({ rowId: rowA, column: COLUMN.versionCt }, sealed, trousseau(dek, keyId)),
       ),
     ).toBe("authentication_failed");
     expect(hex(clairB)).not.toBe(hex(clairA));
@@ -203,18 +221,9 @@ describe("enveloppe KEK → DEK → contenu", () => {
 
   it("refuse un key_id inconnu", () => {
     const dek = octets("22".repeat(32));
-    const sealed = sealContent(
-      dek,
-      "dek-connu",
-      { textId: textA, ownerId: owner, type: CONTENT_TYPE.label },
-      clairA,
-      octets("44".repeat(24)),
-    );
-    expect(code(() => openContent(
-      { textId: textA, ownerId: owner, type: CONTENT_TYPE.label },
-      sealed,
-      () => undefined,
-    ))).toBe("unknown_key_id");
+    const binding = { rowId: rowA, column: COLUMN.labelCt };
+    const sealed = sealContent(dek, "dek-connu", binding, clairA, octets("44".repeat(24)));
+    expect(code(() => openContent(binding, sealed, () => undefined))).toBe("unknown_key_id");
   });
 
   it("refuse une DEK de mauvaise longueur, un nonce court et une version inconnue", () => {
@@ -223,25 +232,20 @@ describe("enveloppe KEK → DEK → contenu", () => {
     );
     expect(code(() => sealXChaCha(kek, octets("00".repeat(23)), clairA, new Uint8Array()))).toBe("invalid_nonce");
     const dek = octets("22".repeat(32));
-    const sealed = sealContent(
-      dek,
-      "dek-connu",
-      { textId: textA, ownerId: owner, type: CONTENT_TYPE.state },
-      clairA,
-      octets("55".repeat(24)),
-    );
-    expect(code(() => openContent(
-      { textId: textA, ownerId: owner, type: CONTENT_TYPE.state },
-      { ...sealed, encVersion: 2 },
-      trousseau(dek, "dek-connu"),
-    ))).toBe("unsupported_version");
+    const binding = { rowId: rowA, column: COLUMN.stateCt };
+    const sealed = sealContent(dek, "dek-connu", binding, clairA, octets("55".repeat(24)));
+    expect(
+      code(() => openContent(binding, { ...sealed, encVersion: 2 }, trousseau(dek, "dek-connu"))),
+    ).toBe("unsupported_version");
   });
 
-  it("lie la DEK à user_id et kek_id", () => {
+  it("lie la DEK à l'utilisateur et à key_id", () => {
     const dek = octets("66".repeat(32));
     const wrapped = wrapDek(kek, kekId, userId, dek, octets("77".repeat(24)));
     expect(code(() => unwrapDek(kek, "autre-utilisateur", wrapped))).toBe("authentication_failed");
-    expect(code(() => unwrapDek(kek, userId, { ...wrapped, kekId: "kek-autre" }))).toBe("authentication_failed");
+    expect(code(() => unwrapDek(kek, userId, { ...wrapped, keyId: "kek-autre" }))).toBe(
+      "authentication_failed",
+    );
     expect(unwrapDek(kek, userId, wrapped).length).toBe(KEY_LENGTH);
   });
 });

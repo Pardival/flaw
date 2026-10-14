@@ -1,8 +1,9 @@
 /**
  * Schéma Drizzle du schéma PostgreSQL `flaw` (T-005, ARC-SUM 0.4.16).
  *
- * 19 tables (ARC-SUM 0.4.16). Pas de colonne de titre : le titre chiffré
- * est T-006. La projection chiffrée est l'enveloppe `projection_ct`.
+ * 19 tables (ARC-SUM 0.4.16). La projection chiffrée est l'enveloppe
+ * `projection_ct`. T-006 ajoute `label_ct` / `label_nonce` (nullables, appariés)
+ * et `user_keys.status` (une seule DEK active par `owner_id`).
  *
  * RLS forcée seulement sur les 4 tables de contenu. `users`, `accounts` et
  * `sessions` n'ont pas de RLS. Le prédicat est
@@ -176,8 +177,13 @@ export const userKeys = flaw.table(
     keyId: text("key_id").notNull(),
     encVersion: integer("enc_version").notNull(),
     createdAt: createdAt(),
+    status: text("status").notNull().default("active"),
   },
-  (table) => [index("user_keys_owner_id_idx").on(table.ownerId)],
+  (table) => [
+    index("user_keys_owner_id_idx").on(table.ownerId),
+    check("user_keys_status_check", sql`${table.status} in ('active', 'retired')`),
+    uniqueIndex("user_keys_one_active_uidx").on(table.ownerId).where(sql`${table.status} = 'active'`),
+  ],
 );
 
 export const userPreferences = flaw.table("user_preferences", {
@@ -402,6 +408,8 @@ export const documentVersions = flaw
       keyId: text("key_id").notNull(),
       encVersion: integer("enc_version").notNull(),
       createdAt: createdAt(),
+      labelCt: bytea("label_ct"),
+      labelNonce: bytea("label_nonce"),
     },
     (table) => [
       foreignKey({
@@ -411,6 +419,10 @@ export const documentVersions = flaw
       }).onDelete("cascade"),
       index("document_versions_owner_id_idx").on(table.ownerId),
       index("document_versions_document_id_idx").on(table.documentId),
+      check(
+        "document_versions_label_pair_check",
+        sql`(${table.labelCt} is null) = (${table.labelNonce} is null)`,
+      ),
       ownerPolicy("document_versions"),
     ],
   )

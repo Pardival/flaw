@@ -17,7 +17,7 @@ export {
   hkdfSha256,
 } from "./hkdf.ts";
 export {
-  CONTENT_TYPE,
+  COLUMN,
   contentAad,
   dekAad,
   generateDek,
@@ -26,4 +26,4 @@ export {
   unwrapDek,
   wrapDek,
 } from "./envelope.ts";
-export type { ContentBinding, DekLookup, Sealed, WrappedDek } from "./envelope.ts";
+export type { ContentBinding, DekLookup, KeyStatus, Sealed, WrappedDek } from "./envelope.ts";

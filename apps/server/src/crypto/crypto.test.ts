@@ -5,18 +5,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  CONTENT_TYPE,
-  CryptoError,
-  deriveIdentifierHmacKey,
-  deriveRecoveryCodeKey,
-  generateDek,
-  wrapDek,
-} from "@flaw/crypto";
+import { deriveIdentifierHmacKey, deriveRecoveryCodeKey } from "@flaw/crypto";
 
 import { validateKeyMaterial } from "../platform/healthz.ts";
-import { decodeValidatedKey, loadKekFile } from "./kek.ts";
-import { consignerResultatPurge, lireResultatPurge } from "./purge.ts";
+import { loadKekFile } from "./kek.ts";
+import { PurgeRefusee, consignerResultatPurge } from "./purge.ts";
 
 const directories: string[] = [];
 const cryptoRoot = fileURLToPath(new URL(".", import.meta.url));
@@ -45,16 +38,6 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
   }
 });
-
-function code(run: () => unknown): string {
-  try {
-    run();
-  } catch (error) {
-    expect(error).toBeInstanceOf(CryptoError);
-    return (error as CryptoError).code;
-  }
-  throw new Error("exception attendue");
-}
 
 describe("SEC-SECRET-07 — flaw_kek via le validateur T-002", () => {
   it("retire un seul \\n ou \\r\\n final et décode 32 octets", () => {
@@ -109,157 +92,69 @@ describe("SEC-SECRET-07 — flaw_kek via le validateur T-002", () => {
   });
 });
 
-describe("purge_journaux — écriture chiffrée dans audit_events", () => {
-  const userId = "11111111-1111-7111-8111-111111111111";
-  const keyId = "22222222-2222-7222-8222-222222222222";
+describe("purge_journaux — codes en clair dans audit_events", () => {
+  const ownerId = "11111111-1111-7111-8111-111111111111";
   const auditId = "33333333-3333-7333-8333-333333333333";
 
-  function materiau() {
-    const kek = decodeValidatedKey(validKey());
-    if (kek === null) {
-      throw new Error("kek");
-    }
-    const dek = generateDek();
-    const wrapped = wrapDek(kek, "kek-2026-10", userId, dek);
-    return { kek, dek, wrapped };
+  function capture() {
+    const calls: { sql: string; params: readonly unknown[] }[] = [];
+    const query = (sql: string, params: readonly unknown[]) => {
+      calls.push({ sql, params });
+      return Promise.resolve({ rowCount: 1 });
+    };
+    return { calls, query };
   }
 
-  it("chiffre le résultat et l'insère sans clair", async () => {
-    const { kek, dek, wrapped } = materiau();
-    const calls: { sql: string; params: readonly unknown[] }[] = [];
-    let purged = false;
+  it("écrit ok et les UUID, sans champ chiffré ni contenu", async () => {
+    const { calls, query } = capture();
     const row = await consignerResultatPurge({
-      query: (sql, params) => {
-        calls.push({ sql, params });
-        return Promise.resolve({ rowCount: 1 });
-      },
-      purge: () => {
-        purged = true;
-        return Promise.resolve();
-      },
-      kek,
-      userId,
-      keyId,
-      wrapped,
+      query,
+      purge: () => Promise.resolve(),
+      ownerId,
       id: auditId,
     });
-    expect(purged).toBe(true);
+    expect(row).toEqual({ id: auditId, ownerId, eventType: "purge_journaux", result: "ok" });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.sql).toBe(
       "INSERT INTO flaw.audit_events (id, owner_id, event_type, result) VALUES ($1, $2, $3, $4)",
     );
-    expect(calls[0]?.params.slice(0, 3)).toEqual([auditId, userId, "purge_journaux"]);
-    const stored = String(calls[0]?.params[3]);
-    expect(stored).toBe(row.result);
-    expect(stored).not.toContain("purge_journaux");
-    expect(stored).not.toContain("statut");
-    expect(stored).not.toContain(Buffer.from(kek).toString("base64"));
-    expect(stored).not.toContain(Buffer.from(dek).toString("base64"));
-    const opened = lireResultatPurge({
-      id: auditId,
-      ownerId: userId,
-      result: stored,
-      resolveDek: (id) => (id === keyId ? dek : undefined),
-    });
-    expect(Buffer.from(opened).toString("utf8")).toBe(
-      JSON.stringify({ fonction: "purge_journaux", id: auditId, statut: "ok" }),
-    );
+    expect(calls[0]?.params).toEqual([auditId, ownerId, "purge_journaux", "ok"]);
+    const stored = calls[0]?.params[3];
+    expect(stored).toBe("ok");
+    expect(typeof stored).toBe("string");
+    expect(stored).not.toMatch(/ct|nonce|cipher|wrapped|contenu|label/i);
   });
 
-  it("n'écrit rien si la purge échoue, ni si la DEK ne se dévoile pas", async () => {
-    const { kek, wrapped } = materiau();
-    let queries = 0;
+  it("écrit refus ou erreur, puis relance", async () => {
+    const refused = capture();
     await expect(
       consignerResultatPurge({
-        query: () => {
-          queries += 1;
-          return Promise.resolve();
-        },
+        query: refused.query,
+        purge: () => Promise.reject(new PurgeRefusee()),
+        ownerId,
+        id: auditId,
+      }),
+    ).rejects.toBeInstanceOf(PurgeRefusee);
+    expect(refused.calls[0]?.params).toEqual([auditId, ownerId, "purge_journaux", "refus"]);
+
+    const failed = capture();
+    await expect(
+      consignerResultatPurge({
+        query: failed.query,
         purge: () => Promise.reject(new Error("purge")),
-        kek,
-        userId,
-        keyId,
-        wrapped,
+        ownerId,
         id: auditId,
       }),
     ).rejects.toThrow("purge");
-    expect(queries).toBe(0);
-
-    let purged = false;
-    await expect(
-      consignerResultatPurge({
-        query: () => Promise.resolve(),
-        purge: () => {
-          purged = true;
-          return Promise.resolve();
-        },
-        kek,
-        userId: "autre-utilisateur",
-        keyId,
-        wrapped,
-        id: auditId,
-      }),
-    ).rejects.toBeInstanceOf(CryptoError);
-    expect(purged).toBe(false);
+    expect(failed.calls[0]?.params).toEqual([auditId, ownerId, "purge_journaux", "erreur"]);
   });
 
-  it("refuse un tag altéré, une mauvaise clé et un key_id inconnu", async () => {
-    const { kek, dek, wrapped } = materiau();
-    const row = await consignerResultatPurge({
-      query: () => Promise.resolve(),
-      purge: () => Promise.resolve(),
-      kek,
-      userId,
-      keyId,
-      wrapped,
-      id: auditId,
-    });
-    const parsed = JSON.parse(row.result) as { ct: string };
-    const ct = Buffer.from(parsed.ct, "base64");
-    ct[ct.length - 1] ^= 1;
-    parsed.ct = ct.toString("base64");
-    const altere = JSON.stringify(parsed);
-    expect(code(() => lireResultatPurge({
-      id: auditId,
-      ownerId: userId,
-      result: altere,
-      resolveDek: (id) => (id === keyId ? dek : undefined),
-    }))).toBe("authentication_failed");
-
-    const autre = generateDek();
-    expect(code(() => lireResultatPurge({
-      id: auditId,
-      ownerId: userId,
-      result: row.result,
-      resolveDek: (id) => (id === keyId ? autre : undefined),
-    }))).toBe("authentication_failed");
-
-    expect(code(() => lireResultatPurge({
-      id: auditId,
-      ownerId: userId,
-      result: row.result,
-      resolveDek: () => undefined,
-    }))).toBe("unknown_key_id");
-  });
-
-  it("lie le résultat au propriétaire et au type audit", async () => {
-    const { kek, dek, wrapped } = materiau();
-    const row = await consignerResultatPurge({
-      query: () => Promise.resolve(),
-      purge: () => Promise.resolve(),
-      kek,
-      userId,
-      keyId,
-      wrapped,
-      id: auditId,
-    });
-    expect(code(() => lireResultatPurge({
-      id: auditId,
-      ownerId: "99999999-9999-7999-8999-999999999999",
-      result: row.result,
-      resolveDek: (id) => (id === keyId ? dek : undefined),
-    }))).toBe("authentication_failed");
-    expect(CONTENT_TYPE.audit).toBe("audit");
+  it("le module n'écrit aucun champ chiffré ni contenu utilisateur", () => {
+    const source = readFileSync(join(cryptoRoot, "purge.ts"), "utf8");
+    expect(source).not.toMatch(/seal|unwrap|wrapDek|ciphertext|nonce|base64/);
+    expect(source).toContain('"ok"');
+    expect(source).toContain('"refus"');
+    expect(source).toContain('"erreur"');
   });
 });
 

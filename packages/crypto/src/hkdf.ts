@@ -8,9 +8,9 @@ import { KEY_LENGTH } from "./aead.ts";
 /**
  * Dérivations HKDF-SHA-256 (T-006).
  *
- * Sel : le paquet fixe l'info, pas le sel. Sel omis ou vide → RFC 5869 §2.2
- * (HashLen octets nuls). Choix provisoire, signalé.
- * Longueur des clés d'usage : 32 octets (HMAC-SHA-256 ; code_hmac T-005 = 32).
+ * Sel omis (ou vide) : choix figé. RFC 5869 §2.2 l'autorise quand l'IKM
+ * est une clé aléatoire de 32 octets — le sel par défaut est alors HashLen
+ * octets nuls. Longueur des clés d'usage : 32 octets (HMAC-SHA-256).
  *
  * Identifiants : info = « flaw/hmac-identifiants/v1| » ‖ HMAC_PEPPER_ID.
  * Codes de secours (G13/H1) : le paquet ne donne pas le littéral. Le schéma

@@ -161,6 +161,22 @@ describe("migration SQL et compose", () => {
     expect(droits).toContain("GRANT SELECT, INSERT ON TABLE flaw.audit_events TO flaw_app;");
   });
 
+  it("ajoute status et label sans renommer une colonne T-005", () => {
+    const additive = readFileSync(join(root, "apps/server/drizzle/0001_enveloppe.sql"), "utf8");
+    expect(additive).toContain("ADD COLUMN status text NOT NULL DEFAULT 'active'");
+    expect(additive).toContain("CHECK (status IN ('active', 'retired'))");
+    expect(additive).toContain(
+      "CREATE UNIQUE INDEX user_keys_one_active_uidx ON flaw.user_keys (owner_id) WHERE status = 'active'",
+    );
+    expect(additive).toContain("ADD COLUMN label_ct bytea");
+    expect(additive).toContain("ADD COLUMN label_nonce bytea");
+    expect(additive).toContain("CHECK ((label_ct IS NULL) = (label_nonce IS NULL))");
+    expect(additive).not.toMatch(/RENAME/i);
+    expect(additive).not.toContain("dek_ct");
+    expect(additive).not.toContain("kek_id");
+    expect(additive).not.toContain("user_id");
+  });
+
   it("ne référence aucun traceur (AC-102)", () => {
     const sources = [
       migration,
@@ -975,5 +991,71 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     await admin.query("DROP TABLE flaw.intrus");
     await owner.query(infraSql("droits-flaw.sql")); // nosemgrep: sec-db-03-query-non-literal
     expect(await appRoleEcarts(app)).toEqual([]);
+  });
+
+  it("refuse une deuxième DEK active et un label orphelin", async () => {
+    const userId = crypto.randomUUID();
+    const otherId = crypto.randomUUID();
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [userId]);
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [otherId]);
+    const ct = Buffer.from([1]);
+    const nonce = Buffer.from([2]);
+    const insertKey = (owner: string, status: string) =>
+      app.query(
+        "INSERT INTO flaw.user_keys (owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status) VALUES ($1, $2, $3, 'kek-2026-10', 1, $4)",
+        [owner, ct, nonce, status],
+      );
+    await insertKey(userId, "active");
+    let duplicate = false;
+    try {
+      await insertKey(userId, "active");
+    } catch (error) {
+      duplicate = true;
+      expect(errorText(error)).toMatch(/23505/);
+    }
+    expect(duplicate).toBe(true);
+    await insertKey(userId, "retired");
+    await insertKey(otherId, "active");
+
+    const documentId = crypto.randomUUID();
+    await withUser(db, userId, async (tx) => {
+      await tx.execute(sql`
+        insert into flaw.documents (
+          id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
+        ) values (
+          ${documentId}, ${userId}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+        )
+      `);
+      await tx.execute(sql`
+        insert into flaw.document_versions (
+          document_id, owner_id, version_ct, version_nonce, key_id, enc_version
+        ) values (
+          ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+        )
+      `);
+      await tx.execute(sql`
+        insert into flaw.document_versions (
+          document_id, owner_id, version_ct, version_nonce, key_id, enc_version, label_ct, label_nonce
+        ) values (
+          ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1, '\\x03'::bytea, '\\x04'::bytea
+        )
+      `);
+    });
+    let orphan = false;
+    try {
+      await withUser(db, userId, async (tx) =>
+        tx.execute(sql`
+          insert into flaw.document_versions (
+            document_id, owner_id, version_ct, version_nonce, key_id, enc_version, label_ct
+          ) values (
+            ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1, '\\x03'::bytea
+          )
+        `),
+      );
+    } catch (error) {
+      orphan = true;
+      expect(errorText(error)).toMatch(/23514/);
+    }
+    expect(orphan).toBe(true);
   });
 });
