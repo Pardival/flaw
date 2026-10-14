@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, it } from "node:test";
+import { after, before, describe, it } from "node:test";
 import {
   readSecretFile,
   resolvedClientIp,
@@ -84,7 +84,10 @@ describe("validateur de secrets", () => {
     assert.equal(stripFinalNewline(embeddedCr), embeddedCr);
     assert.equal(validateSecret(embeddedNl), "secret invalide");
     assert.equal(validateSecret(embeddedCr), "secret invalide");
+    assert.equal(stripFinalNewline(`${HEX}\n\n`), `${HEX}\n`);
+    assert.equal(stripFinalNewline(`${HEX}\r\n\n`), `${HEX}\r\n`);
     assert.equal(validateSecret(`${HEX}\n\n`), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\r\n\n`), "secret invalide");
     assert.equal(validateSecret(`${HEX}\r\n\r\n`), "secret invalide");
     assert.equal(validateSecret(`${HEX}\r`), "secret invalide");
   });
@@ -142,6 +145,41 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
   const root = fileURLToPath(new URL("../../../../", import.meta.url));
   const creerSecrets = readFileSync(join(root, "infra/creer-secrets.sh"), "utf8");
   const initdb = readFileSync(join(root, "infra/initdb/01-role-applicatif.sh"), "utf8");
+  // Q-007 : l'awk qui valide en production est celui de l'image postgres épinglée
+  // (busybox), pas celui de l'hôte CI. LC_ALL=C ne fige que la largeur des
+  // caractères de gawk ; mawk, nawk et busybox divergent encore. Le digest
+  // fige le binaire (SEC-CONT-01), le même que docker-compose.yml.
+  const postgresImage =
+    "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
+  const awkContainer = `flaw-secret-awk-${process.pid}`;
+
+  before(() => {
+    const started = spawnSync(
+      "docker",
+      [
+        "run",
+        "-d",
+        "--name",
+        awkContainer,
+        "--network",
+        "none",
+        "--entrypoint",
+        "sleep",
+        "-v",
+        `${root}:/work:ro`,
+        postgresImage,
+        "300",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(started.status, 0, started.stderr);
+    const ready = spawnSync("docker", ["exec", awkContainer, "true"], { encoding: "utf8" });
+    assert.equal(ready.status, 0, ready.stderr);
+  });
+
+  after(() => {
+    spawnSync("docker", ["rm", "-f", awkContainer], { encoding: "utf8" });
+  });
 
   const preludes = {
     "creer-secrets.sh": [
@@ -162,10 +200,10 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
       'norm=$(secret_normalise "$SECRET"; printf x)',
       "printf '%s' \"${norm%x}\"",
     ].join("\n");
-    const result = spawnSync("sh", ["-c", script], {
-      cwd: root,
-      env: { ...process.env, ROOT: root, SECRET: raw },
-    });
+    const result = spawnSync(
+      "docker",
+      ["exec", "-e", `SECRET=${raw}`, "-e", "ROOT=/work", awkContainer, "sh", "-c", script],
+    );
     assert.equal(result.status, 0, result.stderr.toString("utf8"));
     const stdout = result.stdout;
     const split = stdout.indexOf(0x0a);
@@ -186,6 +224,9 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
     { name: "espace final compté", raw: "0123456789abcde0123456789abcde0 " },
     { name: "\\r\\n final retiré", raw: `${HEX}\r\n` },
     { name: "\\n final retiré", raw: `${HEX}\n` },
+    { name: "\\n\\n refusé", raw: `${HEX}\n\n` },
+    { name: "\\r\\n\\n refusé", raw: `${HEX}\r\n\n` },
+    { name: "espace puis \\r\\n", raw: `${HEX} \r\n` },
     { name: "CR interne refusé", raw: `${HEX.slice(0, 16)}\r${HEX.slice(16)}` },
     { name: "LF interne refusé", raw: `${HEX.slice(0, 16)}\n${HEX.slice(16)}` },
     { name: "31 octets", raw: "0123456789abcdef0123456789abcde" },
@@ -205,6 +246,80 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
       });
     }
   }
+
+  function hostGawkAccepts(validatorSource: string, raw: string): boolean {
+    const directory = mkdtempSync(join(tmpdir(), "flaw-gawk-"));
+    try {
+      mkdirSync(join(directory, "bin"));
+      writeFileSync(join(directory, "secret-valide.inc"), validatorSource);
+      writeFileSync(join(directory, "bin/awk"), "#!/bin/sh\nexec gawk \"$@\"\n");
+      chmodSync(join(directory, "bin/awk"), 0o755);
+      const result = spawnSync(
+        "sh",
+        ["-c", '. ./secret-valide.inc; if secret_valide "$SECRET"; then echo 0; else echo 1; fi'],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${join(directory, "bin")}:${process.env.PATH ?? ""}`,
+            LC_ALL: "C.UTF-8",
+            SECRET: raw,
+          },
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim() === "0";
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  function skipWithoutGawk(t: { skip: (message?: string) => void }): boolean {
+    const gawk = spawnSync("gawk", ["--version"], { encoding: "utf8" });
+    if (gawk.status === 0) {
+      return false;
+    }
+    if (process.env.CI) {
+      assert.fail("gawk absent en CI : le cas doit s'exécuter");
+    }
+    t.skip("gawk absent : cas sauté. La CI installe gawk pour l'exécuter.");
+    return true;
+  }
+
+  const gawkCases: Array<{ name: string; raw: string }> = [
+    { name: "\\n\\n refusé", raw: `${HEX}\n\n` },
+    { name: "\\r\\n\\n refusé", raw: `${HEX}\r\n\n` },
+  ];
+
+  for (const sample of gawkCases) {
+    it(`gawk hôte : ${sample.name}`, (t) => {
+      if (skipWithoutGawk(t)) {
+        return;
+      }
+      const validator = readFileSync(join(root, "infra/initdb/secret-valide.inc"), "utf8");
+      assert.equal(validateSecret(sample.raw), "secret invalide");
+      assert.equal(hostGawkAccepts(validator, sample.raw), false);
+    });
+  }
+
+  it("gawk hôte : creer-secrets.sh détecte une mutation LC_ALL=C", (t) => {
+    if (skipWithoutGawk(t)) {
+      return;
+    }
+    const probe = `0123456789abcdef${"é".repeat(8)}`;
+    assert.equal(Buffer.byteLength(probe, "utf8"), 32);
+    assert.equal([...probe].length, 24);
+    assert.equal(validateSecret(probe), null);
+    const validatorPath = join(root, "infra/initdb/secret-valide.inc");
+    const validator = readFileSync(validatorPath, "utf8");
+    assert.match(creerSecrets, /initdb\/secret-valide\.inc/);
+    assert.match(validator, /LC_ALL=C awk/);
+    assert.equal(hostGawkAccepts(validator, probe), true);
+    const mutated = validator.replaceAll("LC_ALL=C awk", "awk");
+    assert.notEqual(mutated, validator);
+    assert.equal(hostGawkAccepts(mutated, probe), false);
+  });
 });
 
 describe("lecture des fichiers", () => {

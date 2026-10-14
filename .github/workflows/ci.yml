@@ -40,6 +40,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: gawk pour la parité SEC-SECRET-07
+        run: sudo apt-get update && sudo apt-get install -y gawk
+
       - name: Vitest et tests node:test
         run: pnpm test
 

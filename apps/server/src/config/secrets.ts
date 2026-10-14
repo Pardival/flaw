@@ -5,13 +5,13 @@
  */
 import { readSecretFile, type SecretKind } from "../platform/healthz.ts";
 
-export type SecretName = "databasePassword" | "betterAuthSecret" | "kek" | "recoveryPepper";
+export type SecretName = "databasePassword" | "betterAuthSecret" | "kek" | "recoveryPepper" | "hmacPepper";
 
 export type LoadedSecrets = Record<SecretName, string>;
 
 type SecretSpec = {
   name: SecretName;
-  env: "DATABASE_PASSWORD_FILE" | "BETTER_AUTH_SECRET_FILE" | "FLAW_KEK_FILE" | "RECOVERY_PEPPER_FILE";
+  env: "DATABASE_PASSWORD_FILE" | "BETTER_AUTH_SECRET_FILE" | "FLAW_KEK_FILE" | "RECOVERY_PEPPER_FILE" | "HMAC_PEPPER_FILE";
   fallback: string;
   kind: SecretKind;
 };
@@ -39,6 +39,12 @@ const SPECS: readonly SecretSpec[] = [
     name: "recoveryPepper",
     env: "RECOVERY_PEPPER_FILE",
     fallback: "/run/secrets/recovery_pepper",
+    kind: "key",
+  },
+  {
+    name: "hmacPepper",
+    env: "HMAC_PEPPER_FILE",
+    fallback: "/run/secrets/hmac_pepper",
     kind: "key",
   },
 ];

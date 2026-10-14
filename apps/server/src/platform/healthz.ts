@@ -281,6 +281,7 @@ async function main(): Promise<void> {
   mustSecret(process.env.BETTER_AUTH_SECRET_FILE ?? "/run/secrets/better_auth_secret", "secret");
   mustSecret(process.env.FLAW_KEK_FILE ?? "/run/secrets/flaw_kek", "key");
   mustSecret(process.env.RECOVERY_PEPPER_FILE ?? "/run/secrets/recovery_pepper", "key");
+  mustSecret(process.env.HMAC_PEPPER_FILE ?? "/run/secrets/hmac_pepper", "key");
   const port = Number(process.env.PORT ?? "3000");
   listen(port, process.env.TRUSTED_PROXY_CIDR ?? "");
 }

@@ -29,6 +29,7 @@ function writeSecrets(values: {
   betterAuthSecret: string;
   kek: string;
   recoveryPepper: string;
+  hmacPepper: string;
 }, mode = 0o600): NodeJS.ProcessEnv {
   const directory = mkdtempSync(join(tmpdir(), "flaw-config-"));
   directories.push(directory);
@@ -37,11 +38,13 @@ function writeSecrets(values: {
     BETTER_AUTH_SECRET_FILE: join(directory, "better_auth_secret"),
     FLAW_KEK_FILE: join(directory, "flaw_kek"),
     RECOVERY_PEPPER_FILE: join(directory, "recovery_pepper"),
+    HMAC_PEPPER_FILE: join(directory, "hmac_pepper"),
   };
   writeFileSync(files.DATABASE_PASSWORD_FILE, values.databasePassword);
   writeFileSync(files.BETTER_AUTH_SECRET_FILE, values.betterAuthSecret);
   writeFileSync(files.FLAW_KEK_FILE, values.kek);
   writeFileSync(files.RECOVERY_PEPPER_FILE, values.recoveryPepper);
+  writeFileSync(files.HMAC_PEPPER_FILE, values.hmacPepper);
   for (const file of Object.values(files)) {
     chmodSync(file, mode);
   }
@@ -53,6 +56,7 @@ function validSet(overrides: Partial<{
   betterAuthSecret: string;
   kek: string;
   recoveryPepper: string;
+  hmacPepper: string;
 }> = {}) {
   const key = validKey();
   return {
@@ -60,6 +64,7 @@ function validSet(overrides: Partial<{
     betterAuthSecret: HEX,
     kek: key,
     recoveryPepper: key,
+    hmacPepper: key,
     ...overrides,
   };
 }
@@ -136,6 +141,7 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
       betterAuthSecret: `${HEX} `,
       kek: key,
       recoveryPepper: key,
+      hmacPepper: key,
     }));
     const direct = readSecretFile(env.BETTER_AUTH_SECRET_FILE ?? "", "secret");
     const loaded = loadSecrets(env);

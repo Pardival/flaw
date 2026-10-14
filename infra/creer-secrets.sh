@@ -3,12 +3,14 @@
 # Crée secrets/ : propriétaire = UID du lecteur, 400 (440 si partage par le groupe 70).
 # N'écrase jamais. Les secrets de sauvegarde hors site sont en T-042.
 #
-#   Secret              Lu par                     Propriétaire  Droits
-#   postgres_password   db (UID 70)                70:70         400
-#   app_db_password     app, migrate (10001), db   10001:70      440
-#   better_auth_secret  app (10001)                10001:10001   400
-#   flaw_kek            app (10001)                10001:10001   400
-#   recovery_pepper     app (10001)                10001:10001   400
+#   Secret              Lu par                         Propriétaire  Droits
+#   postgres_password   db (UID 70)                    70:70         400
+#   app_db_password     app (10001), db                10001:70      440
+#   db_owner_password   migrate (UID 10001), db (GID 70) 10001:70     440
+#   better_auth_secret  app (10001)                    10001:10001   400
+#   flaw_kek            app (10001)                    10001:10001   400
+#   recovery_pepper     app (10001)                    10001:10001   400
+#   hmac_pepper         app (10001)                    10001:10001   400
 #
 # Usage (depuis infra/) :
 #   sudo sh creer-secrets.sh
@@ -24,9 +26,11 @@ D="${SECRETS_DIR:-./secrets}"
 
 SPEC='postgres_password 70:70 400 hex32
 app_db_password 10001:70 440 hex32
+db_owner_password 10001:70 440 hex32
 better_auth_secret 10001:10001 400 b64_48
 flaw_kek 10001:10001 400 kek
-recovery_pepper 10001:10001 400 kek'
+recovery_pepper 10001:10001 400 kek
+hmac_pepper 10001:10001 400 kek'
 
 gen() {
   kind=$1
@@ -67,7 +71,7 @@ if [ "${1:-}" = "--verifier" ]; then
   [ "$m" = "700" ] || { echo "ÉCART     $D ($m, attendu 700)"; ok=1; }
   downer="$(stat -c '%u:%g' "$D")"
   [ "$downer" = "0:0" ] || { echo "ÉCART     $D ($downer, attendu 0:0)"; ok=1; }
-  for k in "$D/flaw_kek" "$D/recovery_pepper" "$D"/recovery_pepper_*; do
+  for k in "$D/flaw_kek" "$D/recovery_pepper" "$D/hmac_pepper" "$D"/recovery_pepper_*; do
     [ -e "$k" ] || continue
     t="$(base64 -d "$k" 2>/dev/null | wc -c | tr -d ' ')"
     [ "$t" = "32" ] && echo "OK        $k (32 octets)" || { echo "ÉCART     $k ($t octets, attendu 32)"; ok=1; }
@@ -96,4 +100,6 @@ printf 'Empreinte flaw_kek : %s\n' "$(base64 -d "$D/flaw_kek" | sha256sum | cut 
 printf 'Taille flaw_kek décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/flaw_kek" | wc -c | tr -d ' ')"
 printf 'Empreinte recovery_pepper : %s\n' "$(base64 -d "$D/recovery_pepper" | sha256sum | cut -c1-16)"
 printf 'Taille recovery_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/recovery_pepper" | wc -c | tr -d ' ')"
-echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID)."
+printf 'Empreinte hmac_pepper : %s\n' "$(base64 -d "$D/hmac_pepper" | sha256sum | cut -c1-16)"
+printf 'Taille hmac_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/hmac_pepper" | wc -c | tr -d ' ')"
+echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper, hmac_pepper (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID, HMAC_PEPPER_ID)."

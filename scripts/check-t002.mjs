@@ -89,7 +89,15 @@ function staticChecks() {
   assert("caddy ports bas", caddy.includes('"80:80"') && caddy.includes('"443:443"') && caddy.includes('"443:443/udp"'), "ports");
   assert("caddy capability", caddy.includes("cap_add: [NET_BIND_SERVICE]") && caddy.includes("cap_drop: [ALL]"), "caps");
   assert("caddy ip fixe", caddy.includes("${CADDY_IP:-172.31.250.10}"), "ip");
-  assert("migrate secret unique", migrate.includes("secrets: [app_db_password]") && !migrate.includes("FLAW_KEK") && !migrate.includes("BETTER_AUTH"), "migrate");
+  assert(
+    "migrate secret unique",
+    migrate.includes("secrets: [db_owner_password]") &&
+      migrate.includes("DATABASE_USER: flaw_owner") &&
+      !migrate.includes("app_db_password") &&
+      !migrate.includes("FLAW_KEK") &&
+      !migrate.includes("BETTER_AUTH"),
+    "migrate",
+  );
   assert("db sans durcissement incompatible", !db.includes("cap_drop") && !db.includes("read_only") && !db.includes("group_add"), "db");
   assert("db init et santé", db.includes('pg_isready -U postgres -d $${POSTGRES_DB}') && db.includes("--auth-host=scram-sha-256 --data-checksums"), "db");
   assert("réseau internal", plain.includes("internal: true") && plain.includes("${EDGE_SUBNET:-172.31.250.0/24}"), "réseau");
@@ -113,7 +121,7 @@ function staticChecks() {
 
   const secretsScript = read("infra/creer-secrets.sh");
   const validator = read("infra/initdb/secret-valide.inc");
-  assert("spec secrets", secretsScript.includes("postgres_password 70:70 400 hex32") && secretsScript.includes("app_db_password 10001:70 440 hex32") && secretsScript.includes("better_auth_secret 10001:10001 400 b64_48") && secretsScript.includes("flaw_kek 10001:10001 400 kek") && secretsScript.includes("recovery_pepper 10001:10001 400 kek"), "spec");
+  assert("spec secrets", secretsScript.includes("postgres_password 70:70 400 hex32") && secretsScript.includes("app_db_password 10001:70 440 hex32") && secretsScript.includes("db_owner_password 10001:70 440 hex32") && secretsScript.includes("better_auth_secret 10001:10001 400 b64_48") && secretsScript.includes("flaw_kek 10001:10001 400 kek") && secretsScript.includes("recovery_pepper 10001:10001 400 kek") && secretsScript.includes("hmac_pepper 10001:10001 400 kek"), "spec");
   assert("secrets hors t002 absents", !secretsScript.includes("restic_password") && !secretsScript.includes("offsite_s3_secret") && !secretsScript.includes("sudo -E"), "script");
   assert(
     "validateur expert",
@@ -130,7 +138,17 @@ function staticChecks() {
     initdb.includes("secret-valide.inc") && !initdb.includes("tr -d '\\r\\n'"),
     "initdb",
   );
-  assert("rôle flaw_app", initdb.includes("NOREPLICATION NOBYPASSRLS") && initdb.includes("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app") && initdb.includes("search_path = flaw") && initdb.includes("REVOKE ALL ON SCHEMA public FROM PUBLIC") && !initdb.includes("flaw_backup"), "initdb");
+  assert(
+    "rôle flaw_app",
+    initdb.includes("NOREPLICATION NOBYPASSRLS") &&
+      initdb.includes("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_owner") &&
+      initdb.includes("REVOKE CREATE ON DATABASE") &&
+      initdb.includes("search_path = flaw") &&
+      initdb.includes("REVOKE ALL ON SCHEMA public FROM PUBLIC") &&
+      !initdb.includes("AUTHORIZATION flaw_app") &&
+      !initdb.includes("flaw_backup"),
+    "initdb",
+  );
 
   const example = read("infra/.env.example");
   assert("env exemple", example.includes("FLAW_DOMAIN=flaw.example.com") && example.includes("EDGE_SUBNET=172.31.250.0/24") && example.includes("CADDY_IP=172.31.250.10") && example.includes("ghcr.io/CHANGE_ME/flaw:0.1.0@sha256:CHANGE_ME"), "env");
