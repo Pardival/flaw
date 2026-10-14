@@ -1,0 +1,7 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# minimatch 10+ est sous BlueOak-1.0.0, hors liste A-002. 9.0.9 est ISC.
+overrides:
+  minimatch: "9.0.9"

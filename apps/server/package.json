@@ -1,0 +1,10 @@
+{
+  "name": "@flaw/server",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder serveur (A-019). Aucune dépendance applicative en T-001.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

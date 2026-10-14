@@ -1,0 +1,10 @@
+{
+  "name": "@flaw/schema",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder schémas partagés (A-019).",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

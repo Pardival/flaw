@@ -1,0 +1,10 @@
+{
+  "name": "@flaw/web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder SPA/PWA (A-019). Aucune dépendance applicative en T-001.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

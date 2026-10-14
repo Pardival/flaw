@@ -1,0 +1,11 @@
+# Placeholder T-001 — le pipeline CI n'est pas spécifié par cette tâche.
+# SEC-SECRET-02 : gitleaks est en pre-commit (v1-O). La CI gitleaks est v1-R → OS.
+name: placeholder
+on:
+  workflow_dispatch:
+jobs:
+  placeholder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: placeholder
+        run: echo "CI non défini (T-001)"
