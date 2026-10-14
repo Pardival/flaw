@@ -1,7 +1,8 @@
 /**
  * Schéma Drizzle du schéma PostgreSQL `flaw` (T-005, A-003, A-014).
  *
- * 16 tables. `verifications` est nommée par l'arbitrage T-002 #8.
+ * 16 tables du pack, plus `auth_events` (Expert, échecs sans compte).
+ * `verifications` est nommée par l'arbitrage T-002 #8.
  * `accounts` complète le compte : Better Auth est le choix A-002, et le pack
  * ne donne pas le seizième nom (schema-esquisse.sql est absent). Voir BLOCKER.
  *
@@ -14,12 +15,12 @@
  * `owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid`.
  * `users` compare `id` à la même expression.
  * ENABLE et les politiques sont déclarés ici. FORCE ROW LEVEL SECURITY est
- * dans la migration SQL : `enableRLS()` ne l'émet pas, et flaw_app, propriétaire
- * des tables (migrate v1, arbitrage T-002 #5), contournerait sinon la RLS.
+ * dans la migration SQL : `enableRLS()` ne l'émet pas, et le propriétaire
+ * flaw_owner contournerait sinon la RLS.
  *
- * `verifications` et `rate_limits` n'ont pas de propriétaire : elles servent
- * avant qu'un utilisateur existe. SEC-DB-05 ne les nomme pas. Pas de RLS,
- * sinon l'insertion serait refusée.
+ * `verifications.identifier` et `rate_limits.bucket` sont des HMAC-SHA256
+ * poivrés (hex). Pas de RLS : elles servent avant qu'un utilisateur existe.
+ * `auth_events` reçoit les échecs sans compte (insert seul pour flaw_app).
  */
 import { sql } from "drizzle-orm";
 import {
@@ -129,7 +130,7 @@ export const sessions = flaw
   )
   .enableRLS();
 
-/** Jeton d'inscription ou de vérification, avant qu'un utilisateur existe. */
+/** Avant qu'un utilisateur existe. identifier = HMAC-SHA256 poivré, hex 64. */
 export const verifications = flaw.table(
   "verifications",
   {
@@ -139,7 +140,10 @@ export const verifications = flaw.table(
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
     createdAt: createdAt(),
   },
-  (table) => [index("verifications_identifier_idx").on(table.identifier)],
+  (table) => [
+    check("verifications_identifier_hmac", sql`${table.identifier} ~ '^[0-9a-f]{64}$'`),
+    index("verifications_identifier_idx").on(table.identifier),
+  ],
 );
 
 export const authFactors = flaw
@@ -214,7 +218,7 @@ export const dailyProgress = flaw
   )
   .enableRLS();
 
-/** Compteur avant authentification (pas de owner_id, pas de RLS). */
+/** Compteur avant authentification. bucket = HMAC-SHA256 poivré, hex 64. Pas de RLS. */
 export const rateLimits = flaw.table(
   "rate_limits",
   {
@@ -223,7 +227,10 @@ export const rateLimits = flaw.table(
     windowStart: timestamp("window_start", { withTimezone: true, mode: "date" }).notNull(),
     hits: integer("hits").notNull(),
   },
-  (table) => [uniqueIndex("rate_limits_bucket_window_uidx").on(table.bucket, table.windowStart)],
+  (table) => [
+    check("rate_limits_bucket_hmac", sql`${table.bucket} ~ '^[0-9a-f]{64}$'`),
+    uniqueIndex("rate_limits_bucket_window_uidx").on(table.bucket, table.windowStart),
+  ],
 );
 
 /** Survit à la suppression de l'utilisateur : pas de clé étrangère. */
@@ -241,8 +248,8 @@ export const erasureLog = flaw
 
 /**
  * Journal sans contenu de texte. owner_id sans clé étrangère : la ligne peut
- * rester après l'effacement du compte. Un événement sans utilisateur n'a pas
- * encore de forme (BLOCKER).
+ * rester après l'effacement du compte. Les échecs sans utilisateur vont dans
+ * auth_events. flaw_app n'a ni UPDATE ni DELETE.
  */
 export const auditEvents = flaw
   .table(
@@ -255,6 +262,32 @@ export const auditEvents = flaw
       createdAt: createdAt(),
     },
     (table) => [index("audit_events_owner_id_idx").on(table.ownerId), ownerPolicy("audit_events")],
+  )
+  .enableRLS();
+
+/** Échecs d'authentification sans compte. HMAC poivrés, insert seul (SEC-LOG-02). */
+export const authEvents = flaw
+  .table(
+    "auth_events",
+    {
+      id: uuid("id").primaryKey().defaultRandom(),
+      eventType: text("event_type").notNull(),
+      subjectHmac: text("subject_hmac"),
+      ipHmac: text("ip_hmac"),
+      userAgentSummary: text("user_agent_summary"),
+      createdAt: createdAt(),
+    },
+    (table) => [
+      check(
+        "auth_events_event_type_check",
+        sql`${table.eventType} in ('login_failed', 'login_rate_limited', 'mfa_failed')`,
+      ),
+      pgPolicy("auth_events_insert", {
+        for: "insert",
+        to: "flaw_app",
+        withCheck: sql`true`,
+      }),
+    ],
   )
   .enableRLS();
 
@@ -344,6 +377,7 @@ export const TABLE_NAMES = [
   "rate_limits",
   "erasure_log",
   "audit_events",
+  "auth_events",
   "documents",
   "document_states",
   "document_updates",
@@ -362,6 +396,7 @@ export const RLS_TABLES = [
   "daily_progress",
   "erasure_log",
   "audit_events",
+  "auth_events",
   "documents",
   "document_states",
   "document_updates",

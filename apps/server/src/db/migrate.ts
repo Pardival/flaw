@@ -1,11 +1,9 @@
 /**
- * Service migrate (T-005). Connexion flaw_app, puis migrations Drizzle.
- * Le rôle de migration distinct (SEC-DB-02, avant public) n'est pas créé :
- * l'arbitrage T-002 #5 fixe migrate sur flaw_app en v1.
- * Le journal Drizzle est dans le schéma flaw.
- * migrate() exécute CREATE SCHEMA IF NOT EXISTS : PostgreSQL 18 exige CREATE
- * sur la base, accordé à flaw_app par initdb. Un rôle DDL distinct (avant public)
- * retirera ce droit du rôle d'exécution.
+ * Service migrate (T-005). Connexion flaw_owner, puis migrations Drizzle.
+ * L'arbitrage T-002 #5 est annulé : flaw_app ne migre plus.
+ * Le journal Drizzle est dans le schéma flaw. flaw_owner a CREATE sur la base,
+ * exigé par migrate() (CREATE SCHEMA IF NOT EXISTS) sous PostgreSQL 18.
+ * flaw_app reste en DML : le journal et sa séquence lui sont retirés.
  */
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -22,21 +20,55 @@ type RoleRow = {
   rolbypassrls: boolean;
 };
 
+type CountRow = {
+  n: number;
+};
+
 export function migrationsFolder(): string {
   return fileURLToPath(new URL("../../drizzle", import.meta.url));
 }
 
-export async function assertAppRole(client: Client): Promise<void> {
+async function roleRow(client: Client): Promise<RoleRow> {
   const result = await client.query<RoleRow>(
     "SELECT current_user AS current_user, rolsuper, rolcreatedb, rolcreaterole, rolreplication, rolbypassrls FROM pg_roles WHERE rolname = current_user",
   );
   const row = result.rows[0];
-  if (row === undefined || row.current_user !== "flaw_app") {
+  if (row === undefined) {
     throw new Error("refus de démarrer : role inattendu");
   }
+  return row;
+}
+
+function assertNotElevated(row: RoleRow): void {
   if (row.rolsuper || row.rolcreatedb || row.rolcreaterole || row.rolreplication || row.rolbypassrls) {
     throw new Error("refus de démarrer : privileges inattendus");
   }
+}
+
+export async function assertNoAppOwnedTables(client: Client): Promise<void> {
+  const owned = await client.query<CountRow>(
+    "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'flaw' AND tableowner = 'flaw_app'",
+  );
+  if (owned.rows[0]?.n !== 0) {
+    throw new Error("refus de démarrer : table appartenant a flaw_app");
+  }
+}
+
+export async function assertAppRole(client: Client): Promise<void> {
+  const row = await roleRow(client);
+  if (row.current_user !== "flaw_app") {
+    throw new Error("refus de démarrer : role inattendu");
+  }
+  assertNotElevated(row);
+  await assertNoAppOwnedTables(client);
+}
+
+export async function assertOwnerRole(client: Client): Promise<void> {
+  const row = await roleRow(client);
+  if (row.current_user !== "flaw_owner") {
+    throw new Error("refus de démarrer : role inattendu");
+  }
+  assertNotElevated(row);
 }
 
 export async function applyMigrations(client: Client): Promise<void> {
@@ -51,8 +83,8 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function connectApp(): Promise<Client> {
-  const passwordFile = process.env.DATABASE_PASSWORD_FILE ?? "/run/secrets/app_db_password";
+async function connectOwner(): Promise<Client> {
+  const passwordFile = process.env.DATABASE_PASSWORD_FILE ?? "/run/secrets/db_owner_password";
   const secret = readSecretFile(passwordFile, "secret");
   if (!secret.ok) {
     throw new Error(secret.message);
@@ -64,7 +96,7 @@ async function connectApp(): Promise<Client> {
       host: process.env.DATABASE_HOST ?? "db",
       port: 5432,
       database: process.env.DATABASE_NAME ?? "flaw",
-      user: process.env.DATABASE_USER ?? "flaw_app",
+      user: process.env.DATABASE_USER ?? "flaw_owner",
       password: secret.value,
       connectionTimeoutMillis: 3000,
     });
@@ -81,10 +113,11 @@ async function connectApp(): Promise<Client> {
 }
 
 async function main(): Promise<void> {
-  const client = await connectApp();
+  const client = await connectOwner();
   try {
-    await assertAppRole(client);
+    await assertOwnerRole(client);
     await applyMigrations(client);
+    await assertNoAppOwnedTables(client);
   } finally {
     await client.end().catch(() => undefined);
   }

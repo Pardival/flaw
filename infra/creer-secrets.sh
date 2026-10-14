@@ -3,12 +3,13 @@
 # Crée secrets/ : propriétaire = UID du lecteur, 400 (440 si partage par le groupe 70).
 # N'écrase jamais. Les secrets de sauvegarde hors site sont en T-042.
 #
-#   Secret              Lu par                     Propriétaire  Droits
-#   postgres_password   db (UID 70)                70:70         400
-#   app_db_password     app, migrate (10001), db   10001:70      440
-#   better_auth_secret  app (10001)                10001:10001   400
-#   flaw_kek            app (10001)                10001:10001   400
-#   recovery_pepper     app (10001)                10001:10001   400
+#   Secret              Lu par                         Propriétaire  Droits
+#   postgres_password   db (UID 70)                    70:70         400
+#   app_db_password     app (10001), db                10001:70      440
+#   db_owner_password   migrate (UID 70), db (init)    70:70         400
+#   better_auth_secret  app (10001)                    10001:10001   400
+#   flaw_kek            app (10001)                    10001:10001   400
+#   recovery_pepper     app (10001)                    10001:10001   400
 #
 # Usage (depuis infra/) :
 #   sudo sh creer-secrets.sh
@@ -24,6 +25,7 @@ D="${SECRETS_DIR:-./secrets}"
 
 SPEC='postgres_password 70:70 400 hex32
 app_db_password 10001:70 440 hex32
+db_owner_password 70:70 400 hex32
 better_auth_secret 10001:10001 400 b64_48
 flaw_kek 10001:10001 400 kek
 recovery_pepper 10001:10001 400 kek'

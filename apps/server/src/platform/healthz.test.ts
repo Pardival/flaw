@@ -221,6 +221,7 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
     { name: "espace final compté", raw: "0123456789abcde0123456789abcde0 " },
     { name: "\\r\\n final retiré", raw: `${HEX}\r\n` },
     { name: "\\n final retiré", raw: `${HEX}\n` },
+    { name: "espace puis \\r\\n", raw: `${HEX} \r\n` },
     { name: "CR interne refusé", raw: `${HEX.slice(0, 16)}\r${HEX.slice(16)}` },
     { name: "LF interne refusé", raw: `${HEX.slice(0, 16)}\n${HEX.slice(16)}` },
     { name: "31 octets", raw: "0123456789abcdef0123456789abcde" },

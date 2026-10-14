@@ -1,4 +1,4 @@
--- T-005. Schéma flaw, RLS forcée. flaw_app est propriétaire (migrate v1, arbitrage T-002 #5).
+-- T-005. Schéma flaw, RLS forcée. flaw_owner est propriétaire (arbitrage T-002 #5 annulé).
 REVOKE ALL ON SCHEMA flaw FROM PUBLIC;
 --> statement-breakpoint
 CREATE TABLE flaw.users (
@@ -32,7 +32,8 @@ CREATE TABLE flaw.verifications (
   identifier text NOT NULL,
   value_hash text NOT NULL,
   expires_at timestamptz NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT verifications_identifier_hmac CHECK (identifier ~ '^[0-9a-f]{64}$')
 );
 --> statement-breakpoint
 CREATE TABLE flaw.auth_factors (
@@ -78,7 +79,8 @@ CREATE TABLE flaw.rate_limits (
   bucket text NOT NULL,
   window_start timestamptz NOT NULL,
   hits integer NOT NULL,
-  CONSTRAINT rate_limits_bucket_window_uidx UNIQUE (bucket, window_start)
+  CONSTRAINT rate_limits_bucket_window_uidx UNIQUE (bucket, window_start),
+  CONSTRAINT rate_limits_bucket_hmac CHECK (bucket ~ '^[0-9a-f]{64}$')
 );
 --> statement-breakpoint
 CREATE TABLE flaw.erasure_log (
@@ -284,3 +286,50 @@ CREATE POLICY document_versions_owner ON flaw.document_versions
   FOR ALL TO flaw_app
   USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
   WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
+--> statement-breakpoint
+COMMENT ON COLUMN flaw.verifications.identifier IS 'HMAC-SHA256 poivré (hex), jamais le jeton en clair';
+--> statement-breakpoint
+COMMENT ON COLUMN flaw.rate_limits.bucket IS 'HMAC-SHA256 poivré (hex), jamais le seau en clair';
+--> statement-breakpoint
+CREATE TABLE flaw.auth_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type text NOT NULL CHECK (event_type IN ('login_failed','login_rate_limited','mfa_failed')),
+  subject_hmac text,
+  ip_hmac text,
+  user_agent_summary text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
+ALTER TABLE flaw.auth_events ENABLE ROW LEVEL SECURITY;
+--> statement-breakpoint
+ALTER TABLE flaw.auth_events FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+CREATE POLICY auth_events_insert ON flaw.auth_events FOR INSERT TO flaw_app WITH CHECK (true);
+--> statement-breakpoint
+REVOKE ALL ON flaw.auth_events FROM flaw_app;
+--> statement-breakpoint
+GRANT INSERT ON flaw.auth_events TO flaw_app;
+--> statement-breakpoint
+REVOKE UPDATE, DELETE ON flaw.audit_events, flaw.erasure_log FROM flaw_app;
+--> statement-breakpoint
+CREATE FUNCTION flaw.purge_expired()
+RETURNS void
+LANGUAGE sql
+AS $$
+  DELETE FROM flaw.verifications WHERE expires_at < now();
+  DELETE FROM flaw.rate_limits AS older
+  WHERE EXISTS (
+    SELECT 1
+    FROM flaw.rate_limits AS newer
+    WHERE newer.bucket = older.bucket
+      AND newer.window_start > older.window_start
+  );
+$$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION flaw.purge_expired() FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION flaw.purge_expired() TO flaw_app;
+--> statement-breakpoint
+REVOKE ALL ON TABLE flaw.__drizzle_migrations FROM flaw_app;
+--> statement-breakpoint
+REVOKE ALL ON SEQUENCE flaw.__drizzle_migrations_id_seq FROM flaw_app;

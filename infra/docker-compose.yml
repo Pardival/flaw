@@ -90,17 +90,20 @@ services:
     <<: *defaults
     restart: "no"
     image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
-    # Migrations Drizzle (T-005), en flaw_app (arbitrage T-002 #5).
+    # Migrations Drizzle (T-005) sous flaw_owner. L'arbitrage T-002 #5 est annulé.
+    # db_owner_password est 70:70 mode 400 : ce service tourne en UID 70 pour le lire.
+    # L'app ne reçoit pas ce secret. Le service db le reçoit aussi : initdb exécute
+    # CREATE ROLE ... PASSWORD et ne peut pas le faire sans le fichier.
     command: ["node", "apps/server/src/db/migrate.ts"]
-    user: "10001:10001"
+    user: "70:70"
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DATABASE_HOST: db
       DATABASE_NAME: ${POSTGRES_DB:-flaw}
-      DATABASE_USER: flaw_app
-      DATABASE_PASSWORD_FILE: /run/secrets/app_db_password
-    secrets: [app_db_password]
+      DATABASE_USER: flaw_owner
+      DATABASE_PASSWORD_FILE: /run/secrets/db_owner_password
+    secrets: [db_owner_password]
     read_only: true
     cap_drop: [ALL]
     depends_on:
@@ -155,7 +158,7 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
-    secrets: [postgres_password, app_db_password]
+    secrets: [postgres_password, app_db_password, db_owner_password]
     volumes:
       - pgdata:/var/lib/postgresql
       - ./initdb:/docker-entrypoint-initdb.d:ro
@@ -175,6 +178,8 @@ secrets:
     file: ./secrets/postgres_password
   app_db_password:
     file: ./secrets/app_db_password
+  db_owner_password:
+    file: ./secrets/db_owner_password
   better_auth_secret:
     file: ./secrets/better_auth_secret
   flaw_kek:

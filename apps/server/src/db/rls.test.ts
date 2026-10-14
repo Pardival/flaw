@@ -2,6 +2,7 @@
  * T-005 — AC-095, AC-096, AC-102, SEC-DB-02, SEC-DB-03, SEC-DB-05, SEC-DATA-01.
  * Postgres 18.6 épinglé, le même digest que infra/docker-compose.yml.
  */
+import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -16,6 +17,7 @@ import { APP_USER_PREDICATE, OWNER_TABLES, RLS_TABLES, TABLE_NAMES } from "./sch
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
 const DB_PASSWORD = "0123456789abcdef0123456789abcdef";
+const HMAC_PEPPER = "0123456789abcdef0123456789abcdef";
 const INJECTION = "' OR 1=1 --";
 const TRACKERS = ["google-analytics", "googletagmanager", "segment.io", "plausible.io"];
 
@@ -29,6 +31,10 @@ const SORTS = {
 } as const;
 
 type Database = NodePgDatabase;
+
+function pepperedHmac(value: string): string {
+  return createHmac("sha256", HMAC_PEPPER).update(value).digest("hex");
+}
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) {
@@ -61,8 +67,9 @@ describe("migration SQL et compose", () => {
   const compose = readFileSync(join(root, "infra/docker-compose.yml"), "utf8");
   const dockerfile = readFileSync(join(root, "apps/server/Dockerfile"), "utf8");
 
-  it("crée les 16 tables et force la RLS (SEC-DB-05, A-014)", () => {
-    expect(TABLE_NAMES).toHaveLength(16);
+  it("crée les tables et force la RLS (SEC-DB-05, A-014)", () => {
+    expect(TABLE_NAMES).toHaveLength(17);
+    expect(TABLE_NAMES).toContain("auth_events");
     for (const name of TABLE_NAMES) {
       expect(migration).toContain(`CREATE TABLE flaw.${name} (`);
     }
@@ -71,6 +78,13 @@ describe("migration SQL et compose", () => {
       expect(migration).toContain(`ALTER TABLE flaw.${name} FORCE ROW LEVEL SECURITY;`);
     }
     expect(migration).toContain(APP_USER_PREDICATE);
+    expect(migration).toContain("CREATE POLICY auth_events_insert ON flaw.auth_events FOR INSERT TO flaw_app WITH CHECK (true);");
+    expect(migration).toContain("REVOKE ALL ON flaw.auth_events FROM flaw_app;");
+    expect(migration).toContain("GRANT INSERT ON flaw.auth_events TO flaw_app;");
+    expect(migration).toContain("REVOKE UPDATE, DELETE ON flaw.audit_events, flaw.erasure_log FROM flaw_app;");
+    expect(migration).toContain("verifications_identifier_hmac");
+    expect(migration).toContain("rate_limits_bucket_hmac");
+    expect(migration).toContain("CREATE FUNCTION flaw.purge_expired()");
     expect(migration).not.toContain("verifications ENABLE ROW LEVEL SECURITY");
     expect(migration).not.toContain("rate_limits ENABLE ROW LEVEL SECURITY");
   });
@@ -89,16 +103,33 @@ describe("migration SQL et compose", () => {
     }
   });
 
-  it("branche le service migrate sur la même commande Compose (AC-095)", () => {
+  it("branche le service migrate sur flaw_owner et l'app sur flaw_app (AC-095)", () => {
+    const migrateBlock = compose.split("\n  migrate:\n")[1]?.split("\n  app:\n")[0] ?? "";
+    const appBlock = compose.split("\n  app:\n")[1]?.split("\n  db:\n")[0] ?? "";
+    const dbBlock = compose.split("\n  db:\n")[1]?.split("\nsecrets:\n")[0] ?? "";
+    const initdb = readFileSync(join(root, "infra/initdb/01-role-applicatif.sh"), "utf8");
+    const secrets = readFileSync(join(root, "infra/creer-secrets.sh"), "utf8");
     expect(compose).toContain(POSTGRES_IMAGE);
-    expect(compose).toContain('command: ["node", "apps/server/src/db/migrate.ts"]');
+    expect(migrateBlock).toContain('command: ["node", "apps/server/src/db/migrate.ts"]');
+    expect(migrateBlock).toContain("DATABASE_USER: flaw_owner");
+    expect(migrateBlock).toContain("secrets: [db_owner_password]");
+    expect(migrateBlock).toContain('user: "70:70"');
+    expect(migrateBlock).not.toContain("app_db_password");
     expect(compose).toContain("DATABASE_USER: flaw_app");
+    expect(appBlock).not.toContain("db_owner_password");
+    expect(dbBlock).toContain("db_owner_password");
+    expect(initdb).toContain("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_owner");
+    expect(initdb).toContain("REVOKE CREATE ON DATABASE");
+    expect(initdb).toContain("ALTER DEFAULT PRIVILEGES FOR ROLE flaw_owner");
+    expect(initdb).not.toContain("AUTHORIZATION flaw_app");
+    expect(secrets).toContain("db_owner_password 70:70 400 hex32");
     expect(dockerfile).toContain("COPY --from=build /src/apps/server/drizzle /app/apps/server/drizzle");
   });
 });
 
 describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
   let admin: Client;
+  let owner: Client;
   let app: Client;
   let db: Database;
   let port = 0;
@@ -169,27 +200,46 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     }
 
     admin = await connectStable("postgres");
-    const existing = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = 'flaw_app'");
-    if (existing.rows.length === 0) {
+    const existingApp = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = 'flaw_app'");
+    if (existingApp.rows.length === 0) {
       await admin.query(
         "CREATE ROLE flaw_app LOGIN PASSWORD '0123456789abcdef0123456789abcdef' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
       );
     }
+    const existingOwner = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = 'flaw_owner'");
+    if (existingOwner.rows.length === 0) {
+      await admin.query(
+        "CREATE ROLE flaw_owner LOGIN PASSWORD '0123456789abcdef0123456789abcdef' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS",
+      );
+    }
     await admin.query("REVOKE ALL ON SCHEMA public FROM PUBLIC");
-    await admin.query("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app");
+    await admin.query("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_owner");
     await admin.query("ALTER ROLE flaw_app SET search_path = flaw");
+    await admin.query("ALTER ROLE flaw_owner SET search_path = flaw");
+    await admin.query("GRANT CONNECT, CREATE ON DATABASE flaw TO flaw_owner");
+    await admin.query("REVOKE CREATE ON DATABASE flaw FROM flaw_app");
     await admin.query("GRANT CONNECT ON DATABASE flaw TO flaw_app");
-    await admin.query("GRANT CREATE ON DATABASE flaw TO flaw_app");
+    await admin.query("REVOKE ALL ON SCHEMA flaw FROM PUBLIC");
+    await admin.query("GRANT USAGE ON SCHEMA flaw TO flaw_app");
+    await admin.query(
+      "ALTER DEFAULT PRIVILEGES FOR ROLE flaw_owner IN SCHEMA flaw GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO flaw_app",
+    );
+    await admin.query(
+      "ALTER DEFAULT PRIVILEGES FOR ROLE flaw_owner IN SCHEMA flaw GRANT USAGE, SELECT ON SEQUENCES TO flaw_app",
+    );
     await admin.end();
+
+    owner = await connectStable("flaw_owner");
+    await applyMigrations(owner);
 
     app = await connectStable("flaw_app");
     await assertAppRole(app);
-    await applyMigrations(app);
     db = drizzle(app);
   }, 180_000);
 
   afterAll(async () => {
     await app?.end().catch(() => undefined);
+    await owner?.end().catch(() => undefined);
     docker(["rm", "-f", container]);
   });
 
@@ -248,7 +298,10 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
 
     const policies = rowsOf(
       await db.execute(sql`
-        select c.relname as name, pg_get_expr(p.polqual, p.polrelid) as using_expr
+        select c.relname as name,
+          p.polcmd as cmd,
+          pg_get_expr(p.polqual, p.polrelid) as using_expr,
+          pg_get_expr(p.polwithcheck, p.polrelid) as check_expr
         from pg_policy p
         join pg_class c on c.oid = p.polrelid
         join pg_namespace n on n.oid = c.relnamespace
@@ -256,7 +309,14 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       `),
     );
     expect(policies).toHaveLength(RLS_TABLES.length);
+    const authPolicy = policies.find((policy) => policy.name === "auth_events");
+    expect(authPolicy?.cmd).toBe("a");
+    expect(authPolicy?.check_expr).toBe("true");
+    expect(authPolicy?.using_expr).toBeNull();
     for (const policy of policies) {
+      if (policy.name === "auth_events") {
+        continue;
+      }
       const expression = String(policy.using_expr);
       expect(expression).toContain("NULLIF");
       expect(expression).toContain("current_setting('app.user_id'");
@@ -381,7 +441,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
   });
 
   it("réapplique la migration sans changer le schéma", async () => {
-    await applyMigrations(app);
+    await applyMigrations(owner);
     const again = rowsOf(
       await db.execute(sql`
         select count(*)::int as n
@@ -390,6 +450,71 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
         where n.nspname = 'flaw' and c.relkind = 'r' and c.relname <> '__drizzle_migrations'
       `),
     );
-    expect(Number(again[0]?.n)).toBe(16);
+    expect(Number(again[0]?.n)).toBe(TABLE_NAMES.length);
+  });
+
+  it("refuse DROP, DISABLE RLS, CREATE SCHEMA, SELECT auth_events et UPDATE audit_events", async () => {
+    await expect(app.query("DROP TABLE flaw.documents")).rejects.toThrow();
+    await expect(app.query("ALTER TABLE flaw.documents DISABLE ROW LEVEL SECURITY")).rejects.toThrow();
+    await expect(app.query("CREATE SCHEMA x")).rejects.toThrow();
+    await expect(app.query("SELECT id FROM flaw.auth_events")).rejects.toThrow();
+    await expect(app.query("UPDATE flaw.audit_events SET result = 'x'")).rejects.toThrow();
+    await expect(app.query("DELETE FROM flaw.audit_events")).rejects.toThrow();
+    await expect(app.query("DELETE FROM flaw.erasure_log")).rejects.toThrow();
+
+    const subject = pepperedHmac("ada@example.invalid");
+    const ip = pepperedHmac("203.0.113.9");
+    await app.query(
+      "INSERT INTO flaw.auth_events (event_type, subject_hmac, ip_hmac, user_agent_summary) VALUES ($1, $2, $3, $4)",
+      ["login_failed", subject, ip, "Mozilla"],
+    );
+    await expect(app.query("SELECT subject_hmac FROM flaw.auth_events")).rejects.toThrow();
+  });
+
+  it("n'accepte aucun jeton en clair dans verifications.identifier et purge les lignes expirées", async () => {
+    const token = "reset-password:0123456789abcdef0123456789abcdef";
+    const identifier = pepperedHmac(token);
+    await expect(
+      app.query(
+        "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')",
+        [token, pepperedHmac("valeur")],
+      ),
+    ).rejects.toThrow();
+
+    await app.query(
+      "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')",
+      [identifier, pepperedHmac("valeur")],
+    );
+    await app.query(
+      "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, now() - interval '1 minute')",
+      [pepperedHmac("expire"), pepperedHmac("ancienne")],
+    );
+    const bucket = pepperedHmac("login:203.0.113.9");
+    await app.query(
+      "INSERT INTO flaw.rate_limits (bucket, window_start, hits) VALUES ($1, now() - interval '1 hour', 1)",
+      [bucket],
+    );
+    await app.query(
+      "INSERT INTO flaw.rate_limits (bucket, window_start, hits) VALUES ($1, now(), 1)",
+      [bucket],
+    );
+
+    const stored = await app.query<{ identifier: string }>("SELECT identifier FROM flaw.verifications");
+    expect(stored.rows.length).toBeGreaterThan(0);
+    for (const row of stored.rows) {
+      expect(row.identifier).not.toContain("reset-password");
+      expect(row.identifier).not.toContain(token);
+      expect(row.identifier).toMatch(/^[0-9a-f]{64}$/);
+    }
+    expect(stored.rows.some((row) => row.identifier === identifier)).toBe(true);
+
+    await app.query("SELECT flaw.purge_expired()");
+    const left = await app.query<{ identifier: string }>("SELECT identifier FROM flaw.verifications");
+    expect(left.rows.map((row) => row.identifier)).toEqual([identifier]);
+    const windows = await app.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.rate_limits WHERE bucket = $1",
+      [bucket],
+    );
+    expect(windows.rows[0]?.n).toBe(1);
   });
 });
