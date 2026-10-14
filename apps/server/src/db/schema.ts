@@ -1,10 +1,8 @@
 /**
  * Schéma Drizzle du schéma PostgreSQL `flaw` (T-005, ARC-SUM 0.4.16).
  *
- * 17 tables. `erasure_outbox` et `erasure_journal_head` restent hors de ce
- * décompte (instruction de reprise ; le critère du pack en cite 19).
- * Pas de colonne de titre : le titre chiffré est T-006. La projection
- * chiffrée est l'enveloppe `projection_ct`.
+ * 19 tables (ARC-SUM 0.4.16). Pas de colonne de titre : le titre chiffré
+ * est T-006. La projection chiffrée est l'enveloppe `projection_ct`.
  *
  * RLS forcée seulement sur les 4 tables de contenu. `users`, `accounts` et
  * `sessions` n'ont pas de RLS. Le prédicat est
@@ -16,6 +14,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
   check,
   customType,
@@ -143,16 +142,25 @@ export const authFactors = flaw.table(
   (table) => [index("auth_factors_owner_id_idx").on(table.ownerId)],
 );
 
+/**
+ * G13, codes de secours. Schéma seul en T-005 : pas de producteur.
+ * code_hmac = HMAC-SHA-256(K, user_id ‖ code normalisé),
+ * K = HKDF-SHA-256(secret recovery_pepper, info "flaw/recovery-codes/v1|" ‖ pepper_id).
+ * recovery_pepper est distinct de la KEK. Aucun code en clair, aucune colonne chiffrée.
+ */
 export const recoveryCodes = flaw.table(
   "recovery_codes",
   {
     id: uuidv7("id"),
-    ownerId: ownerId(),
-    codeHash: text("code_hash").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    pepperId: text("pepper_id").notNull(),
+    codeHmac: bytea("code_hmac").notNull(),
     usedAt: timestamp("used_at", { withTimezone: true, mode: "date" }),
     createdAt: createdAt(),
   },
-  (table) => [index("recovery_codes_owner_id_idx").on(table.ownerId)],
+  (table) => [unique("recovery_codes_user_code_hmac_uidx").on(table.userId, table.codeHmac)],
 );
 
 export const userKeys = flaw.table(
@@ -229,6 +237,44 @@ export const erasureLog = flaw.table(
       sql`${table.subject} <> 'document' OR ${table.ownerId} IS NOT NULL`,
     ),
     index("erasure_log_owner_id_idx").on(table.ownerId),
+  ],
+);
+
+/**
+ * File du journal hors site. Le déclencheur n'y écrit qu'un effacement
+ * (un rejeu n'est pas republié). seq et entry_hash sont remplis par le
+ * worker (T-042). Les lignes publiées sont gardées 440 jours.
+ * Hors RLS. flaw_app n'a ni UPDATE ni DELETE.
+ */
+export const erasureOutbox = flaw.table(
+  "erasure_outbox",
+  {
+    id: uuidv7("id"),
+    seq: bigint("seq", { mode: "number" }),
+    subject: text("subject").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    entryHash: bytea("entry_hash"),
+    publishedAt: timestamp("published_at", { withTimezone: true, mode: "date" }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check("erasure_outbox_subject_check", sql`${table.subject} in ('user', 'document')`),
+    index("erasure_outbox_owner_id_idx").on(table.ownerId),
+    index("erasure_outbox_published_at_idx").on(table.publishedAt),
+  ],
+);
+
+/** Tête du journal hors site. Une seule ligne. Les fonctions journal_* sont T-042. */
+export const erasureJournalHead = flaw.table(
+  "erasure_journal_head",
+  {
+    seq: bigint("seq", { mode: "number" }).notNull().default(0),
+    singleton: boolean("singleton").notNull().default(true),
+  },
+  (table) => [
+    unique("erasure_journal_head_singleton_uidx").on(table.singleton),
+    check("erasure_journal_head_singleton_check", sql`${table.singleton} = true`),
   ],
 );
 
@@ -377,6 +423,8 @@ export const TABLE_NAMES = [
   "daily_progress",
   "rate_limits",
   "erasure_log",
+  "erasure_outbox",
+  "erasure_journal_head",
   "audit_events",
   "auth_events",
   "documents",
@@ -397,11 +445,11 @@ export const OWNER_TABLES = [
   "accounts",
   "sessions",
   "auth_factors",
-  "recovery_codes",
   "user_keys",
   "user_preferences",
   "daily_progress",
   "erasure_log",
+  "erasure_outbox",
   "audit_events",
   "documents",
   "document_states",

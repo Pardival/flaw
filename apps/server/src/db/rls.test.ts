@@ -29,6 +29,8 @@ const PLAIN_TABLES = [
   "verifications",
   "rate_limits",
   "erasure_log",
+  "erasure_outbox",
+  "erasure_journal_head",
   "audit_events",
   "auth_events",
   "auth_factors",
@@ -55,6 +57,8 @@ const GRANTS: Record<string, { sel: boolean; ins: boolean; upd: boolean; del: bo
   document_versions: { sel: true, ins: true, upd: true, del: true },
   audit_events: { sel: true, ins: true, upd: false, del: false },
   erasure_log: { sel: true, ins: false, upd: false, del: false },
+  erasure_outbox: { sel: true, ins: true, upd: false, del: false },
+  erasure_journal_head: { sel: true, ins: true, upd: false, del: false },
   auth_events: { sel: false, ins: true, upd: false, del: false },
 };
 
@@ -116,10 +120,12 @@ describe("migration SQL et compose", () => {
   const dockerfile = readFileSync(join(root, "apps/server/Dockerfile"), "utf8");
   const droits = readFileSync(join(root, "infra/droits-flaw.sql"), "utf8");
 
-  it("crée les 17 tables, l'enveloppe et la RLS des 4 tables de contenu", () => {
-    expect(TABLE_NAMES).toHaveLength(17);
-    expect(migration).not.toContain("erasure_outbox");
-    expect(migration).not.toContain("erasure_journal_head");
+  it("crée les 19 tables, l'enveloppe et la RLS des 4 tables de contenu", () => {
+    expect(TABLE_NAMES).toHaveLength(19);
+    expect(migration).toContain("CREATE TABLE flaw.erasure_outbox (");
+    expect(migration).toContain("CREATE TABLE flaw.erasure_journal_head (");
+    expect(migration).toContain("INSERT INTO flaw.erasure_outbox");
+    expect(migration).not.toContain("CREATE FUNCTION flaw.journal_prochaine");
     for (const name of TABLE_NAMES) {
       expect(migration).toContain(`CREATE TABLE flaw.${name} (`);
     }
@@ -144,6 +150,11 @@ describe("migration SQL et compose", () => {
     expect(migration).not.toContain("CREATE POLICY auth_events");
     expect(droits).toContain("GRANT INSERT ON TABLE flaw.auth_events TO flaw_app;");
     expect(droits).toContain("GRANT SELECT ON TABLE flaw.erasure_log TO flaw_app;");
+    expect(droits).toContain("GRANT SELECT, INSERT ON TABLE flaw.erasure_outbox, flaw.erasure_journal_head TO flaw_app;");
+    expect(migration).toContain("pepper_id text NOT NULL");
+    expect(migration).toContain("code_hmac bytea NOT NULL");
+    expect(migration).toContain("CONSTRAINT recovery_codes_user_code_hmac_uidx UNIQUE (user_id, code_hmac)");
+    expect(migration).not.toContain("code_hash");
     expect(droits).toContain("GRANT SELECT, INSERT ON TABLE flaw.audit_events TO flaw_app;");
   });
 
@@ -636,6 +647,12 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     await expect(app.query("TRUNCATE flaw.daily_progress")).rejects.toThrow();
     await expect(app.query("TRUNCATE flaw.rate_limits")).rejects.toThrow();
     await expect(app.query("TRUNCATE flaw.erasure_log")).rejects.toThrow();
+    await expect(app.query("TRUNCATE flaw.erasure_outbox")).rejects.toThrow();
+    await expect(app.query("TRUNCATE flaw.erasure_journal_head")).rejects.toThrow();
+    await expect(app.query("UPDATE flaw.erasure_outbox SET seq = 1")).rejects.toThrow();
+    await expect(app.query("DELETE FROM flaw.erasure_outbox")).rejects.toThrow();
+    await expect(app.query("UPDATE flaw.erasure_journal_head SET seq = 1")).rejects.toThrow();
+    await expect(app.query("DELETE FROM flaw.erasure_journal_head")).rejects.toThrow();
     await expect(app.query("TRUNCATE flaw.audit_events")).rejects.toThrow();
     await expect(app.query("TRUNCATE flaw.auth_events")).rejects.toThrow();
     await expect(app.query("TRUNCATE flaw.documents")).rejects.toThrow();
@@ -689,6 +706,78 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       [documentA],
     );
     expect(journal.rows).toEqual([{ subject: "document", owner_id: userA }]);
+    const outbox = await app.query<{ subject: string; owner_id: string; seq: string | null; published_at: Date | null }>(
+      "SELECT subject, owner_id, seq, published_at FROM flaw.erasure_outbox WHERE subject_id = $1",
+      [documentA],
+    );
+    expect(outbox.rows).toEqual([{ subject: "document", owner_id: userA, seq: null, published_at: null }]);
+
+    const replayUser = crypto.randomUUID();
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [replayUser]);
+    await owner.query("BEGIN");
+    await owner.query("SELECT set_config('flaw.rejeu', 'on', true)");
+    await owner.query("DELETE FROM flaw.users WHERE id = $1", [replayUser]);
+    await owner.query("COMMIT");
+    const replayLog = await app.query<{ origine: string }>(
+      "SELECT origine FROM flaw.erasure_log WHERE subject_id = $1",
+      [replayUser],
+    );
+    expect(replayLog.rows).toEqual([{ origine: "rejeu" }]);
+    const replayOutbox = await app.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.erasure_outbox WHERE subject_id = $1",
+      [replayUser],
+    );
+    expect(replayOutbox.rows[0]?.n).toBe(0);
+  });
+
+  it("aligne recovery_codes sur l'esquisse G13", async () => {
+    const columns = await owner.query<{ column_name: string; data_type: string; is_nullable: string }>(
+      `SELECT column_name, data_type, is_nullable
+       FROM information_schema.columns
+       WHERE table_schema = 'flaw' AND table_name = 'recovery_codes'
+       ORDER BY ordinal_position`,
+    );
+    expect(columns.rows.map((row) => row.column_name)).toEqual([
+      "id",
+      "user_id",
+      "pepper_id",
+      "code_hmac",
+      "used_at",
+      "created_at",
+    ]);
+    expect(columns.rows.find((row) => row.column_name === "pepper_id")?.is_nullable).toBe("NO");
+    expect(columns.rows.find((row) => row.column_name === "code_hmac")?.data_type).toBe("bytea");
+    expect(columns.rows.find((row) => row.column_name === "used_at")?.is_nullable).toBe("YES");
+    const names = columns.rows.map((row) => row.column_name).join(" ");
+    expect(names).not.toMatch(/code_hash|secret_ct|ciphertext|owner_id/);
+
+    const fk = await owner.query<{ confdeltype: string }>(
+      `SELECT c.confdeltype
+       FROM pg_constraint c
+       JOIN pg_class t ON t.oid = c.conrelid
+       JOIN pg_namespace n ON n.oid = t.relnamespace
+       WHERE n.nspname = 'flaw' AND t.relname = 'recovery_codes' AND c.contype = 'f'`,
+    );
+    expect(fk.rows).toEqual([{ confdeltype: "c" }]);
+
+    const userId = crypto.randomUUID();
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [userId]);
+    await app.query(
+      "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', '\\x0101'::bytea)",
+      [userId],
+    );
+    await expect(
+      app.query(
+        "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', '\\x0101'::bytea)",
+        [userId],
+      ),
+    ).rejects.toThrow();
+    await app.query("DELETE FROM flaw.users WHERE id = $1", [userId]);
+    const left = await app.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.recovery_codes WHERE user_id = $1",
+      [userId],
+    );
+    expect(left.rows[0]?.n).toBe(0);
   });
 
   it("purge les journaux au-delà des durées codées", async () => {
@@ -727,6 +816,21 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     await owner.query(
       "INSERT INTO flaw.erasure_log (subject, subject_id, owner_id, erased_at) VALUES ('document', $1, $1, now() - interval '441 days')",
       [crypto.randomUUID()],
+    );
+    const publishedOld = crypto.randomUUID();
+    await app.query(
+      "INSERT INTO flaw.erasure_outbox (subject, subject_id, owner_id, published_at) VALUES ('document', $1, $1, now() - interval '441 days')",
+      [publishedOld],
+    );
+    const publishedRecent = crypto.randomUUID();
+    await app.query(
+      "INSERT INTO flaw.erasure_outbox (subject, subject_id, owner_id, published_at) VALUES ('document', $1, $1, now())",
+      [publishedRecent],
+    );
+    const pending = crypto.randomUUID();
+    await app.query(
+      "INSERT INTO flaw.erasure_outbox (subject, subject_id, owner_id) VALUES ('document', $1, $1)",
+      [pending],
     );
     const keptErasure = crypto.randomUUID();
     await owner.query(
@@ -779,6 +883,16 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       [keptErasure],
     );
     expect(erasureKept.rows[0]?.n).toBe(1);
+    const outboxLeft = await app.query<{ subject_id: string }>(
+      "SELECT subject_id FROM flaw.erasure_outbox WHERE subject_id IN ($1, $2, $3)",
+      [publishedOld, publishedRecent, pending],
+    );
+    expect(outboxLeft.rows.map((row) => row.subject_id).sort()).toEqual([pending, publishedRecent].sort());
+    const head = await app.query<{ n: number; seq: string }>(
+      "SELECT count(*)::int AS n, min(seq)::text AS seq FROM flaw.erasure_journal_head",
+    );
+    expect(head.rows[0]?.n).toBe(1);
+    expect(head.rows[0]?.seq).toBe("0");
     const verif = await app.query<{ identifier: string }>("SELECT identifier FROM flaw.verifications");
     expect(verif.rows.map((row) => row.identifier)).toContain(HMAC_A);
     expect(verif.rows.map((row) => row.identifier)).not.toContain(HMAC_B);

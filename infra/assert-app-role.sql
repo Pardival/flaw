@@ -19,6 +19,8 @@ WITH expected AS (
     ('document_versions', true, true, true, true, true, true),
     ('audit_events', false, false, true, true, false, false),
     ('erasure_log', false, false, true, false, false, false),
+    ('erasure_outbox', false, false, true, true, false, false),
+    ('erasure_journal_head', false, false, true, true, false, false),
     ('auth_events', false, false, false, true, false, false)
   ) AS t(name, rls, forced, sel, ins, upd, del)
 ),

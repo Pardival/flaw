@@ -49,10 +49,12 @@ CREATE TABLE flaw.auth_factors (
 --> statement-breakpoint
 CREATE TABLE flaw.recovery_codes (
   id uuid PRIMARY KEY DEFAULT uuidv7(),
-  owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
-  code_hash text NOT NULL,
+  user_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
+  pepper_id text NOT NULL,
+  code_hmac bytea NOT NULL,
   used_at timestamptz,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT recovery_codes_user_code_hmac_uidx UNIQUE (user_id, code_hmac)
 );
 --> statement-breakpoint
 CREATE TABLE flaw.user_keys (
@@ -100,6 +102,27 @@ CREATE TABLE flaw.erasure_log (
   CONSTRAINT erasure_log_owner_user CHECK (subject <> 'user' OR owner_id = subject_id),
   CONSTRAINT erasure_log_owner_document CHECK (subject <> 'document' OR owner_id IS NOT NULL)
 );
+--> statement-breakpoint
+CREATE TABLE flaw.erasure_outbox (
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
+  seq bigint,
+  subject text NOT NULL,
+  subject_id uuid NOT NULL,
+  owner_id uuid NOT NULL,
+  entry_hash bytea,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT erasure_outbox_subject_check CHECK (subject IN ('user', 'document'))
+);
+--> statement-breakpoint
+CREATE TABLE flaw.erasure_journal_head (
+  seq bigint NOT NULL DEFAULT 0,
+  singleton boolean NOT NULL DEFAULT true,
+  CONSTRAINT erasure_journal_head_singleton_uidx UNIQUE (singleton),
+  CONSTRAINT erasure_journal_head_singleton_check CHECK (singleton = true)
+);
+--> statement-breakpoint
+INSERT INTO flaw.erasure_journal_head (seq) VALUES (0);
 --> statement-breakpoint
 CREATE TABLE flaw.audit_events (
   id uuid PRIMARY KEY DEFAULT uuidv7(),
@@ -181,11 +204,13 @@ CREATE INDEX verifications_identifier_idx ON flaw.verifications (identifier);
 --> statement-breakpoint
 CREATE INDEX auth_factors_owner_id_idx ON flaw.auth_factors (owner_id);
 --> statement-breakpoint
-CREATE INDEX recovery_codes_owner_id_idx ON flaw.recovery_codes (owner_id);
---> statement-breakpoint
 CREATE INDEX user_keys_owner_id_idx ON flaw.user_keys (owner_id);
 --> statement-breakpoint
 CREATE INDEX erasure_log_owner_id_idx ON flaw.erasure_log (owner_id);
+--> statement-breakpoint
+CREATE INDEX erasure_outbox_owner_id_idx ON flaw.erasure_outbox (owner_id);
+--> statement-breakpoint
+CREATE INDEX erasure_outbox_published_at_idx ON flaw.erasure_outbox (published_at);
 --> statement-breakpoint
 CREATE INDEX audit_events_owner_id_idx ON flaw.audit_events (owner_id);
 --> statement-breakpoint
@@ -250,15 +275,23 @@ AS $$
 DECLARE
   origine text := 'effacement';
 BEGIN
-  IF current_user = 'flaw_owner' AND current_setting('flaw.rejeu', true) = 'on' THEN
+  IF session_user = 'flaw_owner' AND current_setting('flaw.rejeu', true) = 'on' THEN
     origine := 'rejeu';
   END IF;
   IF TG_TABLE_NAME = 'users' THEN
     INSERT INTO flaw.erasure_log (subject, subject_id, owner_id, origine)
     VALUES ('user', OLD.id, OLD.id, origine);
+    IF origine = 'effacement' THEN
+      INSERT INTO flaw.erasure_outbox (subject, subject_id, owner_id)
+      VALUES ('user', OLD.id, OLD.id);
+    END IF;
   ELSIF TG_TABLE_NAME = 'documents' THEN
     INSERT INTO flaw.erasure_log (subject, subject_id, owner_id, origine)
     VALUES ('document', OLD.id, OLD.owner_id, origine);
+    IF origine = 'effacement' THEN
+      INSERT INTO flaw.erasure_outbox (subject, subject_id, owner_id)
+      VALUES ('document', OLD.id, OLD.owner_id);
+    END IF;
   END IF;
   RETURN OLD;
 END;
@@ -281,6 +314,7 @@ AS $$
   DELETE FROM flaw.auth_events WHERE created_at < now() - interval '6 months';
   DELETE FROM flaw.audit_events WHERE created_at < now() - interval '12 months';
   DELETE FROM flaw.erasure_log WHERE erased_at < now() - interval '440 days';
+  DELETE FROM flaw.erasure_outbox WHERE published_at IS NOT NULL AND published_at < now() - interval '440 days';
   DELETE FROM flaw.verifications WHERE expires_at < now();
   DELETE FROM flaw.rate_limits AS older
   WHERE EXISTS (

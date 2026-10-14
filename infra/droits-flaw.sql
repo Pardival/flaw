@@ -9,7 +9,8 @@ DECLARE
   expected text[] := ARRAY[
     'users', 'accounts', 'sessions', 'verifications', 'auth_factors',
     'recovery_codes', 'user_keys', 'user_preferences', 'daily_progress',
-    'rate_limits', 'erasure_log', 'audit_events', 'auth_events',
+    'rate_limits', 'erasure_log', 'erasure_outbox', 'erasure_journal_head',
+    'audit_events', 'auth_events',
     'documents', 'document_states', 'document_updates', 'document_versions'
   ];
 BEGIN
@@ -138,6 +139,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
 TO flaw_app;
 GRANT SELECT, INSERT ON TABLE flaw.audit_events TO flaw_app;
 GRANT SELECT ON TABLE flaw.erasure_log TO flaw_app;
+GRANT SELECT, INSERT ON TABLE flaw.erasure_outbox, flaw.erasure_journal_head TO flaw_app;
 GRANT INSERT ON TABLE flaw.auth_events TO flaw_app;
 
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA flaw TO flaw_app;
