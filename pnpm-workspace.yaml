@@ -2,6 +2,21 @@ packages:
   - "apps/*"
   - "packages/*"
 
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 525600
+blockExoticSubdeps: true
+
+# esbuild est une dépendance de Vite/Vitest. pnpm 12 n'exécute son postinstall
+# que s'il est autorisé ici.
+allowBuilds:
+  esbuild: true
+
 # minimatch 10+ est sous BlueOak-1.0.0, hors liste A-002. 9.0.9 est ISC.
+# vite est épinglé en 7.3.7. Sans épingle, Vitest 4.1.11 a installé lightningcss (MPL-2.0, hors A-002).
+# rollup 4.64.6 et postcss 8.5.30 ont moins de 7 jours (minimumReleaseAge).
 overrides:
   minimatch: "9.0.9"
+  vite: "7.3.7"
+  rollup: "4.64.1"
+  postcss: "8.5.29"
