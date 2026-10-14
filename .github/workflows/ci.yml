@@ -43,6 +43,19 @@ jobs:
       - name: Vitest et tests node:test
         run: pnpm test
 
+      # A-015 — openapi.json est généré depuis Zod et commité.
+      # oasdiff signale une rupture entre main et la tête. Les ajouts compatibles passent.
+      - name: oasdiff
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o /tmp/oasdiff.tar.gz https://github.com/oasdiff/oasdiff/releases/download/v1.33.0/oasdiff_1.33.0_linux_amd64.tar.gz
+          echo "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247  /tmp/oasdiff.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/oasdiff.tar.gz -C "$HOME/.local/bin" oasdiff
+          git fetch --depth=1 origin main
+          git show FETCH_HEAD:openapi.json > /tmp/openapi.base.json
+          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR /tmp/openapi.base.json openapi.json
+
       - name: Licences
         run: pnpm licenses:check
 
