@@ -19,4 +19,7 @@ coverage
 fixtures
 docs
 **/*.md
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
 .pre-commit-config.yaml

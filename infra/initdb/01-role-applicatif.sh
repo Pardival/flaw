@@ -1,51 +1,48 @@
 #!/bin/sh
-# SEC-DB-02 — rôle applicatif flaw_app, moindre privilège. Migrations hors de ce rôle.
+# Exécuté une fois par l'image postgres à l'initialisation du volume.
+# Rôle flaw_app : ni superutilisateur, ni CREATEROLE, ni CREATEDB (SEC-DB-02).
+# NOREPLICATION et NOBYPASSRLS : ajouts acceptés par l'Architecte.
+# Le mot de passe suit le validateur de l'Expert (identique à healthz.ts).
 set -eu
-
-secret=/run/secrets/db_app_password
-if [ ! -s "$secret" ]; then
-  echo "refus de démarrer : secret du rôle flaw_app absent" >&2
+f=/run/secrets/app_db_password
+if [ ! -e "$f" ]; then
+  echo "refus de démarrer : secret absent" >&2
   exit 1
 fi
-
-app_pw=$(tr -d '\r\n' < "$secret")
-case "$app_pw" in
-  postgres|password|admin|flaw|changeme|secret)
-    echo "refus de démarrer : secret du rôle flaw_app invalide" >&2
-    exit 1
-    ;;
+if [ ! -r "$f" ]; then
+  echo "refus de démarrer : EACCES" >&2
+  exit 1
+fi
+mode=$(stat -c '%a' "$f" | tr -d ' ')
+other=$(printf '%s' "$mode" | awk '{ print substr($0, length($0), 1) }')
+case "$other" in
+  0) ;;
+  *) echo "refus de démarrer : secret lisible par tous" >&2; exit 1 ;;
 esac
-if [ "${#app_pw}" -lt 32 ]; then
-  echo "refus de démarrer : secret du rôle flaw_app invalide" >&2
-  exit 1
-fi
 
-psql -v ON_ERROR_STOP=1 -v app_pw="$app_pw" -v dbname="$POSTGRES_DB" \
-  --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'SQL'
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'flaw_app') THEN
-    CREATE ROLE flaw_app
-      LOGIN
-      NOSUPERUSER
-      NOCREATEDB
-      NOCREATEROLE
-      NOREPLICATION
-      NOBYPASSRLS
-      NOINHERIT;
-  END IF;
-END
-$$;
-ALTER ROLE flaw_app WITH
-  NOSUPERUSER
-  NOCREATEDB
-  NOCREATEROLE
-  NOREPLICATION
-  NOBYPASSRLS
-  NOINHERIT
-  PASSWORD :'app_pw';
-REVOKE ALL ON DATABASE :"dbname" FROM PUBLIC;
-GRANT CONNECT ON DATABASE :"dbname" TO flaw_app;
+secret_valide() {
+  raw=$(printf '%s' "$1" | tr -d '\r\n')
+  len=$(printf '%s' "$raw" | wc -c | tr -d ' ')
+  [ "$len" -ge 32 ] || return 1
+  distinct=$(printf '%s' "$raw" | fold -w1 | sort -u | wc -l | tr -d ' ')
+  [ "$distinct" -ge 16 ] || return 1
+  low=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
+  for word in change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic; do
+    case "$low" in
+      *"$word"*) return 1 ;;
+    esac
+  done
+  return 0
+}
+
+APP_PW=$(tr -d '\r\n' < "$f")
+secret_valide "$APP_PW" || { echo "refus de démarrer : secret invalide" >&2; exit 1; }
+
+psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
+  -v app_pw="$APP_PW" -v dbname="$POSTGRES_DB" <<'SQL'
+CREATE ROLE flaw_app LOGIN PASSWORD :'app_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
-GRANT USAGE ON SCHEMA public TO flaw_app;
+CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app;
+ALTER ROLE flaw_app SET search_path = flaw;
+GRANT CONNECT ON DATABASE :"dbname" TO flaw_app;
 SQL

@@ -1,32 +1,40 @@
-# A-020 / SEC-WEB-01..04 — HTTPS, TLS 1.2+, redirection, HSTS, CSP stricte, en-têtes.
-# FLAW_DOMAIN est la seule variable de domaine. Ports internes hauts : le conteneur
-# n'a aucune capability (SEC-CONT-04) ; l'hôte publie 80 et 443.
+# Caddyfile — Flaw (modèle v0.4, chemins infra/).
+# Certificat HTTPS pour {$FLAW_DOMAIN}, redirection HTTP -> HTTPS.
 {
 	admin off
-	http_port 8080
-	https_port 8443
-	servers {
-		protocols h1 h2
-	}
+	email {$ACME_EMAIL}
 }
 
 {$FLAW_DOMAIN} {
-	encode gzip
+	encode zstd gzip
+
+	request_body {
+		max_size 12MB
+	}
+
 	tls {
 		protocols tls1.2 tls1.3
 	}
+
 	header {
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
-		Content-Security-Policy "default-src 'none'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self'; style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'self'; upgrade-insecure-requests"
+		Content-Security-Policy "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' wss://{$FLAW_DOMAIN}; manifest-src 'self'; worker-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
 		X-Content-Type-Options "nosniff"
-		X-Frame-Options "DENY"
 		Referrer-Policy "no-referrer"
-		Permissions-Policy "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
-		X-DNS-Prefetch-Control "off"
-		X-Permitted-Cross-Domain-Policies "none"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=(), browsing-topics=()"
 		Cross-Origin-Opener-Policy "same-origin"
 		Cross-Origin-Resource-Policy "same-origin"
+		X-Frame-Options "DENY"
+		X-DNS-Prefetch-Control "off"
+		X-Permitted-Cross-Domain-Policies "none"
 		-Server
+		-X-Powered-By
 	}
-	reverse_proxy app:3000
+
+	header /api/* Cache-Control "no-store"
+
+	reverse_proxy app:3000 {
+		header_up X-Real-IP {remote_host}
+		header_up -X-Forwarded-For
+	}
 }

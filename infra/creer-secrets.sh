@@ -1,73 +1,110 @@
 #!/bin/sh
-# A-020 / SEC-SECRET-06 / SEC-SECRET-07 — fichiers de secrets, sans valeur par défaut.
-# Propriétaire = UID du lecteur, mode 400 (un lecteur) ou 440 (lecteurs d'un même groupe).
-# .env ne contient que FLAW_DOMAIN et reste en mode 600.
+# creer-secrets.sh — Flaw (modèle v0.4, dossier infra/).
+# Crée secrets/ : propriétaire = UID du lecteur, 400 (440 si partage par le groupe 70).
+# N'écrase jamais. Les secrets de sauvegarde hors site sont en T-042.
+#
+#   Secret              Lu par                     Propriétaire  Droits
+#   postgres_password   db (UID 70)                70:70         400
+#   app_db_password     app, migrate (10001), db   10001:70      440
+#   better_auth_secret  app (10001)                10001:10001   400
+#   flaw_kek            app (10001)                10001:10001   400
+#   recovery_pepper     app (10001)                10001:10001   400
+#
+# Usage (depuis infra/) :
+#   sudo sh creer-secrets.sh
+#   sudo sh creer-secrets.sh --verifier
+# Le validateur retire seulement CR/LF, puis exige >= 32 octets, >= 16 caractères
+# distincts, et refuse les sous-chaînes de l'Expert (identique à healthz.ts).
 set -eu
-
-if [ "$(id -u)" -ne 0 ]; then
-  exec sudo -E -- "$0" "$@"
-fi
-
-ROOT=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
-SECRETS="$ROOT/secrets"
-RUN="$ROOT/run"
-ENV_FILE="$ROOT/.env"
-
-if [ -z "${FLAW_DOMAIN:-}" ]; then
-  echo "refus : FLAW_DOMAIN est requis (seule variable de domaine)." >&2
-  exit 1
-fi
-
-case "$FLAW_DOMAIN" in
-  *[!A-Za-z0-9.-]*|.*|*.|.|-*|*-)
-    echo "refus : FLAW_DOMAIN invalide." >&2
-    exit 1
-    ;;
-esac
-
 umask 077
-mkdir -p "$SECRETS" "$RUN/backups" "$RUN/restic"
-chmod 700 "$SECRETS"
+D="${SECRETS_DIR:-./secrets}"
 
-write_secret() {
-  file=$1
-  owner=$2
-  mode=$3
-  if [ ! -s "$file" ]; then
-    openssl rand -base64 48 | tr -d '\n' > "$file"
-  fi
-  chown "$owner" "$file"
-  chmod "$mode" "$file"
+SPEC='postgres_password 70:70 400 hex32
+app_db_password 10001:70 440 hex32
+better_auth_secret 10001:10001 400 b64_48
+flaw_kek 10001:10001 400 kek
+recovery_pepper 10001:10001 400 kek'
+
+secret_valide() {
+  raw=$(printf '%s' "$1" | tr -d '\r\n')
+  len=$(printf '%s' "$raw" | wc -c | tr -d ' ')
+  [ "$len" -ge 32 ] || return 1
+  distinct=$(printf '%s' "$raw" | fold -w1 | sort -u | wc -l | tr -d ' ')
+  [ "$distinct" -ge 16 ] || return 1
+  low=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
+  for word in change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic; do
+    case "$low" in
+      *"$word"*) return 1 ;;
+    esac
+  done
+  return 0
 }
 
-write_secret "$SECRETS/db_superuser_password" "70:70" 400
-write_secret "$SECRETS/db_app_password" "10001:10001" 440
-write_secret "$SECRETS/restic_password" "10003:10003" 400
+gen() {
+  kind=$1
+  n=0
+  while [ "$n" -lt 200 ]; do
+    n=$((n + 1))
+    case "$kind" in
+      hex32) candidate=$(openssl rand -hex 32 | tr -d '\r\n') ;;
+      b64_48) candidate=$(openssl rand -base64 48 | tr -d '\r\n') ;;
+      kek) candidate=$(openssl rand -base64 32 | tr -d '\r\n') ;;
+      *) echo "générateur inconnu" >&2; return 1 ;;
+    esac
+    secret_valide "$candidate" || continue
+    if [ "$kind" = "kek" ]; then
+      size=$(printf '%s' "$candidate" | base64 -d 2>/dev/null | wc -c | tr -d ' ')
+      [ "$size" = "32" ] || continue
+    fi
+    printf '%s' "$candidate"
+    return 0
+  done
+  echo "générateur : aucun secret valide" >&2
+  return 1
+}
 
-repo_file="$SECRETS/restic_repository"
-if [ ! -s "$repo_file" ]; then
-  if [ -n "${FLAW_RESTIC_REPOSITORY:-}" ]; then
-    printf '%s' "$FLAW_RESTIC_REPOSITORY" > "$repo_file"
+if [ "${1:-}" = "--verifier" ]; then
+  ok=0
+  echo "$SPEC" | while read -r n own mode g; do
+    f="$D/$n"
+    [ -e "$f" ] || { echo "MANQUANT  $f"; exit 1; }
+    cur="$(stat -c '%u:%g %a' "$f")"
+    [ "$cur" = "$own $mode" ] || { echo "ÉCART     $f ($cur, attendu $own $mode)"; exit 1; }
+    val=$(tr -d '\r\n' < "$f")
+    secret_valide "$val" || { echo "ÉCART     $f (contenu)"; exit 1; }
+    echo "OK        $f ($cur)"
+  done || ok=1
+  m="$(stat -c '%a' "$D")"
+  [ "$m" = "700" ] || { echo "ÉCART     $D ($m, attendu 700)"; ok=1; }
+  downer="$(stat -c '%u:%g' "$D")"
+  [ "$downer" = "0:0" ] || { echo "ÉCART     $D ($downer, attendu 0:0)"; ok=1; }
+  for k in "$D/flaw_kek" "$D/recovery_pepper" "$D"/recovery_pepper_*; do
+    [ -e "$k" ] || continue
+    t="$(base64 -d "$k" 2>/dev/null | wc -c | tr -d ' ')"
+    [ "$t" = "32" ] && echo "OK        $k (32 octets)" || { echo "ÉCART     $k ($t octets, attendu 32)"; ok=1; }
+  done
+  exit "$ok"
+fi
+
+[ "$(id -u)" -eq 0 ] || { echo "À lancer avec les droits root (chown vers les UID des conteneurs)." >&2; exit 1; }
+mkdir -p "$D"
+chown root:root "$D"
+chmod 700 "$D"
+echo "$SPEC" | while read -r n own mode g; do
+  f="$D/$n"
+  if [ -e "$f" ]; then
+    echo "conservé  $f"
   else
-    printf '%s' "/repo" > "$repo_file"
-    echo "avertissement : dépôt restic /repo (volume local). L'URL hors site n'est pas dans le paquet T-002." >&2
+    tmp=$(mktemp)
+    gen "$g" > "$tmp"
+    mv "$tmp" "$f"
+    echo "créé      $f"
   fi
-fi
-chown "10003:10003" "$repo_file"
-chmod 400 "$repo_file"
-
-chown "70:10003" "$RUN/backups"
-chmod 2750 "$RUN/backups"
-chown "10003:10003" "$RUN/restic"
-chmod 700 "$RUN/restic"
-
-tmp=$(mktemp)
-printf 'FLAW_DOMAIN=%s\n' "$FLAW_DOMAIN" > "$tmp"
-if [ -n "${SUDO_UID:-}" ]; then
-  chown "${SUDO_UID}:${SUDO_GID:-$SUDO_UID}" "$tmp"
-fi
-chmod 600 "$tmp"
-mv "$tmp" "$ENV_FILE"
-
-echo "secrets prêts (valeurs non affichées) : db_superuser_password, db_app_password, restic_password, restic_repository"
-echo ".env en 600 : $ENV_FILE"
+  chown "$own" "$f"
+  chmod "$mode" "$f"
+done
+printf 'Empreinte flaw_kek : %s\n' "$(base64 -d "$D/flaw_kek" | sha256sum | cut -c1-16)"
+printf 'Taille flaw_kek décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/flaw_kek" | wc -c | tr -d ' ')"
+printf 'Empreinte recovery_pepper : %s\n' "$(base64 -d "$D/recovery_pepper" | sha256sum | cut -c1-16)"
+printf 'Taille recovery_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/recovery_pepper" | wc -c | tr -d ' ')"
+echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID)."
