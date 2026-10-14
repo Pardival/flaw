@@ -1,0 +1,299 @@
+# T-002 — A-020 / A-003. Une commande : docker compose up
+# Seuls 80 et 443 sont publiés. Réseau backend interne. Pas de docker.sock.
+name: flaw
+
+networks:
+  edge:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.20.0/24
+          gateway: 172.30.20.1
+  backend:
+    driver: bridge
+    internal: true
+
+volumes:
+  pgdata:
+  caddy-data:
+  caddy-config:
+
+services:
+  caddy:
+    # L'image officielle pose cap_net_bind_service sur le binaire. no-new-privileges
+    # refuse alors l'exec. On retire cette capability fichier : écoute sur 8080/8443.
+    build:
+      context: .
+      dockerfile_inline: |
+        FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+        RUN setcap -r /usr/bin/caddy
+    image: flaw-caddy:t002
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    environment:
+      FLAW_DOMAIN: ${FLAW_DOMAIN:?FLAW_DOMAIN requis}
+    ports:
+      - "80:8080"
+      - "443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    tmpfs:
+      - /tmp
+    networks:
+      edge:
+        ipv4_address: 172.30.20.2
+      backend: {}
+    depends_on:
+      app:
+        condition: service_healthy
+
+  db:
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    user: "70:70"
+    group_add:
+      - "10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_superuser_password
+      POSTGRES_DB: flaw
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./initdb/01-role-applicatif.sh:/docker-entrypoint-initdb.d/01-role-applicatif.sh:ro
+      - ./secrets/db_superuser_password:/run/secrets/db_superuser_password:ro
+      - ./secrets/db_app_password:/run/secrets/db_app_password:ro
+    tmpfs:
+      - /tmp
+      - /var/run/postgresql:uid=70,gid=70,mode=0775
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -d flaw -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 15s
+
+  migrate:
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    user: "70:70"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        secret=/run/secrets/db_superuser_password
+        if [ ! -s "$$secret" ]; then
+          echo "refus de démarrer : secret de migration absent" >&2
+          exit 1
+        fi
+        pw=$$(tr -d '\r\n' < "$$secret")
+        case "$$pw" in
+          postgres|password|admin|flaw|changeme|secret)
+            echo "refus de démarrer : secret de migration invalide" >&2
+            exit 1
+            ;;
+        esac
+        if [ "$${#pw}" -lt 32 ]; then
+          echo "refus de démarrer : secret de migration invalide" >&2
+          exit 1
+        fi
+        export PGPASSWORD="$$pw"
+        ok=""
+        i=0
+        while [ "$$ok" != "oui" ]; do
+          i=$$((i + 1))
+          if [ "$$i" -gt 60 ]; then
+            echo "refus de démarrer : base injoignable ou rôle flaw_app invalide" >&2
+            exit 1
+          fi
+          if pg_isready -h db -U postgres -d flaw >/dev/null 2>&1; then
+            ok=$$(psql -h db -U postgres -d flaw -tA -c "SELECT CASE WHEN rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls THEN 'non' ELSE 'oui' END FROM pg_roles WHERE rolname = 'flaw_app'" || true)
+          fi
+          if [ "$$ok" != "oui" ]; then
+            sleep 1
+          fi
+        done
+        echo "migrations : rôle flaw_app vérifié ; aucun fichier de schéma dans T-002"
+    volumes:
+      - ./secrets/db_superuser_password:/run/secrets/db_superuser_password:ro
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    build:
+      context: ..
+      dockerfile: apps/server/Dockerfile
+    image: flaw-app:t002
+    user: "10001:10001"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    mem_limit: 1536m
+    memswap_limit: 1536m
+    deploy:
+      resources:
+        limits:
+          memory: 1536M
+    volumes:
+      - ./secrets/db_app_password:/run/secrets/db_app_password:ro
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/v1/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  backup:
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    user: "70:70"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        umask 027
+        secret=/run/secrets/db_superuser_password
+        if [ ! -s "$$secret" ]; then
+          echo "refus de démarrer : secret de sauvegarde absent" >&2
+          exit 1
+        fi
+        pw=$$(tr -d '\r\n' < "$$secret")
+        case "$$pw" in
+          postgres|password|admin|flaw|changeme|secret)
+            echo "refus de démarrer : secret de sauvegarde invalide" >&2
+            exit 1
+            ;;
+        esac
+        if [ "$${#pw}" -lt 32 ]; then
+          echo "refus de démarrer : secret de sauvegarde invalide" >&2
+          exit 1
+        fi
+        export PGPASSWORD="$$pw"
+        dest=/var/lib/flaw/backups
+        mkdir -p "$$dest"
+        while true; do
+          stamp=$$(date -u +%Y%m%dT%H%M%SZ)
+          pg_dump -h db -U postgres -d flaw -Fc -f "$$dest/flaw-$$stamp.dump.partial"
+          mv "$$dest/flaw-$$stamp.dump.partial" "$$dest/flaw-$$stamp.dump"
+          find "$$dest" -type f -name 'flaw-*.dump' -mtime +7 -delete
+          sleep 21600
+        done
+    volumes:
+      - ./secrets/db_superuser_password:/run/secrets/db_superuser_password:ro
+      - ./run/backups:/var/lib/flaw/backups
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+    depends_on:
+      db:
+        condition: service_healthy
+
+  offsite:
+    image: restic/restic:0.19.1@sha256:136600b6ff6843d61d355f7f71f460a166429f35de6fd11b568fece3c9a4d510
+    user: "10003:10003"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        pwfile=/run/secrets/restic_password
+        repofile=/run/secrets/restic_repository
+        if [ ! -s "$$pwfile" ] || [ ! -s "$$repofile" ]; then
+          echo "refus de démarrer : secrets restic absents" >&2
+          exit 1
+        fi
+        pw=$$(tr -d '\r\n' < "$$pwfile")
+        case "$$pw" in
+          postgres|password|admin|flaw|changeme|secret)
+            echo "refus de démarrer : secret restic invalide" >&2
+            exit 1
+            ;;
+        esac
+        if [ "$${#pw}" -lt 32 ]; then
+          echo "refus de démarrer : secret restic invalide" >&2
+          exit 1
+        fi
+        export RESTIC_PASSWORD_FILE="$$pwfile"
+        export RESTIC_REPOSITORY=$$(tr -d '\r\n' < "$$repofile")
+        export RESTIC_CACHE_DIR=/tmp/restic-cache
+        export HOME=/tmp
+        mkdir -p "$$RESTIC_CACHE_DIR"
+        i=0
+        while ! ls /backups/flaw-*.dump >/dev/null 2>&1; do
+          i=$$((i + 1))
+          if [ "$$i" -gt 90 ]; then
+            echo "refus de démarrer : aucun dump à emporter" >&2
+            exit 1
+          fi
+          sleep 1
+        done
+        if ! restic cat config >/dev/null 2>&1; then
+          restic init
+        fi
+        while true; do
+          restic backup /backups
+          restic forget --keep-daily 7 --keep-weekly 4 --keep-monthly 12 --prune
+          sleep 21600
+        done
+    volumes:
+      - ./secrets/restic_password:/run/secrets/restic_password:ro
+      - ./secrets/restic_repository:/run/secrets/restic_repository:ro
+      - ./run/backups:/backups:ro
+      - ./run/restic:/repo
+    tmpfs:
+      - /tmp
+    networks:
+      - backend
+    depends_on:
+      backup:
+        condition: service_started
