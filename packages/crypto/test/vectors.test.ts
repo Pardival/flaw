@@ -174,7 +174,7 @@ describe("Wycheproof XChaCha20-Poly1305 (sans dépendance)", () => {
     {
       nom: "tc2 clair vide",
       resultat: "valid",
-      key: "ab1562faea9f47af3ae1c3d6d030e3af230255dff3df583ced6fbbcbf9d606a9",
+      clef: "ab1562faea9f47af3ae1c3d6d030e3af230255dff3df583ced6fbbcbf9d606a9",
       iv: "6a5e0c4617e07091b605a4de2c02dde117de2ebd53b23497",
       aad: "",
       msg: "",
@@ -184,7 +184,7 @@ describe("Wycheproof XChaCha20-Poly1305 (sans dépendance)", () => {
     {
       nom: "tc146 tag modifié",
       resultat: "invalid",
-      key: "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      clef: "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
       iv: "000102030405060708090a0b0c0d0e0f1011121314151617",
       aad: "000102",
       msg: "",
@@ -195,7 +195,7 @@ describe("Wycheproof XChaCha20-Poly1305 (sans dépendance)", () => {
 
   for (const vecteur of cas) {
     it(vecteur.nom, () => {
-      const clef = octets(vecteur.key);
+      const clef = octets(vecteur.clef);
       const nonce = octets(vecteur.iv);
       const aad = octets(vecteur.aad);
       const chiffre = octets(`${vecteur.ct}${vecteur.tag}`);

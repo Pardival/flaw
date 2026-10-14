@@ -6,11 +6,13 @@
 useDefault = true
 
 [[allowlists]]
-description = "Marqueurs de test : *.test.ts ET (MARQUEUR… ou 0123456789abcde…)"
+description = "Marqueurs de test : *.test.ts ET (MARQUEUR…, 0123456789abcde…, ou vecteur Wycheproof public)"
 condition = "AND"
 targetRules = ["generic-api-key"]
 paths = ['''\.test\.ts$''']
 regexes = [
   '''MARQUEUR[A-Z0-9]*''',
   '''^0123456789abcde''',
+  '''^ab1562faea9f47af3ae1c3d6d030e3af230255dff3df583ced6fbbcbf9d606a9$''',
+  '''^202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f$''',
 ]
