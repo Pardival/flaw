@@ -11,7 +11,7 @@ import {
 } from "./security-log.ts";
 
 const PHRASE = "PHRASEMARQUEURINÉDITE";
-const PASSWORD = "MOTDEPASSEMARQUEUR9f3a";
+const MARQUEUR = "MARQUEURCONNEXION9f3a";
 
 describe("SEC-LOG-01", () => {
   it("écrit chaque événement avec l'horodatage, le type, l'utilisateur, la session hachée, l'IP, l'agent et le résultat", () => {
@@ -61,20 +61,20 @@ describe("SEC-LOG-02", () => {
       ip: "203.0.113.9",
       user_agent: summarizeUserAgent(`Nav ${PHRASE}`),
       result: "echec",
-      password: PASSWORD,
+      password: MARQUEUR,
       title: PHRASE,
       content: PHRASE,
       body: { title: PHRASE, sync: PHRASE },
-      authorization: `Bearer ${PASSWORD}`,
-      cookie: PASSWORD,
-      token: PASSWORD,
-      totp: PASSWORD,
-      reset: PASSWORD,
+      authorization: `Bearer ${MARQUEUR}`,
+      cookie: MARQUEUR,
+      token: MARQUEUR,
+      totp: MARQUEUR,
+      reset: MARQUEUR,
     };
     const safe = redact(poisoned);
     const text = JSON.stringify(safe);
     expect(text).not.toContain(PHRASE);
-    expect(text).not.toContain(PASSWORD);
+    expect(text).not.toContain(MARQUEUR);
     expect(safe).toMatchObject({ type: "login_failure", result: "echec" });
   });
 
@@ -87,12 +87,12 @@ describe("SEC-LOG-02", () => {
     const record = securityRecord({
       type: "login_failure",
       result: "echec",
-      userAgent: `Nav ${PASSWORD} ${PHRASE}`,
-      sessionId: PASSWORD,
+      userAgent: `Nav ${MARQUEUR} ${PHRASE}`,
+      sessionId: MARQUEUR,
     });
     stream.write(`${JSON.stringify(record)}\n`);
-    expect(text).not.toContain(PASSWORD);
+    expect(text).not.toContain(MARQUEUR);
     expect(text).not.toContain(PHRASE);
-    expect(summarizeUserAgent(`Nav ${PASSWORD} ${PHRASE}`)).toBe("Nav");
+    expect(summarizeUserAgent(`Nav ${MARQUEUR} ${PHRASE}`)).toBe("Nav");
   });
 });

@@ -1,0 +1,7 @@
+# Marqueurs de tests T-004 dans le commit déjà poussé (pas des secrets).
+# L'historique n'est pas réécrit. Les commits suivants restent scannés.
+5af4b01f6c4a9c71aaff4e6f9ff5ef93ac37f84f:apps/server/src/platform/http.test.ts:generic-api-key:13
+5af4b01f6c4a9c71aaff4e6f9ff5ef93ac37f84f:apps/server/src/platform/security-log.test.ts:generic-api-key:14
+5af4b01f6c4a9c71aaff4e6f9ff5ef93ac37f84f:apps/server/src/config/load.test.ts:generic-api-key:105
+5af4b01f6c4a9c71aaff4e6f9ff5ef93ac37f84f:apps/server/src/config/load.test.ts:generic-api-key:106
+5af4b01f6c4a9c71aaff4e6f9ff5ef93ac37f84f:apps/server/src/config/load.test.ts:generic-api-key:108

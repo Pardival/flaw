@@ -100,12 +100,16 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
   });
 
   it("refuse 31 octets, peu de caractères distincts, Admin, TEST et un mode 644", () => {
-    const marker = "MARQUEURUNIQUEADMINTEST0123456789abcdef";
+    const tooShort = "0123456789abcdef";
+    const fewDistinct = "0123456789abcde0123456789abcde01";
+    const hasAdmin = "0123456789abcdefAdmin0123456789ab";
+    const hasTest = "0123456789abcdefTEST0123456789abcd";
+    const marker = "0123456789abcdefflaw0123456789";
     const cases = [
-      { databasePassword: "0123456789abcdef", message: /secret invalide/ },
-      { databasePassword: "0123456789abcde0123456789abcde01", message: /secret invalide/ },
-      { databasePassword: "0123456789abcdefAdmin0123456789ab", message: /secret invalide/ },
-      { databasePassword: "0123456789abcdefTEST0123456789abcd", message: /secret invalide/ },
+      { databasePassword: tooShort, message: /secret invalide/ },
+      { databasePassword: fewDistinct, message: /secret invalide/ },
+      { databasePassword: hasAdmin, message: /secret invalide/ },
+      { databasePassword: hasTest, message: /secret invalide/ },
       { databasePassword: marker, message: /secret invalide/ },
     ];
     for (const item of cases) {

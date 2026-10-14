@@ -10,7 +10,7 @@ import { omitServerAssigned, parseStrict } from "./validation.ts";
 import { z } from "zod";
 
 const PHRASE = "PHRASEMARQUEURINÉDITE";
-const PASSWORD = "MOTDEPASSEMARQUEUR9f3a";
+const MARQUEUR = "MARQUEURCONNEXION9f3a";
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 
 function config(overrides: Partial<AppConfig> = {}): AppConfig {
@@ -111,15 +111,15 @@ describe("SEC-WEB-10 et SEC-WEB-11", () => {
   it("renvoie une erreur 500 générique, sans pile ni version", async () => {
     const { app, logs } = appWithLogs();
     app.get("/api/v1/__erreur", async () => {
-      throw new Error(`SELECT ${PHRASE} FROM users WHERE password = '${PASSWORD}' at /opt/flaw/app.ts fastify Zod`);
+      throw new Error(`SELECT ${PHRASE} FROM users WHERE secret = '${MARQUEUR}' at /opt/flaw/app.ts fastify Zod`);
     });
     const response = await app.inject({
       method: "GET",
       url: "/api/v1/__erreur?debug=1",
       headers: {
         "x-debug": "1",
-        authorization: `Bearer ${PASSWORD}`,
-        cookie: `session=${PASSWORD}`,
+        authorization: `Bearer ${MARQUEUR}`,
+        cookie: `session=${MARQUEUR}`,
         "user-agent": `Nav ${PHRASE}`,
       },
     });
@@ -133,14 +133,14 @@ describe("SEC-WEB-10 et SEC-WEB-11", () => {
       code: "internal_error",
     });
     expect(body).not.toContain(PHRASE);
-    expect(body).not.toContain(PASSWORD);
+    expect(body).not.toContain(MARQUEUR);
     expect(body).not.toContain("SELECT");
     expect(body).not.toContain("/opt/flaw");
     expect(body).not.toContain("fastify");
     expect(body).not.toContain("Zod");
     expect(body).not.toContain("0.0.0");
     expect(logs()).not.toContain(PHRASE);
-    expect(logs()).not.toContain(PASSWORD);
+    expect(logs()).not.toContain(MARQUEUR);
     expect(logs()).toContain("\"type\":\"server_error\"");
     expect(logs()).toContain("\"result\":\"echec\"");
     await app.close();
