@@ -54,7 +54,8 @@ CREATE TABLE flaw.recovery_codes (
   code_hmac bytea NOT NULL,
   used_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
-  CONSTRAINT recovery_codes_user_code_hmac_uidx UNIQUE (user_id, code_hmac)
+  CONSTRAINT recovery_codes_user_code_hmac_uidx UNIQUE (user_id, code_hmac),
+  CONSTRAINT recovery_codes_code_hmac_len CHECK (octet_length(code_hmac) = 32)
 );
 --> statement-breakpoint
 CREATE TABLE flaw.user_keys (
@@ -138,7 +139,9 @@ CREATE TABLE flaw.auth_events (
   subject_hmac text,
   ip_hmac text,
   user_agent_summary text,
-  created_at timestamptz NOT NULL DEFAULT now()
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT auth_events_subject_hmac_check CHECK (subject_hmac ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT auth_events_ip_hmac_check CHECK (ip_hmac ~ '^[0-9a-f]{64}$')
 );
 --> statement-breakpoint
 CREATE TABLE flaw.documents (

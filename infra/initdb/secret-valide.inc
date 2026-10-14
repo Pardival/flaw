@@ -5,9 +5,17 @@
 # LC_ALL=C : gawk compte sinon des caractères, pas des octets UTF-8.
 
 _secret_awk() {
+  # RS = SOH (octal 001). Busybox tronque RS="\0" (chaîne C vide) et passe
+  # en mode paragraphe : "\n\n" est alors le séparateur, et SEC-SECRET-07
+  # ne voit plus le second saut de ligne. Un second enregistrement (octet
+  # 001 dans le secret) est refusé. Le succès n'est décidé qu'en END.
   printf '%s' "$1" | LC_ALL=C awk -v mode="$2" '
-BEGIN { RS = "\0"; got = 0 }
+BEGIN { RS = "\001"; got = 0; verdict = 1 }
 {
+  if (got) {
+    verdict = 1
+    exit 1
+  }
   got = 1
   s = $0
   n = length(s)
@@ -18,7 +26,8 @@ BEGIN { RS = "\0"; got = 0 }
   }
   if (mode == "norm") {
     printf "%s", s
-    exit 0
+    verdict = 0
+    next
   }
   if (index(s, "\r") || index(s, "\n")) exit 1
   if (length(s) < 32) exit 1
@@ -35,9 +44,12 @@ BEGIN { RS = "\0"; got = 0 }
   words = "change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic"
   nwords = split(words, w, " ")
   for (i = 1; i <= nwords; i++) if (index(low, w[i])) exit 1
+  verdict = 0
+}
+END {
+  if (!got || verdict != 0) exit 1
   exit 0
 }
-END { if (!got) exit 1 }
 '
 }
 

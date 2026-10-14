@@ -154,6 +154,9 @@ describe("migration SQL et compose", () => {
     expect(migration).toContain("pepper_id text NOT NULL");
     expect(migration).toContain("code_hmac bytea NOT NULL");
     expect(migration).toContain("CONSTRAINT recovery_codes_user_code_hmac_uidx UNIQUE (user_id, code_hmac)");
+    expect(migration).toContain("CONSTRAINT recovery_codes_code_hmac_len CHECK (octet_length(code_hmac) = 32)");
+    expect(migration).toContain("CONSTRAINT auth_events_subject_hmac_check CHECK (subject_hmac ~ '^[0-9a-f]{64}$')");
+    expect(migration).toContain("CONSTRAINT auth_events_ip_hmac_check CHECK (ip_hmac ~ '^[0-9a-f]{64}$')");
     expect(migration).not.toContain("code_hash");
     expect(droits).toContain("GRANT SELECT, INSERT ON TABLE flaw.audit_events TO flaw_app;");
   });
@@ -763,13 +766,13 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     const userId = crypto.randomUUID();
     await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [userId]);
     await app.query(
-      "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', '\\x0101'::bytea)",
-      [userId],
+      "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', decode($2, 'hex'))",
+      [userId, HMAC_A],
     );
     await expect(
       app.query(
-        "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', '\\x0101'::bytea)",
-        [userId],
+        "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', decode($2, 'hex'))",
+        [userId, HMAC_A],
       ),
     ).rejects.toThrow();
     await app.query("DELETE FROM flaw.users WHERE id = $1", [userId]);
@@ -778,6 +781,48 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       [userId],
     );
     expect(left.rows[0]?.n).toBe(0);
+  });
+
+  it("refuse un HMAC en clair", async () => {
+    const userId = crypto.randomUUID();
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [userId]);
+    const refusals = [
+      () =>
+        app.query(
+          "INSERT INTO flaw.auth_events (event_type, subject_hmac) VALUES ('login_failed', $1)",
+          ["alice@example.com"],
+        ),
+      () =>
+        app.query(
+          "INSERT INTO flaw.auth_events (event_type, ip_hmac) VALUES ('login_failed', $1)",
+          ["192.0.2.1"],
+        ),
+      () =>
+        app.query(
+          "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', convert_to('mot-de-passe-en-clair', 'UTF8'))",
+          [userId],
+        ),
+    ];
+    for (const run of refusals) {
+      let thrown = false;
+      try {
+        await run();
+      } catch (error) {
+        thrown = true;
+        expect(errorText(error)).toMatch(/23514/);
+      }
+      expect(thrown).toBe(true);
+    }
+    await app.query("BEGIN");
+    try {
+      await app.query("INSERT INTO flaw.auth_events (event_type) VALUES ('mfa_failed')");
+      await app.query(
+        "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, 'pep-2026-10', decode($2, 'hex'))",
+        [userId, HMAC_B],
+      );
+    } finally {
+      await app.query("ROLLBACK");
+    }
   });
 
   it("purge les journaux au-delà des durées codées", async () => {

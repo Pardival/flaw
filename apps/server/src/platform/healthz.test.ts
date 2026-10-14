@@ -84,7 +84,10 @@ describe("validateur de secrets", () => {
     assert.equal(stripFinalNewline(embeddedCr), embeddedCr);
     assert.equal(validateSecret(embeddedNl), "secret invalide");
     assert.equal(validateSecret(embeddedCr), "secret invalide");
+    assert.equal(stripFinalNewline(`${HEX}\n\n`), `${HEX}\n`);
+    assert.equal(stripFinalNewline(`${HEX}\r\n\n`), `${HEX}\r\n`);
     assert.equal(validateSecret(`${HEX}\n\n`), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\r\n\n`), "secret invalide");
     assert.equal(validateSecret(`${HEX}\r\n\r\n`), "secret invalide");
     assert.equal(validateSecret(`${HEX}\r`), "secret invalide");
   });
@@ -221,6 +224,8 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
     { name: "espace final compté", raw: "0123456789abcde0123456789abcde0 " },
     { name: "\\r\\n final retiré", raw: `${HEX}\r\n` },
     { name: "\\n final retiré", raw: `${HEX}\n` },
+    { name: "\\n\\n refusé", raw: `${HEX}\n\n` },
+    { name: "\\r\\n\\n refusé", raw: `${HEX}\r\n\n` },
     { name: "espace puis \\r\\n", raw: `${HEX} \r\n` },
     { name: "CR interne refusé", raw: `${HEX.slice(0, 16)}\r${HEX.slice(16)}` },
     { name: "LF interne refusé", raw: `${HEX.slice(0, 16)}\n${HEX.slice(16)}` },
@@ -270,9 +275,38 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
     }
   }
 
-  it("gawk hôte : creer-secrets.sh détecte une mutation LC_ALL=C", () => {
+  function skipWithoutGawk(t: { skip: (message?: string) => void }): boolean {
     const gawk = spawnSync("gawk", ["--version"], { encoding: "utf8" });
-    assert.equal(gawk.status, 0, gawk.stderr);
+    if (gawk.status === 0) {
+      return false;
+    }
+    if (process.env.CI) {
+      assert.fail("gawk absent en CI : le cas doit s'exécuter");
+    }
+    t.skip("gawk absent : cas sauté. La CI installe gawk pour l'exécuter.");
+    return true;
+  }
+
+  const gawkCases: Array<{ name: string; raw: string }> = [
+    { name: "\\n\\n refusé", raw: `${HEX}\n\n` },
+    { name: "\\r\\n\\n refusé", raw: `${HEX}\r\n\n` },
+  ];
+
+  for (const sample of gawkCases) {
+    it(`gawk hôte : ${sample.name}`, (t) => {
+      if (skipWithoutGawk(t)) {
+        return;
+      }
+      const validator = readFileSync(join(root, "infra/initdb/secret-valide.inc"), "utf8");
+      assert.equal(validateSecret(sample.raw), "secret invalide");
+      assert.equal(hostGawkAccepts(validator, sample.raw), false);
+    });
+  }
+
+  it("gawk hôte : creer-secrets.sh détecte une mutation LC_ALL=C", (t) => {
+    if (skipWithoutGawk(t)) {
+      return;
+    }
     const probe = `0123456789abcdef${"é".repeat(8)}`;
     assert.equal(Buffer.byteLength(probe, "utf8"), 32);
     assert.equal([...probe].length, 24);

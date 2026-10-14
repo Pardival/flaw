@@ -160,7 +160,10 @@ export const recoveryCodes = flaw.table(
     usedAt: timestamp("used_at", { withTimezone: true, mode: "date" }),
     createdAt: createdAt(),
   },
-  (table) => [unique("recovery_codes_user_code_hmac_uidx").on(table.userId, table.codeHmac)],
+  (table) => [
+    unique("recovery_codes_user_code_hmac_uidx").on(table.userId, table.codeHmac),
+    check("recovery_codes_code_hmac_len", sql`octet_length(${table.codeHmac}) = 32`),
+  ],
 );
 
 export const userKeys = flaw.table(
@@ -291,7 +294,7 @@ export const auditEvents = flaw.table(
   (table) => [index("audit_events_owner_id_idx").on(table.ownerId)],
 );
 
-/** Échecs sans compte. INSERT seul. Identifiants HMAC. Pas de RLS. */
+/** Échecs sans compte. INSERT seul. HMAC hex 64 (nullable). Pas de RLS. */
 export const authEvents = flaw.table(
   "auth_events",
   {
@@ -307,6 +310,8 @@ export const authEvents = flaw.table(
       "auth_events_event_type_check",
       sql`${table.eventType} in ('login_failed', 'login_rate_limited', 'mfa_failed')`,
     ),
+    check("auth_events_subject_hmac_check", sql`${table.subjectHmac} ~ '^[0-9a-f]{64}$'`),
+    check("auth_events_ip_hmac_check", sql`${table.ipHmac} ~ '^[0-9a-f]{64}$'`),
   ],
 );
 
