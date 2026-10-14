@@ -4,9 +4,7 @@ export {
   KEY_LENGTH,
   NONCE_LENGTH,
   TAG_LENGTH,
-  openXChaCha,
   randomBytes,
-  sealXChaCha,
 } from "./aead.ts";
 export {
   DERIVED_KEY_LENGTH,

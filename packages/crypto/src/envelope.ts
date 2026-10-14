@@ -70,6 +70,8 @@ const OPEN_FAILURES = new Set([
   "unsupported_version",
   "invalid_ciphertext",
   "invalid_nonce",
+  "invalid_key_length",
+  "invalid_binding",
 ]);
 
 function assertUuid(value: string): void {

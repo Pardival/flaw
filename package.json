@@ -10,8 +10,8 @@
   },
   "scripts": {
     "lint": "eslint . && node scripts/check-dom-sink-lint.mjs",
-    "typecheck": "pnpm --filter \"./apps/**\" --filter \"./packages/**\" typecheck",
-    "test": "vitest run --exclude apps/server/src/platform/healthz.test.ts && node --test apps/server/src/platform/healthz.test.ts",
+    "typecheck": "pnpm --filter @flaw/crypto build && pnpm --filter \"./apps/**\" --filter \"./packages/**\" typecheck",
+    "test": "pnpm --filter @flaw/crypto build && vitest run --exclude apps/server/src/platform/healthz.test.ts && node --test apps/server/src/platform/healthz.test.ts",
     "licenses:check": "node scripts/check-licenses.mjs"
   },
   "devDependencies": {

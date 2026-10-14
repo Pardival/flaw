@@ -16,12 +16,11 @@ import {
   generateDek,
   hkdfSha256,
   openContent,
-  openXChaCha,
   sealContent,
-  sealXChaCha,
   unwrapDek,
   wrapDek,
 } from "../src/index.ts";
+import { openXChaCha, sealXChaCha } from "../src/aead.ts";
 import { sealContentWithNonce, wrapDekWithNonce } from "../src/envelope.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
@@ -274,6 +273,18 @@ describe("enveloppe KEK → DEK → contenu", () => {
     expect(hex(clairB)).not.toBe(hex(clairA));
   });
 
+  it("ramène une clé trop courte et une liaison invalide à decryption_failed", () => {
+    const dek = octets("22".repeat(32));
+    const sealed = sealContentWithNonce(dek, dekId, label, clairA, octets("55".repeat(24)));
+    const wrapped = wrapDek(kek, kekId, userId, dek);
+    expect(code(() => openContent(label, sealed, () => new Uint8Array(16)))).toBe("decryption_failed");
+    expect(code(() => unwrapDek(new Uint8Array(16), userId, wrapped))).toBe("decryption_failed");
+    expect(code(() => openContent({ ...label, ownerId: ownerB.toUpperCase() }, sealed, () => dek))).toBe(
+      "decryption_failed",
+    );
+    expect(code(() => contentAad({ ...label, ownerId: ownerB.toUpperCase() }))).toBe("invalid_binding");
+  });
+
   it("ramène key_id inconnu, version et tag à une seule erreur", () => {
     const dek = octets("22".repeat(32));
     const sealed = sealContentWithNonce(dek, dekId, label, clairA, octets("44".repeat(24)));
@@ -306,8 +317,43 @@ describe("enveloppe KEK → DEK → contenu", () => {
   it("n'exporte pas l'injection de nonce", () => {
     const index = readFileSync(fileURLToPath(new URL("../src/index.ts", import.meta.url)), "utf8");
     expect(index).not.toContain("WithNonce");
+    expect(index).not.toContain("sealXChaCha");
+    expect(index).not.toContain("openXChaCha");
     expect(wrapDek.length).toBe(4);
     expect(sealContent.length).toBe(4);
+  });
+
+  function noncesDistincts(nonces: string[]): boolean {
+    return new Set(nonces).size === nonces.length;
+  }
+
+  function echantillon(n: number): string[] {
+    const dek = octets("22".repeat(32));
+    const nonces: string[] = [];
+    for (let i = 0; i < n; i += 1) {
+      nonces.push(hex(sealContent(dek, dekId, label, clairA).nonce));
+      nonces.push(hex(wrapDek(kek, kekId, userId, dek).wrappedNonce));
+    }
+    return nonces;
+  }
+
+  it("tire un nonce distinct à chaque sealContent et wrapDek", () => {
+    const nonces = echantillon(32);
+    expect(nonces).toHaveLength(64);
+    expect(noncesDistincts(nonces)).toBe(true);
+
+    const original = globalThis.crypto.getRandomValues.bind(globalThis.crypto);
+    globalThis.crypto.getRandomValues = ((bytes: Uint8Array) => {
+      bytes.fill(7);
+      return bytes;
+    }) as typeof globalThis.crypto.getRandomValues;
+    try {
+      const constants = echantillon(2);
+      expect(constants.length).toBeGreaterThan(1);
+      expect(noncesDistincts(constants)).toBe(false);
+    } finally {
+      globalThis.crypto.getRandomValues = original;
+    }
   });
 });
 

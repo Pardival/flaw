@@ -38,10 +38,11 @@ function sameKey(left: Uint8Array | null, right: Uint8Array | null): boolean {
   }
 }
 
-/** Refus de démarrer si hmac_pepper ou recovery_pepper égale la KEK. */
+/** Refus de démarrer si un poivre égale la KEK, ou si les deux poivres sont égaux. */
 export function peppersMatchKek(kek: string, hmacPepper: string, recoveryPepper: string): boolean {
   return sameKey(decodeValidatedKey(kek), decodeValidatedKey(hmacPepper))
-    || sameKey(decodeValidatedKey(kek), decodeValidatedKey(recoveryPepper));
+    || sameKey(decodeValidatedKey(kek), decodeValidatedKey(recoveryPepper))
+    || sameKey(decodeValidatedKey(hmacPepper), decodeValidatedKey(recoveryPepper));
 }
 
 export function loadKekFile(filePath: string): KekLoad {

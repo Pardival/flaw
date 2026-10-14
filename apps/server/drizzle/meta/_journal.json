@@ -22,6 +22,13 @@
       "when": 1760600000000,
       "tag": "0002_dek_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1760700000000,
+      "tag": "0003_dek_fk_no_action",
+      "breakpoints": true
     }
   ]
 }

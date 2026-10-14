@@ -12,6 +12,7 @@ COPY apps ./apps
 COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @flaw/crypto build
 RUN pnpm --filter @flaw/server typecheck
 RUN pnpm --filter @flaw/server deploy --prod /out
 
@@ -32,7 +33,7 @@ RUN chown -R root:root /app \
   && chmod 444 /app/infra/droits-flaw.sql /app/infra/assert-app-role.sql \
   && chmod -R a-w /app \
   && chmod -R a+rX /app \
-  && node --input-type=module -e "import('pg').then(() => import('drizzle-orm')).then(() => process.exit(0)).catch((error) => { console.error(error); process.exit(1); })"
+  && node --input-type=module -e "import('pg').then(() => import('drizzle-orm')).then(() => import('@flaw/crypto')).then((crypto) => { if (typeof crypto.wrapDek !== 'function') process.exit(1); }).catch((error) => { console.error(error); process.exit(1); })"
 
 USER 10001:10001
 ENV NODE_ENV=production

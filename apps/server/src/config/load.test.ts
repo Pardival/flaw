@@ -162,6 +162,17 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
     }
   });
 
+  it("refuse hmac_pepper égal à recovery_pepper", () => {
+    const pepper = validKey();
+    const env = writeSecrets(validSet({ hmacPepper: pepper, recoveryPepper: pepper }));
+    const result = loadSecrets(env);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toBe("refus de démarrer : poivre");
+      expect(result.message).not.toContain(pepper);
+    }
+  });
+
   it("signale un fichier absent sans démarrer", () => {
     const result = loadConfig({ NODE_ENV: "test" });
     expect(result.ok).toBe(false);

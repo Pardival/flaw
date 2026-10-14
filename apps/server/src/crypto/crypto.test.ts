@@ -196,6 +196,7 @@ describe("poivres hmac_pepper et recovery_pepper", () => {
     expect(peppersMatchKek(kek, kek, other)).toBe(true);
     expect(peppersMatchKek(kek, other, kek)).toBe(true);
     expect(peppersMatchKek(kek, other, validKey())).toBe(false);
+    expect(peppersMatchKek(kek, other, other)).toBe(true);
     const source = readFileSync(join(cryptoRoot, "kek.ts"), "utf8");
     expect(source).toContain("decoded.fill(0)");
   });

@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { Client } from "pg";
 import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { applyMigrations, appRoleEcarts, assertAppRole, infraSql } from "./migrate.ts";
 import { APP_USER_PREDICATE, OWNER_TABLES, RLS_TABLES, TABLE_NAMES } from "./schema.ts";
 
@@ -201,6 +201,30 @@ describe("migration SQL et compose", () => {
     expect(additive).toContain("user_keys.key_id reste l'identifiant de la KEK");
   });
 
+  it("passe les FK dek en ON DELETE NO ACTION sans toucher au statut ni au label", () => {
+    const sql = readFileSync(join(root, "apps/server/drizzle/0003_dek_fk_no_action.sql"), "utf8");
+    const enveloppe = readFileSync(join(root, "apps/server/drizzle/0001_enveloppe.sql"), "utf8");
+    expect(enveloppe).toContain("CHECK (status IN ('active', 'retired'))");
+    expect(enveloppe).toContain("CHECK ((label_ct IS NULL) = (label_nonce IS NULL))");
+    for (const name of [
+      "auth_factors",
+      "documents",
+      "document_states",
+      "document_updates",
+      "document_versions",
+    ]) {
+      expect(sql).toContain(`ALTER TABLE flaw.${name} DROP CONSTRAINT ${name}_dek_owner_fk`);
+      expect(sql).toContain(
+        `ALTER TABLE flaw.${name} ADD CONSTRAINT ${name}_dek_owner_fk FOREIGN KEY (key_id, owner_id) REFERENCES flaw.user_keys (id, owner_id) ON DELETE NO ACTION`,
+      );
+    }
+    expect(sql).not.toMatch(/ON DELETE RESTRICT/i);
+    expect(sql).not.toMatch(/RENAME/i);
+    expect(sql).not.toContain("ENABLE ROW LEVEL SECURITY");
+    expect(sql).not.toContain("ADD COLUMN status");
+    expect(sql).not.toContain("ADD COLUMN label_ct");
+  });
+
   it("ne référence aucun traceur (AC-102)", () => {
     const sources = [
       migration,
@@ -251,8 +275,19 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
   let db: Database;
   let port = 0;
   let secretDir = "";
+  let dbTestsRan = 0;
+
+  beforeEach(() => {
+    dbTestsRan += 1;
+  });
 
   beforeAll(async () => {
+    if (process.env.CI === "true") {
+      const probe = docker(["version"]);
+      if (probe.status !== 0) {
+        throw new Error("DB absent en CI : docker indisponible");
+      }
+    }
     const removed = docker(["rm", "-f", container]);
     expect([0, 1]).toContain(removed.status);
     const started = docker([
@@ -390,6 +425,10 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       rmSync(secretDir, { recursive: true, force: true });
     }
     docker(["rm", "-f", container]);
+    console.log(`DB_TESTS_EXECUTED=${dbTestsRan}`);
+    if (process.env.CI === "true") {
+      writeFileSync("/tmp/flaw-db-tests-count.txt", `${dbTestsRan}\n`);
+    }
   });
 
   it("refuse le superutilisateur et isole deux comptes (SEC-DB-02, SEC-DB-05, SEC-DATA-01, AC-096)", async () => {
@@ -1121,5 +1160,54 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       [userId],
     );
     expect(left.rows[0]?.n).toBe(0);
+  });
+
+  it("refuse de supprimer une DEK encore référencée et supprime le compte", async () => {
+    const userId = crypto.randomUUID();
+    const dekId = crypto.randomUUID();
+    const documentId = crypto.randomUUID();
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [userId]);
+    await app.query(
+      "INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version) VALUES ($1, $2, $3, $4, 'kek-2026-10', 1)",
+      [dekId, userId, Buffer.from([1]), Buffer.from([2])],
+    );
+    await withUser(db, userId, async (tx) => {
+      await tx.execute(sql`
+        insert into flaw.documents (
+          id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
+        ) values (
+          ${documentId}, ${userId}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, ${dekId}, 1
+        )
+      `);
+    });
+    let blocked = false;
+    try {
+      await app.query("DELETE FROM flaw.user_keys WHERE id = $1", [dekId]);
+    } catch (error) {
+      blocked = true;
+      expect(errorText(error)).toMatch(/23503/);
+    }
+    expect(blocked).toBe(true);
+    const stillKey = await admin.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.user_keys WHERE id = $1",
+      [dekId],
+    );
+    const stillDoc = await admin.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.documents WHERE id = $1",
+      [documentId],
+    );
+    expect(stillKey.rows[0]?.n).toBe(1);
+    expect(stillDoc.rows[0]?.n).toBe(1);
+    await app.query("DELETE FROM flaw.users WHERE id = $1", [userId]);
+    const goneKey = await admin.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.user_keys WHERE id = $1",
+      [dekId],
+    );
+    const goneDoc = await admin.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.documents WHERE id = $1",
+      [documentId],
+    );
+    expect(goneKey.rows[0]?.n).toBe(0);
+    expect(goneDoc.rows[0]?.n).toBe(0);
   });
 });
