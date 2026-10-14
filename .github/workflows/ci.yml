@@ -17,6 +17,7 @@ jobs:
   verify:
     name: install, lint, typecheck, vitest, licences, audit
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,6 +52,7 @@ jobs:
   image:
     name: build image
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -61,6 +63,7 @@ jobs:
   gitleaks:
     name: gitleaks
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,55 +101,113 @@ jobs:
   semgrep:
     name: semgrep
     runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      # Image officielle semgrep/semgrep 1.180.0, épinglée par digest.
+      SEMGREP_IMAGE: semgrep/semgrep@sha256:529ee8a277ec8adc5b534d7c74eea0a47e9de21d62852b6ba7ac6ba9566845c3
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: Installer Semgrep 1.180.0
-        run: pip install semgrep==1.180.0
-
-      # p/default exige minimumReleaseAge, trustPolicy et blockExoticSubdeps,
-      # réglages d'installation non décidés ici. Les packs communautaires
-      # de langage et de sécurité couvrent le SAST sans changer cette politique.
+      # p/default est actif : pnpm-workspace.yaml fixe minimumReleaseAge (10080),
+      # trustPolicy (no-downgrade), trustPolicyIgnoreAfter (525600) et
+      # blockExoticSubdeps. renovate.json fixe minimumReleaseAge à 7 days.
       - name: Semgrep
-        env:
-          SEMGREP_SEND_METRICS: "off"
-          SEMGREP_ENABLE_VERSION_CHECK: "0"
         run: |
-          semgrep scan \
-            --config p/javascript \
-            --config p/typescript \
-            --config p/nodejs \
-            --config p/docker \
-            --config p/security-audit \
-            --config .github/semgrep/sec-web-07.yml \
-            --error \
-            --metrics=off \
-            --exclude 'fixtures/**'
+          docker run --rm \
+            -v "${GITHUB_WORKSPACE}:/src" \
+            -w /src \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan \
+              --config p/default \
+              --config .github/semgrep/sec-web-07.yml \
+              --config .github/semgrep/sec-db-03.yml \
+              --error \
+              --metrics=off \
+              --exclude 'fixtures/**'
 
       - name: Preuve SEC-WEB-07
-        env:
-          SEMGREP_SEND_METRICS: "off"
-          SEMGREP_ENABLE_VERSION_CHECK: "0"
         run: |
           set -euo pipefail
           tmp="$(mktemp -d)"
           printf '%s\n' 'const el = {};' 'const doc = { title: "t" };' 'el.innerHTML = doc.title;' > "$tmp/sample.js"
-          if semgrep scan --config .github/semgrep/sec-web-07.yml --error --metrics=off --quiet "$tmp/sample.js"; then
+          out="$(docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/sec-web-07.yml --error --metrics=off /work/sample.js 2>&1 || true)"
+          printf '%s\n' "$out"
+          if ! printf '%s\n' "$out" | grep -q 'sec-web-07-dom-sink'; then
             echo "SEC-WEB-07 : el.innerHTML = doc.title aurait dû être signalé."
             exit 1
           fi
           echo "SEC-WEB-07 : el.innerHTML = doc.title signalé."
 
+      - name: Preuve SEC-DB-03
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          cat > "$tmp/bad.ts" << 'END'
+          declare const db: { query: (...args: unknown[]) => unknown; execute: (...args: unknown[]) => unknown };
+          declare function sql(strings: TemplateStringsArray, ...values: unknown[]): unknown;
+          declare namespace sql { function raw(value: unknown): unknown; function identifier(value: unknown): unknown; }
+          const user = "u";
+          const table = "t";
+          db.query("SELECT " + user);
+          db.query(`SELECT ${user}`);
+          db.execute(sql.raw(user));
+          db.query(`SELECT ${sql.identifier(table)} WHERE name = ${user}`);
+          END
+          out="$(docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/sec-db-03.yml --error --metrics=off /work/bad.ts 2>&1 || true)"
+          printf '%s\n' "$out"
+          for rule in sec-db-03-query-concat sec-db-03-query-template sec-db-03-sql-raw; do
+            if ! printf '%s\n' "$out" | grep -q "$rule"; then
+              echo "SEC-DB-03 : $rule aurait dû signaler le cas."
+              exit 1
+            fi
+          done
+          cat > "$tmp/ok.ts" << 'END'
+          declare const db: { query: (...args: unknown[]) => unknown; execute: (...args: unknown[]) => unknown };
+          declare function sql(strings: TemplateStringsArray, ...values: unknown[]): unknown;
+          declare namespace sql { function identifier(value: unknown): unknown; }
+          const user = "u";
+          const table = "t";
+          const schema = "s";
+          const params = [user];
+          db.query("SELECT current_user");
+          db.query("SELECT * FROM users WHERE id = $1", params);
+          db.execute(sql`SELECT ${user}`);
+          db.query(`SELECT ${sql.identifier(table)}`);
+          db.query(`SELECT ${sql.identifier(schema)}.${sql.identifier(table)}`);
+          db.execute(`SELECT ${sql.identifier(table)}`, params);
+          END
+          docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/sec-db-03.yml --error --metrics=off /work/ok.ts
+          echo 'SEC-DB-03 : concaténation, template et sql.raw signalés ; sql`` et sql.identifier autorisés.'
+
   codeql:
     name: codeql
     if: github.event.repository.visibility == 'public' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       actions: read
       contents: read

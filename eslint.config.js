@@ -1,7 +1,7 @@
 /**
  * SEC-WEB-07 — interdiction des sinks DOM dangereux (flat config).
  * `fixtures/` est ignoré par `eslint .` et rejoué par scripts/check-dom-sink-lint.mjs.
- * `infra/secrets` et `infra/run` sont illisibles par l'utilisateur (modes 400/440/2750).
+ * `infra/secrets` est ignoré : ce répertoire n'est pas du code source.
  */
 import eslint from "@eslint/js";
 import tseslint from "typescript-eslint";
@@ -13,7 +13,7 @@ const computedMember = (name) =>
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "fixtures/**", "coverage/**", "infra/secrets/**", "infra/run/**"],
+    ignores: ["**/node_modules/**", "**/dist/**", "fixtures/**", "coverage/**", "infra/secrets/**"],
   },
   eslint.configs.recommended,
   tseslint.configs.recommended,

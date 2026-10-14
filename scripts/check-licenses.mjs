@@ -1,9 +1,10 @@
 /**
  * AC-092 / SEC-SUPPLY-05 — échoue si une dépendance a une licence hors liste A-002.
- * S'appuie sur `pnpm licenses list` (pas de dépendance supplémentaire).
+ * `pnpm -r licenses list` parcourt tous les sous-projets du workspace.
  * Les paquets du workspace Flaw sont exclus : la licence du projet n'est pas décidée.
  */
 import { execFileSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 import { fileURLToPath } from "node:url";
 
 const ALLOWED = new Set([
@@ -130,7 +131,7 @@ function licenseText(value) {
   return "";
 }
 
-function collectEntries(data) {
+export function collectEntries(data) {
   if (Array.isArray(data)) {
     return data;
   }
@@ -154,16 +155,16 @@ function collectEntries(data) {
   return entries;
 }
 
-function isWorkspacePackage(entry) {
+export function isWorkspacePackage(entry) {
   if (entry.paths.length === 0) {
     return false;
   }
   return entry.paths.every((packagePath) => !packagePath.includes("node_modules"));
 }
 
-function readLicenseReport() {
-  const stdout = execFileSync("pnpm", ["licenses", "list", "--json", "--long"], {
-    cwd: root,
+export function readLicenseReport(cwd) {
+  const stdout = execFileSync("pnpm", ["-r", "licenses", "list", "--json", "--long"], {
+    cwd,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -174,31 +175,46 @@ function readLicenseReport() {
   return JSON.parse(stdout.slice(start));
 }
 
-assertLicenseParser();
-
-const entries = collectEntries(readLicenseReport()).filter(
-  (entry) => !isWorkspacePackage(entry),
-);
-
-if (entries.length === 0) {
-  console.error("Contrôle de licences : aucune dépendance installée à vérifier.");
-  process.exit(1);
+export function checkProject(cwd) {
+  const entries = collectEntries(readLicenseReport(cwd)).filter(
+    (entry) => !isWorkspacePackage(entry),
+  );
+  const rejected = entries.filter((entry) => !isAllowedLicense(entry.license));
+  return { entries, rejected };
 }
 
-const rejected = entries.filter((entry) => !isAllowedLicense(entry.license));
-if (rejected.length > 0) {
-  console.error("AC-092 : licences hors liste A-002 (MIT, ISC, BSD, Apache-2.0, PostgreSQL, OFL-1.1).");
-  for (const entry of rejected) {
-    console.error(`- ${entry.name}: ${entry.license || "(absente)"}`);
+function report(cwd) {
+  assertLicenseParser();
+  const { entries, rejected } = checkProject(cwd);
+  if (entries.length === 0) {
+    console.error("Contrôle de licences : aucune dépendance installée à vérifier.");
+    process.exit(1);
   }
-  process.exit(1);
+  if (rejected.length > 0) {
+    console.error("AC-092 : licences hors liste A-002 (MIT, ISC, BSD, Apache-2.0, PostgreSQL, OFL-1.1).");
+    for (const entry of rejected) {
+      console.error(`- ${entry.name}: ${entry.license || "(absente)"}`);
+    }
+    process.exit(1);
+  }
+  const counts = new Map();
+  for (const entry of entries) {
+    counts.set(entry.license, (counts.get(entry.license) ?? 0) + 1);
+  }
+  console.log(`AC-092 : ${entries.length} dépendances, licences autorisées.`);
+  for (const [license, count] of [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+    console.log(`- ${license}: ${count}`);
+  }
 }
 
-const counts = new Map();
-for (const entry of entries) {
-  counts.set(entry.license, (counts.get(entry.license) ?? 0) + 1);
+function isDirectRun() {
+  const entry = process.argv[1];
+  if (entry === undefined) {
+    return false;
+  }
+  return import.meta.url === pathToFileURL(entry).href;
 }
-console.log(`AC-092 : ${entries.length} dépendances, licences autorisées.`);
-for (const [license, count] of [...counts.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-  console.log(`- ${license}: ${count}`);
+
+if (isDirectRun()) {
+  report(process.argv[2] ?? root);
 }

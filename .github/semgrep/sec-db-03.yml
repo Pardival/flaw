@@ -1,0 +1,50 @@
+rules:
+  - id: sec-db-03-sql-raw
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SEC-DB-03 : sql.raw est interdit. Le seul contournement est une revue
+      humaine (nosemgrep), sans exception automatique.
+    metadata:
+      category: security
+      cwe: "CWE-89"
+      confidence: HIGH
+    pattern: sql.raw(...)
+
+  - id: sec-db-03-query-concat
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SEC-DB-03 : query ou execute ne doit pas recevoir du SQL construit par
+      concaténation. Requête paramétrée, ORM, ou template taggé sql`` (Drizzle).
+    metadata:
+      category: security
+      cwe: "CWE-89"
+      confidence: HIGH
+    pattern-either:
+      - pattern: $DB.query($LEFT + $RIGHT)
+      - pattern: $DB.query($LEFT + $RIGHT, ...)
+      - pattern: $DB.execute($LEFT + $RIGHT)
+      - pattern: $DB.execute($LEFT + $RIGHT, ...)
+
+  - id: sec-db-03-query-template
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SEC-DB-03 : query ou execute ne doit pas recevoir un template littéral
+      interpolé. sql`` (Drizzle) est autorisé. Un identifiant dynamique n'est
+      autorisé que via sql.identifier().
+    metadata:
+      category: security
+      cwe: "CWE-89"
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query(`...${$VALUE}...`)
+          - pattern: $DB.query(`...${$VALUE}...`, ...)
+          - pattern: $DB.execute(`...${$VALUE}...`)
+          - pattern: $DB.execute(`...${$VALUE}...`, ...)
+      - metavariable-pattern:
+          metavariable: $VALUE
+          patterns:
+            - pattern-not: sql.identifier(...)
