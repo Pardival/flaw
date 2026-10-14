@@ -121,7 +121,7 @@ function staticChecks() {
 
   const secretsScript = read("infra/creer-secrets.sh");
   const validator = read("infra/initdb/secret-valide.inc");
-  assert("spec secrets", secretsScript.includes("postgres_password 70:70 400 hex32") && secretsScript.includes("app_db_password 10001:70 440 hex32") && secretsScript.includes("db_owner_password 70:70 400 hex32") && secretsScript.includes("better_auth_secret 10001:10001 400 b64_48") && secretsScript.includes("flaw_kek 10001:10001 400 kek") && secretsScript.includes("recovery_pepper 10001:10001 400 kek"), "spec");
+  assert("spec secrets", secretsScript.includes("postgres_password 70:70 400 hex32") && secretsScript.includes("app_db_password 10001:70 440 hex32") && secretsScript.includes("db_owner_password 10001:70 440 hex32") && secretsScript.includes("better_auth_secret 10001:10001 400 b64_48") && secretsScript.includes("flaw_kek 10001:10001 400 kek") && secretsScript.includes("recovery_pepper 10001:10001 400 kek") && secretsScript.includes("hmac_pepper 10001:10001 400 kek"), "spec");
   assert("secrets hors t002 absents", !secretsScript.includes("restic_password") && !secretsScript.includes("offsite_s3_secret") && !secretsScript.includes("sudo -E"), "script");
   assert(
     "validateur expert",

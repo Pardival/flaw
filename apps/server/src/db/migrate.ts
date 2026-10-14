@@ -1,10 +1,11 @@
 /**
- * Service migrate (T-005). Connexion flaw_owner, puis migrations Drizzle.
- * L'arbitrage T-002 #5 est annulé : flaw_app ne migre plus.
- * Le journal Drizzle est dans le schéma flaw. flaw_owner a CREATE sur la base,
- * exigé par migrate() (CREATE SCHEMA IF NOT EXISTS) sous PostgreSQL 18.
- * flaw_app reste en DML : le journal et sa séquence lui sont retirés.
+ * Service migrate (T-005). Connexion flaw_owner, migrations Drizzle dans le
+ * schéma drizzle, puis rejeu de infra/droits-flaw.sql et contrôle
+ * infra/assert-app-role.sql. flaw_app ne migre plus.
+ * flaw_owner a CREATE sur la base, exigé par migrate() (CREATE SCHEMA IF NOT
+ * EXISTS) sous PostgreSQL 18.
  */
+import { readFileSync } from "node:fs";
 import { Client } from "pg";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -20,12 +21,16 @@ type RoleRow = {
   rolbypassrls: boolean;
 };
 
-type CountRow = {
-  n: number;
+type EcartRow = {
+  ecart: string;
 };
 
 export function migrationsFolder(): string {
   return fileURLToPath(new URL("../../drizzle", import.meta.url));
+}
+
+export function infraSql(name: "droits-flaw.sql" | "assert-app-role.sql"): string {
+  return readFileSync(fileURLToPath(new URL(`../../../../infra/${name}`, import.meta.url)), "utf8");
 }
 
 async function roleRow(client: Client): Promise<RoleRow> {
@@ -45,13 +50,9 @@ function assertNotElevated(row: RoleRow): void {
   }
 }
 
-export async function assertNoAppOwnedTables(client: Client): Promise<void> {
-  const owned = await client.query<CountRow>(
-    "SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'flaw' AND tableowner = 'flaw_app'",
-  );
-  if (owned.rows[0]?.n !== 0) {
-    throw new Error("refus de démarrer : table appartenant a flaw_app");
-  }
+export async function appRoleEcarts(client: Client): Promise<string[]> {
+  const result = await client.query<EcartRow>(infraSql("assert-app-role.sql"));
+  return result.rows.map((row) => row.ecart);
 }
 
 export async function assertAppRole(client: Client): Promise<void> {
@@ -60,7 +61,11 @@ export async function assertAppRole(client: Client): Promise<void> {
     throw new Error("refus de démarrer : role inattendu");
   }
   assertNotElevated(row);
-  await assertNoAppOwnedTables(client);
+  const ecarts = await appRoleEcarts(client);
+  const first = ecarts[0];
+  if (first !== undefined) {
+    throw new Error(`refus de démarrer : ${first}`);
+  }
 }
 
 export async function assertOwnerRole(client: Client): Promise<void> {
@@ -75,8 +80,15 @@ export async function applyMigrations(client: Client): Promise<void> {
   const db = drizzle(client);
   await migrate(db, {
     migrationsFolder: migrationsFolder(),
-    migrationsSchema: "flaw",
+    migrationsSchema: "drizzle",
   });
+  // Script figé du dépôt, copié dans l'image, jamais construit depuis une entrée.
+  await client.query(infraSql("droits-flaw.sql")); // nosemgrep: sec-db-03-query-non-literal
+  const ecarts = await appRoleEcarts(client);
+  const first = ecarts[0];
+  if (first !== undefined) {
+    throw new Error(`refus de démarrer : ${first}`);
+  }
 }
 
 function delay(ms: number): Promise<void> {
@@ -117,7 +129,6 @@ async function main(): Promise<void> {
   try {
     await assertOwnerRole(client);
     await applyMigrations(client);
-    await assertNoAppOwnedTables(client);
   } finally {
     await client.end().catch(() => undefined);
   }

@@ -44,6 +44,8 @@ x-app-env: &app-env
   FLAW_KEK_ID: ${FLAW_KEK_ID:-kek-2026-10}
   RECOVERY_PEPPER_FILE: /run/secrets/recovery_pepper
   RECOVERY_PEPPER_ID: ${RECOVERY_PEPPER_ID:-pep-2026-10}
+  HMAC_PEPPER_FILE: /run/secrets/hmac_pepper
+  HMAC_PEPPER_ID: ${HMAC_PEPPER_ID:-pep-hmac-2026-10}
   RECOVERY_PEPPER_OLD_IDS: ${RECOVERY_PEPPER_OLD_IDS:-}
   ALLOW_SIGNUP: ${ALLOW_SIGNUP:-false}
   SESSION_IDLE_DAYS: ${SESSION_IDLE_DAYS:-30}
@@ -90,12 +92,11 @@ services:
     <<: *defaults
     restart: "no"
     image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
-    # Migrations Drizzle (T-005) sous flaw_owner. L'arbitrage T-002 #5 est annulé.
-    # db_owner_password est 70:70 mode 400 : ce service tourne en UID 70 pour le lire.
-    # L'app ne reçoit pas ce secret. Le service db le reçoit aussi : initdb exécute
-    # CREATE ROLE ... PASSWORD et ne peut pas le faire sans le fichier.
+    # Migrations Drizzle (T-005) sous flaw_owner.
+    # db_owner_password est 10001:70 mode 440 : migrate (UID 10001) le lit en
+    # propriétaire, db (GID 70) le lit par le groupe. L'app ne le reçoit pas.
     command: ["node", "apps/server/src/db/migrate.ts"]
-    user: "70:70"
+    user: "10001:10001"
     environment:
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -117,7 +118,7 @@ services:
     image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
     user: "10001:10001"
     environment: *app-env
-    secrets: [app_db_password, better_auth_secret, flaw_kek, recovery_pepper]
+    secrets: [app_db_password, better_auth_secret, flaw_kek, recovery_pepper, hmac_pepper]
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -186,6 +187,8 @@ secrets:
     file: ./secrets/flaw_kek
   recovery_pepper:
     file: ./secrets/recovery_pepper
+  hmac_pepper:
+    file: ./secrets/hmac_pepper
 
 networks:
   edge:

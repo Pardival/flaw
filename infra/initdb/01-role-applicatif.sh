@@ -1,8 +1,8 @@
 #!/bin/sh
 # Exécuté une fois par l'image postgres à l'initialisation du volume.
 # flaw_app : DML seul, ni superutilisateur, ni CREATEROLE, ni CREATEDB (SEC-DB-02).
-# flaw_owner : propriétaire du schéma et des tables. Migrations (arbitrage T-002 #5 annulé).
-# NOREPLICATION et NOBYPASSRLS. NOINHERIT conservé pour flaw_app.
+# flaw_owner : propriétaire des schémas flaw et drizzle. Migrations.
+# NOINHERIT, NOREPLICATION, NOBYPASSRLS. flaw_journal : aucun droit de table (T-042).
 # Les mots de passe suivent secret-valide.inc (identique à creer-secrets.sh et healthz.ts).
 set -eu
 _here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
@@ -36,7 +36,8 @@ OWNER_PW=$(read_secret /run/secrets/db_owner_password)
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   -v app_pw="$APP_PW" -v owner_pw="$OWNER_PW" -v dbname="$POSTGRES_DB" <<'SQL'
 CREATE ROLE flaw_app LOGIN PASSWORD :'app_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
-CREATE ROLE flaw_owner LOGIN PASSWORD :'owner_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+CREATE ROLE flaw_owner LOGIN PASSWORD :'owner_pw' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
+CREATE ROLE flaw_journal NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS;
 REVOKE ALL ON SCHEMA public FROM PUBLIC;
 CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_owner;
 ALTER ROLE flaw_app SET search_path = flaw;

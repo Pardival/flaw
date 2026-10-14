@@ -1,26 +1,18 @@
 /**
- * Schéma Drizzle du schéma PostgreSQL `flaw` (T-005, A-003, A-014).
+ * Schéma Drizzle du schéma PostgreSQL `flaw` (T-005, ARC-SUM 0.4.16).
  *
- * 16 tables du pack, plus `auth_events` (Expert, échecs sans compte).
- * `verifications` est nommée par l'arbitrage T-002 #8.
- * `accounts` complète le compte : Better Auth est le choix A-002, et le pack
- * ne donne pas le seizième nom (schema-esquisse.sql est absent). Voir BLOCKER.
+ * 17 tables. `erasure_outbox` et `erasure_journal_head` restent hors de ce
+ * décompte (instruction de reprise ; le critère du pack en cite 19).
+ * Pas de colonne de titre : le titre chiffré est T-006. La projection
+ * chiffrée est l'enveloppe `projection_ct`.
  *
- * Colonnes en clair de `documents` : mode, format, font (police), counter
- * (compteur), revision (champ serveur déjà retiré du client), dates.
- * La projection et les états CRDT sont des bytea chiffrés. Le titre n'est
- * pas une colonne en clair.
- *
- * RLS dès la v1 (A-014, plus strict que l'échéance PUB de SEC-DB-05) :
+ * RLS forcée seulement sur les 4 tables de contenu. `users`, `accounts` et
+ * `sessions` n'ont pas de RLS. Le prédicat est
  * `owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid`.
- * `users` compare `id` à la même expression.
- * ENABLE et les politiques sont déclarés ici. FORCE ROW LEVEL SECURITY est
- * dans la migration SQL : `enableRLS()` ne l'émet pas, et le propriétaire
- * flaw_owner contournerait sinon la RLS.
+ * FORCE est dans le SQL : `enableRLS()` ne l'émet pas.
  *
- * `verifications.identifier` et `rate_limits.bucket` sont des HMAC-SHA256
- * poivrés (hex). Pas de RLS : elles servent avant qu'un utilisateur existe.
- * `auth_events` reçoit les échecs sans compte (insert seul pour flaw_app).
+ * Identifiants : `uuidv7()`, sauf `documents.id` qui n'a pas de défaut.
+ * Enveloppe : `*_ct`, `*_nonce`, `key_id`, `enc_version`.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -28,12 +20,14 @@ import {
   check,
   customType,
   date,
+  foreignKey,
   index,
   integer,
   pgPolicy,
   pgSchema,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -46,34 +40,32 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 const appUserId = sql`NULLIF(current_setting('app.user_id', true), '')::uuid`;
 
+function uuidv7(name: string) {
+  return uuid(name).primaryKey().default(sql`uuidv7()`);
+}
+
+function createdAt() {
+  return timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow();
+}
+
 function timestamps() {
   return {
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    createdAt: createdAt(),
     updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
   };
 }
 
 export const flaw = pgSchema("flaw");
 
-export const users = flaw
-  .table(
-    "users",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      role: text("role").notNull().default("user"),
-      ...timestamps(),
-    },
-    (table) => [
-      check("users_role_check", sql`${table.role} in ('user', 'admin')`),
-      pgPolicy("users_self", {
-        for: "all",
-        to: "flaw_app",
-        using: sql`id = ${appUserId}`,
-        withCheck: sql`id = ${appUserId}`,
-      }),
-    ],
-  )
-  .enableRLS();
+export const users = flaw.table(
+  "users",
+  {
+    id: uuidv7("id"),
+    role: text("role").notNull().default("user"),
+    ...timestamps(),
+  },
+  (table) => [check("users_role_check", sql`${table.role} in ('user', 'admin')`)],
+);
 
 function ownerId() {
   return uuid("owner_id")
@@ -90,51 +82,41 @@ function ownerPolicy(name: string) {
   });
 }
 
-function createdAt() {
-  return timestamp("created_at", { withTimezone: true, mode: "date" }).notNull().defaultNow();
-}
+export const accounts = flaw.table(
+  "accounts",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    providerId: text("provider_id").notNull(),
+    accountId: text("account_id").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("accounts_provider_account_uidx").on(table.providerId, table.accountId),
+    index("accounts_owner_id_idx").on(table.ownerId),
+  ],
+);
 
-export const accounts = flaw
-  .table(
-    "accounts",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: ownerId(),
-      providerId: text("provider_id").notNull(),
-      accountId: text("account_id").notNull(),
-      createdAt: createdAt(),
-    },
-    (table) => [
-      uniqueIndex("accounts_provider_account_uidx").on(table.providerId, table.accountId),
-      index("accounts_owner_id_idx").on(table.ownerId),
-      ownerPolicy("accounts"),
-    ],
-  )
-  .enableRLS();
+export const sessions = flaw.table(
+  "sessions",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("sessions_token_hash_uidx").on(table.tokenHash),
+    index("sessions_owner_id_idx").on(table.ownerId),
+  ],
+);
 
-export const sessions = flaw
-  .table(
-    "sessions",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: ownerId(),
-      tokenHash: text("token_hash").notNull(),
-      expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
-      createdAt: createdAt(),
-    },
-    (table) => [
-      uniqueIndex("sessions_token_hash_uidx").on(table.tokenHash),
-      index("sessions_owner_id_idx").on(table.ownerId),
-      ownerPolicy("sessions"),
-    ],
-  )
-  .enableRLS();
-
-/** Avant qu'un utilisateur existe. identifier = HMAC-SHA256 poivré, hex 64. */
+/** identifier = HMAC-SHA256 poivré (hmac_pepper), hex 64. Pas de RLS. */
 export const verifications = flaw.table(
   "verifications",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: uuidv7("id"),
     identifier: text("identifier").notNull(),
     valueHash: text("value_hash").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
@@ -146,83 +128,71 @@ export const verifications = flaw.table(
   ],
 );
 
-export const authFactors = flaw
-  .table(
-    "auth_factors",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: ownerId(),
-      kind: text("kind").notNull(),
-      secretCiphertext: bytea("secret_ciphertext").notNull(),
-      createdAt: createdAt(),
-    },
-    (table) => [index("auth_factors_owner_id_idx").on(table.ownerId), ownerPolicy("auth_factors")],
-  )
-  .enableRLS();
+export const authFactors = flaw.table(
+  "auth_factors",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    kind: text("kind").notNull(),
+    secretCt: bytea("secret_ct").notNull(),
+    secretNonce: bytea("secret_nonce").notNull(),
+    keyId: text("key_id").notNull(),
+    encVersion: integer("enc_version").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("auth_factors_owner_id_idx").on(table.ownerId)],
+);
 
-export const recoveryCodes = flaw
-  .table(
-    "recovery_codes",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: ownerId(),
-      codeHash: text("code_hash").notNull(),
-      usedAt: timestamp("used_at", { withTimezone: true, mode: "date" }),
-      createdAt: createdAt(),
-    },
-    (table) => [index("recovery_codes_owner_id_idx").on(table.ownerId), ownerPolicy("recovery_codes")],
-  )
-  .enableRLS();
+export const recoveryCodes = flaw.table(
+  "recovery_codes",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    codeHash: text("code_hash").notNull(),
+    usedAt: timestamp("used_at", { withTimezone: true, mode: "date" }),
+    createdAt: createdAt(),
+  },
+  (table) => [index("recovery_codes_owner_id_idx").on(table.ownerId)],
+);
 
-export const userKeys = flaw
-  .table(
-    "user_keys",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: ownerId(),
-      kekId: text("kek_id").notNull(),
-      wrappedKey: bytea("wrapped_key").notNull(),
-      createdAt: createdAt(),
-    },
-    (table) => [index("user_keys_owner_id_idx").on(table.ownerId), ownerPolicy("user_keys")],
-  )
-  .enableRLS();
+export const userKeys = flaw.table(
+  "user_keys",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    wrappedCt: bytea("wrapped_ct").notNull(),
+    wrappedNonce: bytea("wrapped_nonce").notNull(),
+    keyId: text("key_id").notNull(),
+    encVersion: integer("enc_version").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("user_keys_owner_id_idx").on(table.ownerId)],
+);
 
-export const userPreferences = flaw
-  .table(
-    "user_preferences",
-    {
-      ownerId: uuid("owner_id")
-        .primaryKey()
-        .references(() => users.id, { onDelete: "cascade" }),
-      browserSpellcheck: boolean("browser_spellcheck").notNull().default(false),
-      updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-    },
-    () => [ownerPolicy("user_preferences")],
-  )
-  .enableRLS();
+export const userPreferences = flaw.table("user_preferences", {
+  ownerId: uuid("owner_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  browserSpellcheck: boolean("browser_spellcheck").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+});
 
-export const dailyProgress = flaw
-  .table(
-    "daily_progress",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: ownerId(),
-      day: date("day", { mode: "string" }).notNull(),
-      progressCount: integer("progress_count").notNull().default(0),
-    },
-    (table) => [
-      uniqueIndex("daily_progress_owner_day_uidx").on(table.ownerId, table.day),
-      ownerPolicy("daily_progress"),
-    ],
-  )
-  .enableRLS();
+export const dailyProgress = flaw.table(
+  "daily_progress",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    day: date("day", { mode: "string" }).notNull(),
+    progressCount: integer("progress_count").notNull().default(0),
+  },
+  (table) => [uniqueIndex("daily_progress_owner_day_uidx").on(table.ownerId, table.day)],
+);
 
-/** Compteur avant authentification. bucket = HMAC-SHA256 poivré, hex 64. Pas de RLS. */
+/** bucket = HMAC-SHA256 poivré, hex 64. Pas de RLS. */
 export const rateLimits = flaw.table(
   "rate_limits",
   {
-    id: uuid("id").primaryKey().defaultRandom(),
+    id: uuidv7("id"),
     bucket: text("bucket").notNull(),
     windowStart: timestamp("window_start", { withTimezone: true, mode: "date" }).notNull(),
     hits: integer("hits").notNull(),
@@ -233,79 +203,89 @@ export const rateLimits = flaw.table(
   ],
 );
 
-/** Survit à la suppression de l'utilisateur : pas de clé étrangère. */
-export const erasureLog = flaw
-  .table(
-    "erasure_log",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: uuid("owner_id").notNull(),
-      erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
-    },
-    (table) => [index("erasure_log_owner_id_idx").on(table.ownerId), ownerPolicy("erasure_log")],
-  )
-  .enableRLS();
-
 /**
- * Journal sans contenu de texte. owner_id sans clé étrangère : la ligne peut
- * rester après l'effacement du compte. Les échecs sans utilisateur vont dans
- * auth_events. flaw_app n'a ni UPDATE ni DELETE.
+ * owner_id est posé par le déclencheur journaliser_effacement.
+ * flaw_app n'a que SELECT. Rétention 440 jours (purge_journaux).
  */
-export const auditEvents = flaw
-  .table(
-    "audit_events",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      ownerId: uuid("owner_id").notNull(),
-      eventType: text("event_type").notNull(),
-      result: text("result").notNull(),
-      createdAt: createdAt(),
-    },
-    (table) => [index("audit_events_owner_id_idx").on(table.ownerId), ownerPolicy("audit_events")],
-  )
-  .enableRLS();
+export const erasureLog = flaw.table(
+  "erasure_log",
+  {
+    id: uuidv7("id"),
+    subject: text("subject").notNull(),
+    subjectId: uuid("subject_id").notNull(),
+    ownerId: uuid("owner_id").notNull(),
+    origine: text("origine").notNull().default("effacement"),
+    erasedAt: timestamp("erased_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+  },
+  (table) => [
+    check("erasure_log_subject_check", sql`${table.subject} in ('user', 'document')`),
+    check("erasure_log_origine_check", sql`${table.origine} in ('effacement', 'rejeu')`),
+    check(
+      "erasure_log_owner_user",
+      sql`${table.subject} <> 'user' OR ${table.ownerId} = ${table.subjectId}`,
+    ),
+    check(
+      "erasure_log_owner_document",
+      sql`${table.subject} <> 'document' OR ${table.ownerId} IS NOT NULL`,
+    ),
+    index("erasure_log_owner_id_idx").on(table.ownerId),
+  ],
+);
 
-/** Échecs d'authentification sans compte. HMAC poivrés, insert seul (SEC-LOG-02). */
-export const authEvents = flaw
-  .table(
-    "auth_events",
-    {
-      id: uuid("id").primaryKey().defaultRandom(),
-      eventType: text("event_type").notNull(),
-      subjectHmac: text("subject_hmac"),
-      ipHmac: text("ip_hmac"),
-      userAgentSummary: text("user_agent_summary"),
-      createdAt: createdAt(),
-    },
-    (table) => [
-      check(
-        "auth_events_event_type_check",
-        sql`${table.eventType} in ('login_failed', 'login_rate_limited', 'mfa_failed')`,
-      ),
-      pgPolicy("auth_events_insert", {
-        for: "insert",
-        to: "flaw_app",
-        withCheck: sql`true`,
-      }),
-    ],
-  )
-  .enableRLS();
+/** SELECT et INSERT pour flaw_app. Pas de RLS. Pas d'UPDATE ni de DELETE. */
+export const auditEvents = flaw.table(
+  "audit_events",
+  {
+    id: uuidv7("id"),
+    ownerId: uuid("owner_id").notNull(),
+    eventType: text("event_type").notNull(),
+    result: text("result").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("audit_events_owner_id_idx").on(table.ownerId)],
+);
+
+/** Échecs sans compte. INSERT seul. Identifiants HMAC. Pas de RLS. */
+export const authEvents = flaw.table(
+  "auth_events",
+  {
+    id: uuidv7("id"),
+    eventType: text("event_type").notNull(),
+    subjectHmac: text("subject_hmac"),
+    ipHmac: text("ip_hmac"),
+    userAgentSummary: text("user_agent_summary"),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check(
+      "auth_events_event_type_check",
+      sql`${table.eventType} in ('login_failed', 'login_rate_limited', 'mfa_failed')`,
+    ),
+  ],
+);
 
 export const documents = flaw
   .table(
     "documents",
     {
-      id: uuid("id").primaryKey().defaultRandom(),
+      id: uuid("id").primaryKey(),
       ownerId: ownerId(),
       mode: text("mode").notNull(),
       format: text("format").notNull(),
       font: text("font").notNull(),
       counter: integer("counter").notNull().default(0),
       revision: integer("revision").notNull().default(0),
-      projection: bytea("projection").notNull(),
+      projectionCt: bytea("projection_ct").notNull(),
+      projectionNonce: bytea("projection_nonce").notNull(),
+      keyId: text("key_id").notNull(),
+      encVersion: integer("enc_version").notNull(),
       ...timestamps(),
     },
-    (table) => [index("documents_owner_id_idx").on(table.ownerId), ownerPolicy("documents")],
+    (table) => [
+      unique("documents_id_owner_uidx").on(table.id, table.ownerId),
+      index("documents_owner_id_idx").on(table.ownerId),
+      ownerPolicy("documents"),
+    ],
   )
   .enableRLS();
 
@@ -313,14 +293,23 @@ export const documentStates = flaw
   .table(
     "document_states",
     {
-      documentId: uuid("document_id")
-        .primaryKey()
-        .references(() => documents.id, { onDelete: "cascade" }),
+      documentId: uuid("document_id").primaryKey(),
       ownerId: ownerId(),
-      ciphertext: bytea("ciphertext").notNull(),
+      stateCt: bytea("state_ct").notNull(),
+      stateNonce: bytea("state_nonce").notNull(),
+      keyId: text("key_id").notNull(),
+      encVersion: integer("enc_version").notNull(),
       updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     },
-    (table) => [index("document_states_owner_id_idx").on(table.ownerId), ownerPolicy("document_states")],
+    (table) => [
+      foreignKey({
+        columns: [table.documentId, table.ownerId],
+        foreignColumns: [documents.id, documents.ownerId],
+        name: "document_states_document_owner_fk",
+      }).onDelete("cascade"),
+      index("document_states_owner_id_idx").on(table.ownerId),
+      ownerPolicy("document_states"),
+    ],
   )
   .enableRLS();
 
@@ -328,15 +317,21 @@ export const documentUpdates = flaw
   .table(
     "document_updates",
     {
-      id: uuid("id").primaryKey().defaultRandom(),
-      documentId: uuid("document_id")
-        .notNull()
-        .references(() => documents.id, { onDelete: "cascade" }),
+      id: uuidv7("id"),
+      documentId: uuid("document_id").notNull(),
       ownerId: ownerId(),
-      ciphertext: bytea("ciphertext").notNull(),
+      updateCt: bytea("update_ct").notNull(),
+      updateNonce: bytea("update_nonce").notNull(),
+      keyId: text("key_id").notNull(),
+      encVersion: integer("enc_version").notNull(),
       createdAt: createdAt(),
     },
     (table) => [
+      foreignKey({
+        columns: [table.documentId, table.ownerId],
+        foreignColumns: [documents.id, documents.ownerId],
+        name: "document_updates_document_owner_fk",
+      }).onDelete("cascade"),
       index("document_updates_owner_id_idx").on(table.ownerId),
       index("document_updates_document_id_idx").on(table.documentId),
       ownerPolicy("document_updates"),
@@ -348,15 +343,21 @@ export const documentVersions = flaw
   .table(
     "document_versions",
     {
-      id: uuid("id").primaryKey().defaultRandom(),
-      documentId: uuid("document_id")
-        .notNull()
-        .references(() => documents.id, { onDelete: "cascade" }),
+      id: uuidv7("id"),
+      documentId: uuid("document_id").notNull(),
       ownerId: ownerId(),
-      ciphertext: bytea("ciphertext").notNull(),
+      versionCt: bytea("version_ct").notNull(),
+      versionNonce: bytea("version_nonce").notNull(),
+      keyId: text("key_id").notNull(),
+      encVersion: integer("enc_version").notNull(),
       createdAt: createdAt(),
     },
     (table) => [
+      foreignKey({
+        columns: [table.documentId, table.ownerId],
+        foreignColumns: [documents.id, documents.ownerId],
+        name: "document_versions_document_owner_fk",
+      }).onDelete("cascade"),
       index("document_versions_owner_id_idx").on(table.ownerId),
       index("document_versions_document_id_idx").on(table.documentId),
       ownerPolicy("document_versions"),
@@ -384,26 +385,14 @@ export const TABLE_NAMES = [
   "document_versions",
 ] as const;
 
-/** Tables soumises à la RLS forcée. */
+/** RLS forcée : exactement les 4 tables de contenu. */
 export const RLS_TABLES = [
-  "users",
-  "accounts",
-  "sessions",
-  "auth_factors",
-  "recovery_codes",
-  "user_keys",
-  "user_preferences",
-  "daily_progress",
-  "erasure_log",
-  "audit_events",
-  "auth_events",
   "documents",
   "document_states",
   "document_updates",
   "document_versions",
 ] as const;
 
-/** Données utilisateur : owner_id NOT NULL et index (SEC-DATA-01, SEC-DB-05). */
 export const OWNER_TABLES = [
   "accounts",
   "sessions",

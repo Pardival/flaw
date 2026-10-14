@@ -1,8 +1,8 @@
--- T-005. Schéma flaw, RLS forcée. flaw_owner est propriétaire (arbitrage T-002 #5 annulé).
+-- T-005. Schéma flaw. flaw_owner est propriétaire. RLS forcée sur les 4 tables de contenu.
 REVOKE ALL ON SCHEMA flaw FROM PUBLIC;
 --> statement-breakpoint
 CREATE TABLE flaw.users (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   role text NOT NULL DEFAULT 'user',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
@@ -10,7 +10,7 @@ CREATE TABLE flaw.users (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.accounts (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
   provider_id text NOT NULL,
   account_id text NOT NULL,
@@ -19,7 +19,7 @@ CREATE TABLE flaw.accounts (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.sessions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
   token_hash text NOT NULL,
   expires_at timestamptz NOT NULL,
@@ -28,7 +28,7 @@ CREATE TABLE flaw.sessions (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.verifications (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   identifier text NOT NULL,
   value_hash text NOT NULL,
   expires_at timestamptz NOT NULL,
@@ -37,15 +37,18 @@ CREATE TABLE flaw.verifications (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.auth_factors (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
   kind text NOT NULL,
-  secret_ciphertext bytea NOT NULL,
+  secret_ct bytea NOT NULL,
+  secret_nonce bytea NOT NULL,
+  key_id text NOT NULL,
+  enc_version integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
 CREATE TABLE flaw.recovery_codes (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
   code_hash text NOT NULL,
   used_at timestamptz,
@@ -53,10 +56,12 @@ CREATE TABLE flaw.recovery_codes (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.user_keys (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
-  kek_id text NOT NULL,
-  wrapped_key bytea NOT NULL,
+  wrapped_ct bytea NOT NULL,
+  wrapped_nonce bytea NOT NULL,
+  key_id text NOT NULL,
+  enc_version integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
@@ -67,7 +72,7 @@ CREATE TABLE flaw.user_preferences (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.daily_progress (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
   day date NOT NULL,
   progress_count integer NOT NULL DEFAULT 0,
@@ -75,7 +80,7 @@ CREATE TABLE flaw.daily_progress (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.rate_limits (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   bucket text NOT NULL,
   window_start timestamptz NOT NULL,
   hits integer NOT NULL,
@@ -84,53 +89,88 @@ CREATE TABLE flaw.rate_limits (
 );
 --> statement-breakpoint
 CREATE TABLE flaw.erasure_log (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
+  subject text NOT NULL,
+  subject_id uuid NOT NULL,
   owner_id uuid NOT NULL,
-  erased_at timestamptz NOT NULL DEFAULT now()
+  origine text NOT NULL DEFAULT 'effacement',
+  erased_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT erasure_log_subject_check CHECK (subject IN ('user', 'document')),
+  CONSTRAINT erasure_log_origine_check CHECK (origine IN ('effacement', 'rejeu')),
+  CONSTRAINT erasure_log_owner_user CHECK (subject <> 'user' OR owner_id = subject_id),
+  CONSTRAINT erasure_log_owner_document CHECK (subject <> 'document' OR owner_id IS NOT NULL)
 );
 --> statement-breakpoint
 CREATE TABLE flaw.audit_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
   owner_id uuid NOT NULL,
   event_type text NOT NULL,
   result text NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 --> statement-breakpoint
+CREATE TABLE flaw.auth_events (
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
+  event_type text NOT NULL CHECK (event_type IN ('login_failed','login_rate_limited','mfa_failed')),
+  subject_hmac text,
+  ip_hmac text,
+  user_agent_summary text,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+--> statement-breakpoint
 CREATE TABLE flaw.documents (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid PRIMARY KEY,
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
   mode text NOT NULL,
   format text NOT NULL,
   font text NOT NULL,
   counter integer NOT NULL DEFAULT 0,
   revision integer NOT NULL DEFAULT 0,
-  projection bytea NOT NULL,
+  projection_ct bytea NOT NULL,
+  projection_nonce bytea NOT NULL,
+  key_id text NOT NULL,
+  enc_version integer NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  updated_at timestamptz NOT NULL DEFAULT now()
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT documents_id_owner_uidx UNIQUE (id, owner_id)
 );
 --> statement-breakpoint
 CREATE TABLE flaw.document_states (
-  document_id uuid PRIMARY KEY REFERENCES flaw.documents (id) ON DELETE CASCADE,
+  document_id uuid PRIMARY KEY,
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
-  ciphertext bytea NOT NULL,
-  updated_at timestamptz NOT NULL DEFAULT now()
+  state_ct bytea NOT NULL,
+  state_nonce bytea NOT NULL,
+  key_id text NOT NULL,
+  enc_version integer NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT document_states_document_owner_fk
+    FOREIGN KEY (document_id, owner_id) REFERENCES flaw.documents (id, owner_id) ON DELETE CASCADE
 );
 --> statement-breakpoint
 CREATE TABLE flaw.document_updates (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id uuid NOT NULL REFERENCES flaw.documents (id) ON DELETE CASCADE,
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
+  document_id uuid NOT NULL,
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
-  ciphertext bytea NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  update_ct bytea NOT NULL,
+  update_nonce bytea NOT NULL,
+  key_id text NOT NULL,
+  enc_version integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT document_updates_document_owner_fk
+    FOREIGN KEY (document_id, owner_id) REFERENCES flaw.documents (id, owner_id) ON DELETE CASCADE
 );
 --> statement-breakpoint
 CREATE TABLE flaw.document_versions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  document_id uuid NOT NULL REFERENCES flaw.documents (id) ON DELETE CASCADE,
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
+  document_id uuid NOT NULL,
   owner_id uuid NOT NULL REFERENCES flaw.users (id) ON DELETE CASCADE,
-  ciphertext bytea NOT NULL,
-  created_at timestamptz NOT NULL DEFAULT now()
+  version_ct bytea NOT NULL,
+  version_nonce bytea NOT NULL,
+  key_id text NOT NULL,
+  enc_version integer NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT document_versions_document_owner_fk
+    FOREIGN KEY (document_id, owner_id) REFERENCES flaw.documents (id, owner_id) ON DELETE CASCADE
 );
 --> statement-breakpoint
 CREATE INDEX accounts_owner_id_idx ON flaw.accounts (owner_id);
@@ -161,95 +201,9 @@ CREATE INDEX document_versions_owner_id_idx ON flaw.document_versions (owner_id)
 --> statement-breakpoint
 CREATE INDEX document_versions_document_id_idx ON flaw.document_versions (document_id);
 --> statement-breakpoint
-ALTER TABLE flaw.users ENABLE ROW LEVEL SECURITY;
+COMMENT ON COLUMN flaw.verifications.identifier IS 'HMAC-SHA256 poivré (hex), jamais le jeton en clair';
 --> statement-breakpoint
-ALTER TABLE flaw.users FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY users_self ON flaw.users
-  FOR ALL TO flaw_app
-  USING (id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.accounts ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.accounts FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY accounts_owner ON flaw.accounts
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.sessions ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.sessions FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY sessions_owner ON flaw.sessions
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.auth_factors ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.auth_factors FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY auth_factors_owner ON flaw.auth_factors
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.recovery_codes ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.recovery_codes FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY recovery_codes_owner ON flaw.recovery_codes
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.user_keys ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.user_keys FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY user_keys_owner ON flaw.user_keys
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.user_preferences ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.user_preferences FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY user_preferences_owner ON flaw.user_preferences
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.daily_progress ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.daily_progress FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY daily_progress_owner ON flaw.daily_progress
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.erasure_log ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.erasure_log FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY erasure_log_owner ON flaw.erasure_log
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
---> statement-breakpoint
-ALTER TABLE flaw.audit_events ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.audit_events FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY audit_events_owner ON flaw.audit_events
-  FOR ALL TO flaw_app
-  USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
-  WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
+COMMENT ON COLUMN flaw.rate_limits.bucket IS 'HMAC-SHA256 poivré (hex), jamais le seau en clair';
 --> statement-breakpoint
 ALTER TABLE flaw.documents ENABLE ROW LEVEL SECURITY;
 --> statement-breakpoint
@@ -287,35 +241,46 @@ CREATE POLICY document_versions_owner ON flaw.document_versions
   USING (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid)
   WITH CHECK (owner_id = NULLIF(current_setting('app.user_id', true), '')::uuid);
 --> statement-breakpoint
-COMMENT ON COLUMN flaw.verifications.identifier IS 'HMAC-SHA256 poivré (hex), jamais le jeton en clair';
+CREATE FUNCTION flaw.journaliser_effacement()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, flaw, pg_temp
+AS $$
+DECLARE
+  origine text := 'effacement';
+BEGIN
+  IF current_user = 'flaw_owner' AND current_setting('flaw.rejeu', true) = 'on' THEN
+    origine := 'rejeu';
+  END IF;
+  IF TG_TABLE_NAME = 'users' THEN
+    INSERT INTO flaw.erasure_log (subject, subject_id, owner_id, origine)
+    VALUES ('user', OLD.id, OLD.id, origine);
+  ELSIF TG_TABLE_NAME = 'documents' THEN
+    INSERT INTO flaw.erasure_log (subject, subject_id, owner_id, origine)
+    VALUES ('document', OLD.id, OLD.owner_id, origine);
+  END IF;
+  RETURN OLD;
+END;
+$$;
 --> statement-breakpoint
-COMMENT ON COLUMN flaw.rate_limits.bucket IS 'HMAC-SHA256 poivré (hex), jamais le seau en clair';
+CREATE TRIGGER journaliser_effacement_users
+  AFTER DELETE ON flaw.users
+  FOR EACH ROW EXECUTE FUNCTION flaw.journaliser_effacement();
 --> statement-breakpoint
-CREATE TABLE flaw.auth_events (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  event_type text NOT NULL CHECK (event_type IN ('login_failed','login_rate_limited','mfa_failed')),
-  subject_hmac text,
-  ip_hmac text,
-  user_agent_summary text,
-  created_at timestamptz NOT NULL DEFAULT now()
-);
+CREATE TRIGGER journaliser_effacement_documents
+  AFTER DELETE ON flaw.documents
+  FOR EACH ROW EXECUTE FUNCTION flaw.journaliser_effacement();
 --> statement-breakpoint
-ALTER TABLE flaw.auth_events ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-ALTER TABLE flaw.auth_events FORCE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE POLICY auth_events_insert ON flaw.auth_events FOR INSERT TO flaw_app WITH CHECK (true);
---> statement-breakpoint
-REVOKE ALL ON flaw.auth_events FROM flaw_app;
---> statement-breakpoint
-GRANT INSERT ON flaw.auth_events TO flaw_app;
---> statement-breakpoint
-REVOKE UPDATE, DELETE ON flaw.audit_events, flaw.erasure_log FROM flaw_app;
---> statement-breakpoint
-CREATE FUNCTION flaw.purge_expired()
+CREATE FUNCTION flaw.purge_journaux()
 RETURNS void
 LANGUAGE sql
+SECURITY DEFINER
+SET search_path = pg_catalog, flaw, pg_temp
 AS $$
+  DELETE FROM flaw.auth_events WHERE created_at < now() - interval '6 months';
+  DELETE FROM flaw.audit_events WHERE created_at < now() - interval '12 months';
+  DELETE FROM flaw.erasure_log WHERE erased_at < now() - interval '440 days';
   DELETE FROM flaw.verifications WHERE expires_at < now();
   DELETE FROM flaw.rate_limits AS older
   WHERE EXISTS (
@@ -325,11 +290,3 @@ AS $$
       AND newer.window_start > older.window_start
   );
 $$;
---> statement-breakpoint
-REVOKE ALL ON FUNCTION flaw.purge_expired() FROM PUBLIC;
---> statement-breakpoint
-GRANT EXECUTE ON FUNCTION flaw.purge_expired() TO flaw_app;
---> statement-breakpoint
-REVOKE ALL ON TABLE flaw.__drizzle_migrations FROM flaw_app;
---> statement-breakpoint
-REVOKE ALL ON SEQUENCE flaw.__drizzle_migrations_id_seq FROM flaw_app;

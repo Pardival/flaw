@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -241,6 +241,51 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
       });
     }
   }
+
+  function hostGawkAccepts(validatorSource: string, raw: string): boolean {
+    const directory = mkdtempSync(join(tmpdir(), "flaw-gawk-"));
+    try {
+      mkdirSync(join(directory, "bin"));
+      writeFileSync(join(directory, "secret-valide.inc"), validatorSource);
+      writeFileSync(join(directory, "bin/awk"), "#!/bin/sh\nexec gawk \"$@\"\n");
+      chmodSync(join(directory, "bin/awk"), 0o755);
+      const result = spawnSync(
+        "sh",
+        ["-c", '. ./secret-valide.inc; if secret_valide "$SECRET"; then echo 0; else echo 1; fi'],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            PATH: `${join(directory, "bin")}:${process.env.PATH ?? ""}`,
+            LC_ALL: "C.UTF-8",
+            SECRET: raw,
+          },
+        },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      return result.stdout.trim() === "0";
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+
+  it("gawk hôte : creer-secrets.sh détecte une mutation LC_ALL=C", () => {
+    const gawk = spawnSync("gawk", ["--version"], { encoding: "utf8" });
+    assert.equal(gawk.status, 0, gawk.stderr);
+    const probe = `0123456789abcdef${"é".repeat(8)}`;
+    assert.equal(Buffer.byteLength(probe, "utf8"), 32);
+    assert.equal([...probe].length, 24);
+    assert.equal(validateSecret(probe), null);
+    const validatorPath = join(root, "infra/initdb/secret-valide.inc");
+    const validator = readFileSync(validatorPath, "utf8");
+    assert.match(creerSecrets, /initdb\/secret-valide\.inc/);
+    assert.match(validator, /LC_ALL=C awk/);
+    assert.equal(hostGawkAccepts(validator, probe), true);
+    const mutated = validator.replaceAll("LC_ALL=C awk", "awk");
+    assert.notEqual(mutated, validator);
+    assert.equal(hostGawkAccepts(mutated, probe), false);
+  });
 });
 
 describe("lecture des fichiers", () => {
