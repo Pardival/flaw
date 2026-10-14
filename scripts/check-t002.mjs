@@ -112,17 +112,24 @@ function staticChecks() {
   assert("acme et corps", caddyfile.includes("email {$ACME_EMAIL}") && caddyfile.includes("encode zstd gzip") && caddyfile.includes("max_size 12MB"), "caddyfile");
 
   const secretsScript = read("infra/creer-secrets.sh");
+  const validator = read("infra/initdb/secret-valide.inc");
   assert("spec secrets", secretsScript.includes("postgres_password 70:70 400 hex32") && secretsScript.includes("app_db_password 10001:70 440 hex32") && secretsScript.includes("better_auth_secret 10001:10001 400 b64_48") && secretsScript.includes("flaw_kek 10001:10001 400 kek") && secretsScript.includes("recovery_pepper 10001:10001 400 kek"), "spec");
   assert("secrets hors t002 absents", !secretsScript.includes("restic_password") && !secretsScript.includes("offsite_s3_secret") && !secretsScript.includes("sudo -E"), "script");
   assert(
     "validateur expert",
-    secretsScript.includes("motdepasse") &&
-      secretsScript.includes('substr(s, n, 1) == "\\n"') &&
+    validator.includes("motdepasse") &&
+      validator.includes('substr(s, n, 1) == "\\n"') &&
+      secretsScript.includes("initdb/secret-valide.inc") &&
       !secretsScript.includes("tr -d '\\r\\n'"),
     "validateur",
   );
 
   const initdb = read("infra/initdb/01-role-applicatif.sh");
+  assert(
+    "initdb même validateur",
+    initdb.includes("secret-valide.inc") && !initdb.includes("tr -d '\\r\\n'"),
+    "initdb",
+  );
   assert("rôle flaw_app", initdb.includes("NOREPLICATION NOBYPASSRLS") && initdb.includes("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app") && initdb.includes("search_path = flaw") && initdb.includes("REVOKE ALL ON SCHEMA public FROM PUBLIC") && !initdb.includes("flaw_backup"), "initdb");
 
   const example = read("infra/.env.example");
@@ -155,6 +162,7 @@ async function integration() {
   cpSync(join(root, "infra/Caddyfile"), join(work, "Caddyfile"));
   cpSync(join(root, "infra/creer-secrets.sh"), join(work, "creer-secrets.sh"));
   cpSync(join(root, "infra/initdb/01-role-applicatif.sh"), join(work, "initdb/01-role-applicatif.sh"));
+  cpSync(join(root, "infra/initdb/secret-valide.inc"), join(work, "initdb/secret-valide.inc"));
   chmodSync(join(work, "creer-secrets.sh"), 0o755);
   chmodSync(join(work, "initdb/01-role-applicatif.sh"), 0o755);
   writeFileSync(

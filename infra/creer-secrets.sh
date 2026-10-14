@@ -15,8 +15,11 @@
 #   sudo sh creer-secrets.sh --verifier
 # SEC-SECRET-07 : retire uniquement le \r\n ou le \n final (aucun autre trim).
 # Longueur et caractères distincts en octets UTF-8, comme healthz.ts.
+# Le validateur est infra/initdb/secret-valide.inc (même fichier que l'init postgres).
 set -eu
 umask 077
+_here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+. "$_here/initdb/secret-valide.inc"
 D="${SECRETS_DIR:-./secrets}"
 
 SPEC='postgres_password 70:70 400 hex32
@@ -24,40 +27,6 @@ app_db_password 10001:70 440 hex32
 better_auth_secret 10001:10001 400 b64_48
 flaw_kek 10001:10001 400 kek
 recovery_pepper 10001:10001 400 kek'
-
-secret_valide() {
-  # SEC-SECRET-07 : un seul \r\n ou \n final. L'espace final reste et compte.
-  printf '%s' "$1" | awk '
-BEGIN { RS = "\0"; got = 0 }
-{
-  got = 1
-  s = $0
-  n = length(s)
-  if (n >= 2 && substr(s, n - 1, 1) == "\r" && substr(s, n, 1) == "\n") {
-    s = substr(s, 1, n - 2)
-  } else if (n >= 1 && substr(s, n, 1) == "\n") {
-    s = substr(s, 1, n - 1)
-  }
-  if (index(s, "\r") || index(s, "\n")) exit 1
-  if (length(s) < 32) exit 1
-  seen_count = 0
-  for (i = 1; i <= length(s); i++) {
-    c = substr(s, i, 1)
-    if (!(c in seen)) {
-      seen[c] = 1
-      seen_count++
-    }
-  }
-  if (seen_count < 16) exit 1
-  low = tolower(s)
-  words = "change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic"
-  nwords = split(words, w, " ")
-  for (i = 1; i <= nwords; i++) if (index(low, w[i])) exit 1
-  exit 0
-}
-END { if (!got) exit 1 }
-'
-}
 
 gen() {
   kind=$1

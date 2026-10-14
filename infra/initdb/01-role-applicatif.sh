@@ -2,8 +2,10 @@
 # Exécuté une fois par l'image postgres à l'initialisation du volume.
 # Rôle flaw_app : ni superutilisateur, ni CREATEROLE, ni CREATEDB (SEC-DB-02).
 # NOREPLICATION et NOBYPASSRLS : ajouts acceptés par l'Architecte.
-# Le mot de passe suit le validateur de l'Expert (identique à healthz.ts).
+# Le mot de passe suit secret-valide.inc (identique à creer-secrets.sh et healthz.ts).
 set -eu
+_here=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+. "$_here/secret-valide.inc"
 f=/run/secrets/app_db_password
 if [ ! -e "$f" ]; then
   echo "refus de démarrer : secret absent" >&2
@@ -20,23 +22,10 @@ case "$other" in
   *) echo "refus de démarrer : secret lisible par tous" >&2; exit 1 ;;
 esac
 
-secret_valide() {
-  raw=$(printf '%s' "$1" | tr -d '\r\n')
-  len=$(printf '%s' "$raw" | wc -c | tr -d ' ')
-  [ "$len" -ge 32 ] || return 1
-  distinct=$(printf '%s' "$raw" | fold -w1 | sort -u | wc -l | tr -d ' ')
-  [ "$distinct" -ge 16 ] || return 1
-  low=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-  for word in change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic; do
-    case "$low" in
-      *"$word"*) return 1 ;;
-    esac
-  done
-  return 0
-}
-
-APP_PW=$(tr -d '\r\n' < "$f")
-secret_valide "$APP_PW" || { echo "refus de démarrer : secret invalide" >&2; exit 1; }
+raw=$(cat "$f"; printf x)
+raw=${raw%x}
+secret_valide "$raw" || { echo "refus de démarrer : secret invalide" >&2; exit 1; }
+APP_PW=$(secret_normalise "$raw")
 
 psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" \
   -v app_pw="$APP_PW" -v dbname="$POSTGRES_DB" <<'SQL'

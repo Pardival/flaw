@@ -1,6 +1,6 @@
 /**
  * API-023 — GET /api/v1/healthz, et vérification migrate (arbitrage 11).
- * Validateur SEC-SECRET-07 : identique à infra/creer-secrets.sh.
+ * Validateur SEC-SECRET-07 : identique à infra/initdb/secret-valide.inc.
  * Seul le \r\n ou le \n final est retiré. Longueur et caractères distincts : octets UTF-8.
  * Aucun secret n'est écrit dans les messages.
  */

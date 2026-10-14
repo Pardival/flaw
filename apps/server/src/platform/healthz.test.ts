@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
+import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import {
   readSecretFile,
@@ -134,6 +136,75 @@ describe("proxy de confiance", () => {
     assert.equal(resolvedClientIp("172.31.250.10", "pas-une-ip", cidr), "172.31.250.10");
     assert.equal(resolvedClientIp("172.31.250.10", undefined, cidr), "172.31.250.10");
   });
+});
+
+describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
+  const root = fileURLToPath(new URL("../../../../", import.meta.url));
+  const creerSecrets = readFileSync(join(root, "infra/creer-secrets.sh"), "utf8");
+  const initdb = readFileSync(join(root, "infra/initdb/01-role-applicatif.sh"), "utf8");
+
+  const preludes = {
+    "creer-secrets.sh": [
+      '_here=$(CDPATH= cd -- "$(dirname "$ROOT/infra/creer-secrets.sh")" && pwd)',
+      '. "$_here/initdb/secret-valide.inc"',
+    ].join("\n"),
+    "initdb": [
+      '_here=$(CDPATH= cd -- "$(dirname "$ROOT/infra/initdb/01-role-applicatif.sh")" && pwd)',
+      '. "$_here/secret-valide.inc"',
+    ].join("\n"),
+  };
+
+  function shellVerdict(prelude: string, raw: string): { ok: boolean; normalised: Buffer } {
+    const script = [
+      prelude,
+      'if secret_valide "$SECRET"; then code=0; else code=1; fi',
+      "printf '%s\\n' \"$code\"",
+      'norm=$(secret_normalise "$SECRET"; printf x)',
+      "printf '%s' \"${norm%x}\"",
+    ].join("\n");
+    const result = spawnSync("sh", ["-c", script], {
+      cwd: root,
+      env: { ...process.env, ROOT: root, SECRET: raw },
+    });
+    assert.equal(result.status, 0, result.stderr.toString("utf8"));
+    const stdout = result.stdout;
+    const split = stdout.indexOf(0x0a);
+    assert.ok(split >= 0);
+    return { ok: stdout.subarray(0, split).toString("utf8") === "0", normalised: stdout.subarray(split + 1) };
+  }
+
+  it("source le même validateur et ne retire plus tous les CR/LF", () => {
+    assert.match(creerSecrets, /initdb\/secret-valide\.inc/);
+    assert.match(initdb, /secret-valide\.inc/);
+    assert.match(initdb, /secret_normalise/);
+    assert.equal(creerSecrets.includes("tr -d '\\r\\n'"), false);
+    assert.equal(initdb.includes("tr -d '\\r\\n'"), false);
+  });
+
+  const cases: Array<{ name: string; raw: string }> = [
+    { name: "espace final conservé", raw: `${HEX} ` },
+    { name: "espace final compté", raw: "0123456789abcde0123456789abcde0 " },
+    { name: "\\r\\n final retiré", raw: `${HEX}\r\n` },
+    { name: "\\n final retiré", raw: `${HEX}\n` },
+    { name: "CR interne refusé", raw: `${HEX.slice(0, 16)}\r${HEX.slice(16)}` },
+    { name: "LF interne refusé", raw: `${HEX.slice(0, 16)}\n${HEX.slice(16)}` },
+    { name: "31 octets", raw: "0123456789abcdef0123456789abcde" },
+    { name: "Admin", raw: "0123456789abcdefAdmin0123456789ab" },
+    { name: "TEST", raw: "0123456789abcdefTEST0123456789abcd" },
+    { name: "octets UTF-8 acceptés", raw: `0123456789abcdef${"é".repeat(16)}` },
+    { name: "longueur en octets UTF-8", raw: "0123456789abcde0123456789abcdeé" },
+  ];
+
+  for (const [origin, prelude] of Object.entries(preludes)) {
+    for (const sample of cases) {
+      it(`${origin} : ${sample.name}`, () => {
+        const expected = stripFinalNewline(sample.raw);
+        const shell = shellVerdict(prelude, sample.raw);
+        assert.equal(shell.ok, validateSecret(sample.raw) === null);
+        assert.deepEqual(shell.normalised, Buffer.from(expected, "utf8"));
+      });
+    }
+  }
 });
 
 describe("lecture des fichiers", () => {
