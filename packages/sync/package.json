@@ -1,0 +1,10 @@
+{
+  "name": "@flaw/sync",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder synchronisation (A-019).",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

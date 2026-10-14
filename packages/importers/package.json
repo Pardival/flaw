@@ -1,0 +1,10 @@
+{
+  "name": "@flaw/importers",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder imports (A-019).",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

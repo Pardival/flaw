@@ -1,0 +1,7 @@
+# SEC-SECRET-02 — gitleaks en pre-commit (v1-O).
+# Installation locale : pre-commit install
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks

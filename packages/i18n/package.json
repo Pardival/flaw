@@ -1,0 +1,10 @@
+{
+  "name": "@flaw/i18n",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Placeholder internationalisation (A-019).",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  }
+}

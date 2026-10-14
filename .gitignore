@@ -1,0 +1,17 @@
+# Dépendances et builds
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Secrets (SEC-SECRET-01)
+.env
+.env.*
+!.env.example
+
+# Outils
+coverage/
+.eslintcache
+.pnpm-debug.log*
+
+# OS
+.DS_Store
