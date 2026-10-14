@@ -8,7 +8,7 @@ import { describe, it } from "node:test";
 import {
   readSecretFile,
   resolvedClientIp,
-  stripCrLf,
+  stripFinalNewline,
   validateKeyMaterial,
   validateSecret,
   worldReadable,
@@ -17,10 +17,48 @@ import {
 const HEX = "0123456789abcdef0123456789abcdef";
 
 describe("validateur de secrets", () => {
-  it("retire uniquement CR et LF", () => {
-    assert.equal(stripCrLf("abc \r\n"), "abc ");
+  it("retire uniquement le saut de ligne final", () => {
+    assert.equal(stripFinalNewline("abc \r\n"), "abc ");
+    assert.equal(stripFinalNewline(`${HEX}\r\n`), HEX);
+    assert.equal(stripFinalNewline(`${HEX}\n`), HEX);
     assert.equal(validateSecret(`${HEX}\r\n`), null);
+    assert.equal(validateSecret(`${HEX}\n`), null);
     assert.equal(validateSecret(`${HEX} `), null);
+  });
+
+  it("ne modifie pas une valeur suivie d'un espace", () => {
+    const withSpace = `${HEX} `;
+    assert.equal(stripFinalNewline(withSpace), withSpace);
+    assert.equal(Buffer.byteLength(withSpace, "utf8"), 33);
+    assert.equal(validateSecret(withSpace), null);
+
+    const fifteen = "0123456789abcde0123456789abcde01";
+    const spaceCounts = "0123456789abcde0123456789abcde0 ";
+    assert.equal(fifteen.length, 32);
+    assert.equal(spaceCounts.length, 32);
+    assert.equal(validateSecret(fifteen), "secret invalide");
+    assert.equal(validateSecret(spaceCounts), null);
+    assert.equal(stripFinalNewline(spaceCounts), spaceCounts);
+
+    const directory = mkdtempSync(join(tmpdir(), "flaw-healthz-"));
+    const file = join(directory, "secret");
+    try {
+      writeFileSync(file, withSpace);
+      chmodSync(file, 0o600);
+      const result = readSecretFile(file, "secret");
+      assert.equal(result.ok, true);
+      if (result.ok) {
+        assert.equal(result.value, withSpace);
+      }
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("refuse 31 octets", () => {
+    const value = "0123456789abcdef0123456789abcde";
+    assert.equal(Buffer.byteLength(value, "utf8"), 31);
+    assert.equal(validateSecret(value), "secret invalide");
   });
 
   it("refuse une valeur trop courte", () => {
@@ -33,6 +71,20 @@ describe("validateur de secrets", () => {
 
   it("refuse une sous-chaîne interdite sans tenir compte de la casse", () => {
     assert.equal(validateSecret("0123456789abcdefFLAW0123456789ab"), "secret invalide");
+    assert.equal(validateSecret("0123456789abcdefAdmin0123456789ab"), "secret invalide");
+    assert.equal(validateSecret("0123456789abcdefTEST0123456789abcd"), "secret invalide");
+  });
+
+  it("refuse un CR ou un LF qui n'est pas le saut de ligne final", () => {
+    const embeddedNl = `${HEX.slice(0, 16)}\n${HEX.slice(16)}`;
+    const embeddedCr = `${HEX.slice(0, 16)}\r${HEX.slice(16)}`;
+    assert.equal(stripFinalNewline(embeddedNl), embeddedNl);
+    assert.equal(stripFinalNewline(embeddedCr), embeddedCr);
+    assert.equal(validateSecret(embeddedNl), "secret invalide");
+    assert.equal(validateSecret(embeddedCr), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\n\n`), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\r\n\r\n`), "secret invalide");
+    assert.equal(validateSecret(`${HEX}\r`), "secret invalide");
   });
 
   it("accepte 32 octets hexadécimaux distincts", () => {

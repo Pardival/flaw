@@ -1,6 +1,7 @@
 /**
  * API-023 — GET /api/v1/healthz, et vérification migrate (arbitrage 11).
- * Validateur SEC-SECRET-07 (Expert, 14/10) : identique aux scripts shell.
+ * Validateur SEC-SECRET-07 : identique à infra/creer-secrets.sh.
+ * Seul le \r\n ou le \n final est retiré. Longueur et caractères distincts : octets UTF-8.
  * Aucun secret n'est écrit dans les messages.
  */
 import { Buffer } from "node:buffer";
@@ -43,8 +44,20 @@ type RoleRow = {
   rolbypassrls: boolean;
 };
 
-export function stripCrLf(value: string): string {
-  return value.replace(/[\r\n]/g, "");
+/** Retire un seul \r\n final, sinon un seul \n final. Aucun autre caractère. */
+export function stripFinalNewline(value: string): string {
+  if (value.endsWith("\r\n")) {
+    return value.slice(0, -2);
+  }
+  if (value.endsWith("\n")) {
+    return value.slice(0, -1);
+  }
+  return value;
+}
+
+/** Octets UTF-8 distincts. Même unité que secret_valide (awk, octets) dans creer-secrets.sh. */
+function distinctOctets(value: string): number {
+  return new Set(Buffer.from(value, "utf8")).size;
 }
 
 export function worldReadable(mode: number): boolean {
@@ -52,11 +65,14 @@ export function worldReadable(mode: number): boolean {
 }
 
 export function validateSecret(raw: string): string | null {
-  const value = stripCrLf(raw);
+  const value = stripFinalNewline(raw);
+  if (value.includes("\r") || value.includes("\n")) {
+    return "secret invalide";
+  }
   if (Buffer.byteLength(value, "utf8") < 32) {
     return "secret invalide";
   }
-  if (new Set(value).size < 16) {
+  if (distinctOctets(value) < 16) {
     return "secret invalide";
   }
   const lower = value.toLowerCase();
@@ -73,7 +89,7 @@ export function validateKeyMaterial(raw: string): string | null {
   if (common !== null) {
     return common;
   }
-  const value = stripCrLf(raw);
+  const value = stripFinalNewline(raw);
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length % 4 !== 0) {
     return "kek";
   }
@@ -115,7 +131,7 @@ export function readSecretFile(filePath: string, kind: SecretKind): SecretRead {
   if (problem !== null) {
     return { ok: false, message: `refus de démarrer : ${problem}` };
   }
-  return { ok: true, value: stripCrLf(raw) };
+  return { ok: true, value: stripFinalNewline(raw) };
 }
 
 function normalizePeer(ip: string): string {

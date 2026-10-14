@@ -1,7 +1,7 @@
 /**
  * Squelette Fastify (T-004) : configuration, erreurs RFC 9457, santé, journal.
  * Les secrets passent par loadSecrets → readSecretFile (validateur T-002).
- * Le processus de l'image Docker reste src/platform/healthz.ts (T-002).
+ * L'image Docker lance ce fichier : node apps/server/src/app.ts.
  */
 import { Buffer } from "node:buffer";
 import { type Writable } from "node:stream";

@@ -114,7 +114,13 @@ function staticChecks() {
   const secretsScript = read("infra/creer-secrets.sh");
   assert("spec secrets", secretsScript.includes("postgres_password 70:70 400 hex32") && secretsScript.includes("app_db_password 10001:70 440 hex32") && secretsScript.includes("better_auth_secret 10001:10001 400 b64_48") && secretsScript.includes("flaw_kek 10001:10001 400 kek") && secretsScript.includes("recovery_pepper 10001:10001 400 kek"), "spec");
   assert("secrets hors t002 absents", !secretsScript.includes("restic_password") && !secretsScript.includes("offsite_s3_secret") && !secretsScript.includes("sudo -E"), "script");
-  assert("validateur expert", secretsScript.includes("motdepasse") && secretsScript.includes("tr -d '\\r\\n'"), "validateur");
+  assert(
+    "validateur expert",
+    secretsScript.includes("motdepasse") &&
+      secretsScript.includes('substr(s, n, 1) == "\\n"') &&
+      !secretsScript.includes("tr -d '\\r\\n'"),
+    "validateur",
+  );
 
   const initdb = read("infra/initdb/01-role-applicatif.sh");
   assert("rôle flaw_app", initdb.includes("NOREPLICATION NOBYPASSRLS") && initdb.includes("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app") && initdb.includes("search_path = flaw") && initdb.includes("REVOKE ALL ON SCHEMA public FROM PUBLIC") && !initdb.includes("flaw_backup"), "initdb");
@@ -124,7 +130,16 @@ function staticChecks() {
   assert("env sans sauvegarde", !example.includes("RESTIC_") && !example.includes("BACKUP_") && !example.includes("AWS_ACCESS_KEY_ID") && !example.includes("offsite_s3"), "env");
 
   const dockerfile = read("apps/server/Dockerfile");
-  assert("dockerfile", dockerfile.includes("sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1") && dockerfile.includes("USER 10001:10001") && dockerfile.includes('CMD ["node", "src/platform/healthz.ts"]') && !dockerfile.includes("server.mjs") && !dockerfile.includes("db_app_password"), "image");
+  assert(
+    "dockerfile",
+    dockerfile.includes("sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1") &&
+      dockerfile.includes("USER 10001:10001") &&
+      dockerfile.includes('CMD ["node", "apps/server/src/app.ts"]') &&
+      !dockerfile.includes('CMD ["node", "src/platform/healthz.ts"]') &&
+      !dockerfile.includes("server.mjs") &&
+      !dockerfile.includes("db_app_password"),
+    "image",
+  );
   const ignore = read(".dockerignore");
   assert("dockerignore", ignore.includes("**/*.test.ts") && ignore.includes("infra/secrets") && ignore.includes(".env"), "ignore");
 

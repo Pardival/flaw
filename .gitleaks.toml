@@ -1,0 +1,16 @@
+# SEC-SECRET-02 — étend la configuration par défaut.
+# L'allowlist est portée par la règle (targetRules) : une allowlist globale
+# avec un chemin ignore le fichier entier, donc un chemin seul. Ici la condition
+# est ET : *.test.ts ET (MARQUEUR… ou 0123456789abcde…). Un vrai secret reste vu.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Marqueurs de test : *.test.ts ET (MARQUEUR… ou 0123456789abcde…)"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''\.test\.ts$''']
+regexes = [
+  '''MARQUEUR[A-Z0-9]*''',
+  '''^0123456789abcde''',
+]

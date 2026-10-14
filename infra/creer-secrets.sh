@@ -13,8 +13,8 @@
 # Usage (depuis infra/) :
 #   sudo sh creer-secrets.sh
 #   sudo sh creer-secrets.sh --verifier
-# Le validateur retire seulement CR/LF, puis exige >= 32 octets, >= 16 caractères
-# distincts, et refuse les sous-chaînes de l'Expert (identique à healthz.ts).
+# SEC-SECRET-07 : retire uniquement le \r\n ou le \n final (aucun autre trim).
+# Longueur et caractères distincts en octets UTF-8, comme healthz.ts.
 set -eu
 umask 077
 D="${SECRETS_DIR:-./secrets}"
@@ -26,18 +26,37 @@ flaw_kek 10001:10001 400 kek
 recovery_pepper 10001:10001 400 kek'
 
 secret_valide() {
-  raw=$(printf '%s' "$1" | tr -d '\r\n')
-  len=$(printf '%s' "$raw" | wc -c | tr -d ' ')
-  [ "$len" -ge 32 ] || return 1
-  distinct=$(printf '%s' "$raw" | fold -w1 | sort -u | wc -l | tr -d ' ')
-  [ "$distinct" -ge 16 ] || return 1
-  low=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]')
-  for word in change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic; do
-    case "$low" in
-      *"$word"*) return 1 ;;
-    esac
-  done
-  return 0
+  # SEC-SECRET-07 : un seul \r\n ou \n final. L'espace final reste et compte.
+  printf '%s' "$1" | awk '
+BEGIN { RS = "\0"; got = 0 }
+{
+  got = 1
+  s = $0
+  n = length(s)
+  if (n >= 2 && substr(s, n - 1, 1) == "\r" && substr(s, n, 1) == "\n") {
+    s = substr(s, 1, n - 2)
+  } else if (n >= 1 && substr(s, n, 1) == "\n") {
+    s = substr(s, 1, n - 1)
+  }
+  if (index(s, "\r") || index(s, "\n")) exit 1
+  if (length(s) < 32) exit 1
+  seen_count = 0
+  for (i = 1; i <= length(s); i++) {
+    c = substr(s, i, 1)
+    if (!(c in seen)) {
+      seen[c] = 1
+      seen_count++
+    }
+  }
+  if (seen_count < 16) exit 1
+  low = tolower(s)
+  words = "change example exemple password motdepasse secret default todo xxx test dummy sample flaw postgres admin restic"
+  nwords = split(words, w, " ")
+  for (i = 1; i <= nwords; i++) if (index(low, w[i])) exit 1
+  exit 0
+}
+END { if (!got) exit 1 }
+'
 }
 
 gen() {
@@ -46,9 +65,9 @@ gen() {
   while [ "$n" -lt 200 ]; do
     n=$((n + 1))
     case "$kind" in
-      hex32) candidate=$(openssl rand -hex 32 | tr -d '\r\n') ;;
-      b64_48) candidate=$(openssl rand -base64 48 | tr -d '\r\n') ;;
-      kek) candidate=$(openssl rand -base64 32 | tr -d '\r\n') ;;
+      hex32) candidate=$(openssl rand -hex 32) ;;
+      b64_48) candidate=$(openssl rand -base64 48) ;;
+      kek) candidate=$(openssl rand -base64 32) ;;
       *) echo "générateur inconnu" >&2; return 1 ;;
     esac
     secret_valide "$candidate" || continue
@@ -70,8 +89,9 @@ if [ "${1:-}" = "--verifier" ]; then
     [ -e "$f" ] || { echo "MANQUANT  $f"; exit 1; }
     cur="$(stat -c '%u:%g %a' "$f")"
     [ "$cur" = "$own $mode" ] || { echo "ÉCART     $f ($cur, attendu $own $mode)"; exit 1; }
-    val=$(tr -d '\r\n' < "$f")
-    secret_valide "$val" || { echo "ÉCART     $f (contenu)"; exit 1; }
+    raw=$(cat "$f"; printf x)
+    raw=${raw%x}
+    secret_valide "$raw" || { echo "ÉCART     $f (contenu)"; exit 1; }
     echo "OK        $f ($cur)"
   done || ok=1
   m="$(stat -c '%a' "$D")"
