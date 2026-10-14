@@ -22,6 +22,7 @@ import {
   unwrapDek,
   wrapDek,
 } from "../src/index.ts";
+import { sealContentWithNonce, wrapDekWithNonce } from "../src/envelope.ts";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
@@ -154,99 +155,159 @@ describe("XChaCha20-Poly1305 — draft-irtf-cfrg-xchacha-03 A.3.1", () => {
     autre[0] ^= 0x01;
     expect(code(() => openXChaCha(autre, nonce, chiffre, aad))).toBe("authentication_failed");
   });
+
+  it("refuse un octet du corps, une AAD altérée, un chiffré tronqué et accepte un clair vide", () => {
+    const corps = new Uint8Array(chiffre);
+    corps[0] ^= 0x01;
+    expect(code(() => openXChaCha(clef, nonce, corps, aad))).toBe("authentication_failed");
+    const aadAltere = new Uint8Array(aad);
+    aadAltere[aadAltere.length - 1] ^= 0x01;
+    expect(code(() => openXChaCha(clef, nonce, chiffre, aadAltere))).toBe("authentication_failed");
+    expect(code(() => openXChaCha(clef, nonce, chiffre.slice(0, 15), aad))).toBe("invalid_ciphertext");
+    const vide = sealXChaCha(clef, nonce, new Uint8Array(), aad);
+    expect(openXChaCha(clef, nonce, vide, aad).length).toBe(0);
+  });
+});
+
+describe("Wycheproof XChaCha20-Poly1305 (sans dépendance)", () => {
+  const cas = [
+    {
+      nom: "tc2 clair vide",
+      resultat: "valid",
+      key: "ab1562faea9f47af3ae1c3d6d030e3af230255dff3df583ced6fbbcbf9d606a9",
+      iv: "6a5e0c4617e07091b605a4de2c02dde117de2ebd53b23497",
+      aad: "",
+      msg: "",
+      ct: "",
+      tag: "e2697ea6877aba39d9555a00e14db041",
+    },
+    {
+      nom: "tc146 tag modifié",
+      resultat: "invalid",
+      key: "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      iv: "000102030405060708090a0b0c0d0e0f1011121314151617",
+      aad: "000102",
+      msg: "",
+      ct: "",
+      tag: "0418b3e73e52c3be2eaba76807b784e1",
+    },
+  ] as const;
+
+  for (const vecteur of cas) {
+    it(vecteur.nom, () => {
+      const clef = octets(vecteur.key);
+      const nonce = octets(vecteur.iv);
+      const aad = octets(vecteur.aad);
+      const chiffre = octets(`${vecteur.ct}${vecteur.tag}`);
+      if (vecteur.resultat === "valid") {
+        expect(hex(openXChaCha(clef, nonce, chiffre, aad))).toBe(vecteur.msg);
+        expect(hex(sealXChaCha(clef, nonce, octets(vecteur.msg), aad))).toBe(hex(chiffre));
+      } else {
+        expect(code(() => openXChaCha(clef, nonce, chiffre, aad))).toBe("authentication_failed");
+      }
+    });
+  }
 });
 
 describe("enveloppe KEK → DEK → contenu", () => {
   const kek = octets("11".repeat(32));
   const userId = "11111111-1111-7111-8111-111111111111";
+  const ownerB = "cccccccc-cccc-7ccc-8ccc-cccccccccccc";
   const kekId = "kek-2026-10";
+  const dekId = "dddddddd-dddd-7ddd-8ddd-dddddddddddd";
   const rowA = "aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa";
   const rowB = "bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbbbb";
   const clairA = utf8Clair("texte-synthetique-a");
   const clairB = utf8Clair("texte-synthetique-b");
+  const label = { ownerId: userId, rowId: rowA, column: COLUMN.labelCt };
 
-  function trousseau(dek: Uint8Array, keyId: string): (id: string) => Uint8Array | undefined {
-    return (id) => (id === keyId ? dek : undefined);
+  function trousseau(dek: Uint8Array, keyId: string): (ownerId: string, id: string) => Uint8Array | undefined {
+    return (ownerId, id) => (ownerId === userId && id === keyId ? dek : undefined);
   }
 
-  it("fige l'encodage AAD : domaine, puis uint32be et UTF-8", () => {
-    expect(hex(contentAad({ rowId: rowA, column: COLUMN.labelCt }))).toBe(
-      "666c61772f6161642f76310000002461616161616161612d616161612d376161612d386161612d616161616161616161616161000000086c6162656c5f6374",
+  it("fige les deux AAD : domaine, uint32be, UTF-8, version brute", () => {
+    expect(hex(contentAad(label))).toBe(
+      "666c61772f6161642f76310000002431313131313131312d313131312d373131312d383131312d3131313131313131313131310000002461616161616161612d616161612d376161612d386161612d616161616161616161616161000000086c6162656c5f6374",
     );
-    expect(hex(dekAad(userId, kekId))).toBe(
-      "666c61772f64656b2d6161642f76310000002431313131313131312d313131312d373131312d383131312d3131313131313131313131310000000b6b656b2d323032362d3130",
+    expect(hex(dekAad(userId, kekId, ENC_VERSION))).toBe(
+      "666c61772f64656b2d6161642f76310000002431313131313131312d313131312d373131312d383131312d3131313131313131313131310000000b6b656b2d323032362d313000000001",
     );
+    expect(hex(contentAad(label)).startsWith("666c61772f6161642f7631")).toBe(true);
+    expect(hex(dekAad(userId, kekId)).startsWith("666c61772f64656b2d6161642f7631")).toBe(true);
+    expect(hex(contentAad(label))).not.toBe(hex(dekAad(userId, kekId)));
   });
 
   it("enveloppe une DEK et retrouve le clair lié à la colonne", () => {
     const dek = generateDek();
-    const keyId = "dddddddd-dddd-7ddd-8ddd-dddddddddddd";
     const wrapped = wrapDek(kek, kekId, userId, dek);
     expect(wrapped.encVersion).toBe(ENC_VERSION);
     expect(wrapped.keyId).toBe(kekId);
     expect(wrapped.status).toBe("active");
     expect(wrapped.wrappedNonce.length).toBe(24);
     expect(hex(unwrapDek(kek, userId, wrapped))).toBe(hex(dek));
-    const binding = { rowId: rowA, column: COLUMN.labelCt };
-    const sealed = sealContent(dek, keyId, binding, clairA);
-    const opened = openContent(binding, sealed, trousseau(dek, keyId));
+    const sealed = sealContent(dek, dekId, label, clairA);
+    const opened = openContent(label, sealed, trousseau(dek, dekId));
     expect(hex(opened)).toBe(hex(clairA));
-    expect(hex(wrapped.wrappedCt)).not.toContain(hex(kek));
-    expect(hex(sealed.ciphertext)).not.toContain(hex(kek));
-    expect(hex(sealed.ciphertext)).not.toContain(hex(dek));
+    expect(openContent(label, sealContent(dek, dekId, label, new Uint8Array()), trousseau(dek, dekId)).length).toBe(0);
   });
 
-  it("échoue si le chiffré label_ct est déplacé vers une autre ligne", () => {
+  it("échoue si label_ct est déplacé vers une autre ligne ou un autre utilisateur", () => {
     const dek = octets("22".repeat(32));
-    const keyId = "dek-a";
-    const sealed = sealContent(
-      dek,
-      keyId,
-      { rowId: rowA, column: COLUMN.labelCt },
-      clairA,
-      octets("33".repeat(24)),
+    const sealed = sealContentWithNonce(dek, dekId, label, clairA, octets("33".repeat(24)));
+    expect(code(() => openContent({ ...label, rowId: rowB }, sealed, trousseau(dek, dekId)))).toBe(
+      "decryption_failed",
     );
+    expect(code(() => openContent({ ...label, column: COLUMN.versionCt }, sealed, trousseau(dek, dekId)))).toBe(
+      "decryption_failed",
+    );
+    expect(code(() => openContent({ ...label, ownerId: ownerB }, sealed, () => dek))).toBe("decryption_failed");
+    const appels: string[] = [];
     expect(
       code(() =>
-        openContent({ rowId: rowB, column: COLUMN.labelCt }, sealed, trousseau(dek, keyId)),
+        openContent({ ...label, ownerId: ownerB }, sealed, (ownerId, keyId) => {
+          appels.push(`${ownerId}:${keyId}`);
+          return ownerId === userId && keyId === dekId ? dek : undefined;
+        }),
       ),
-    ).toBe("authentication_failed");
-    expect(
-      code(() =>
-        openContent({ rowId: rowA, column: COLUMN.versionCt }, sealed, trousseau(dek, keyId)),
-      ),
-    ).toBe("authentication_failed");
+    ).toBe("decryption_failed");
+    expect(appels).toEqual([`${ownerB}:${dekId}`]);
     expect(hex(clairB)).not.toBe(hex(clairA));
   });
 
-  it("refuse un key_id inconnu", () => {
+  it("ramène key_id inconnu, version et tag à une seule erreur", () => {
     const dek = octets("22".repeat(32));
-    const binding = { rowId: rowA, column: COLUMN.labelCt };
-    const sealed = sealContent(dek, "dek-connu", binding, clairA, octets("44".repeat(24)));
-    expect(code(() => openContent(binding, sealed, () => undefined))).toBe("unknown_key_id");
-  });
-
-  it("refuse une DEK de mauvaise longueur, un nonce court et une version inconnue", () => {
-    expect(code(() => sealXChaCha(octets("00".repeat(31)), octets("00".repeat(24)), clairA, new Uint8Array()))).toBe(
-      "invalid_key_length",
+    const sealed = sealContentWithNonce(dek, dekId, label, clairA, octets("44".repeat(24)));
+    expect(code(() => openContent(label, sealed, () => undefined))).toBe("decryption_failed");
+    expect(code(() => openContent(label, { ...sealed, encVersion: 2 }, trousseau(dek, dekId)))).toBe(
+      "decryption_failed",
     );
-    expect(code(() => sealXChaCha(kek, octets("00".repeat(23)), clairA, new Uint8Array()))).toBe("invalid_nonce");
-    const dek = octets("22".repeat(32));
-    const binding = { rowId: rowA, column: COLUMN.stateCt };
-    const sealed = sealContent(dek, "dek-connu", binding, clairA, octets("55".repeat(24)));
-    expect(
-      code(() => openContent(binding, { ...sealed, encVersion: 2 }, trousseau(dek, "dek-connu"))),
-    ).toBe("unsupported_version");
+    const altere = new Uint8Array(sealed.ciphertext);
+    altere[0] ^= 1;
+    expect(code(() => openContent(label, { ...sealed, ciphertext: altere }, trousseau(dek, dekId)))).toBe(
+      "decryption_failed",
+    );
   });
 
-  it("lie la DEK à l'utilisateur et à key_id", () => {
+  it("refuse un UUID non canonique, une colonne hors énumération et un surrogate isolé", () => {
+    expect(code(() => contentAad({ ...label, ownerId: rowA.toUpperCase() }))).toBe("invalid_binding");
+    expect(code(() => contentAad({ ...label, column: "title" as typeof COLUMN.labelCt }))).toBe("invalid_binding");
+    expect(code(() => dekAad(userId, "\uD800"))).toBe("invalid_binding");
+  });
+
+  it("lie la DEK à l'utilisateur, à kek_id et à enc_version", () => {
     const dek = octets("66".repeat(32));
-    const wrapped = wrapDek(kek, kekId, userId, dek, octets("77".repeat(24)));
-    expect(code(() => unwrapDek(kek, "autre-utilisateur", wrapped))).toBe("authentication_failed");
-    expect(code(() => unwrapDek(kek, userId, { ...wrapped, keyId: "kek-autre" }))).toBe(
-      "authentication_failed",
-    );
+    const wrapped = wrapDekWithNonce(kek, kekId, userId, dek, octets("77".repeat(24)));
+    expect(code(() => unwrapDek(kek, ownerB, wrapped))).toBe("decryption_failed");
+    expect(code(() => unwrapDek(kek, userId, { ...wrapped, keyId: "kek-autre" }))).toBe("decryption_failed");
+    expect(code(() => unwrapDek(kek, userId, { ...wrapped, encVersion: 2 }))).toBe("decryption_failed");
     expect(unwrapDek(kek, userId, wrapped).length).toBe(KEY_LENGTH);
+  });
+
+  it("n'exporte pas l'injection de nonce", () => {
+    const index = readFileSync(fileURLToPath(new URL("../src/index.ts", import.meta.url)), "utf8");
+    expect(index).not.toContain("WithNonce");
+    expect(wrapDek.length).toBe(4);
+    expect(sealContent.length).toBe(4);
   });
 });
 

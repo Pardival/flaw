@@ -26,4 +26,4 @@ export {
   unwrapDek,
   wrapDek,
 } from "./envelope.ts";
-export type { ContentBinding, DekLookup, KeyStatus, Sealed, WrappedDek } from "./envelope.ts";
+export type { ContentBinding, ContentColumn, DekLookup, KeyStatus, Sealed, WrappedDek } from "./envelope.ts";

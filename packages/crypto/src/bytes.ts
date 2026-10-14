@@ -1,6 +1,13 @@
 import { CryptoError } from "./errors.ts";
 
+/**
+ * UTF-8 strict. Un surrogate isolé (U+D800–U+DFFF) est refusé :
+ * TextEncoder le remplacerait par U+FFFD, ce qui divergerait du serveur.
+ */
 export function utf8(value: string): Uint8Array {
+  if (!value.isWellFormed()) {
+    throw new CryptoError("invalid_binding");
+  }
   const bytes: number[] = [];
   for (const char of value) {
     const code = char.codePointAt(0);

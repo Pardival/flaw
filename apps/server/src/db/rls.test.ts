@@ -73,6 +73,13 @@ const SORTS = {
 
 type Database = NodePgDatabase;
 
+async function insertDek(tx: Database, owner: string, id: string): Promise<void> {
+  await tx.execute(sql`
+    insert into flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version)
+    values (${id}, ${owner}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1)
+  `);
+}
+
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) {
     return result as Array<Record<string, unknown>>;
@@ -175,6 +182,23 @@ describe("migration SQL et compose", () => {
     expect(additive).not.toContain("dek_ct");
     expect(additive).not.toContain("kek_id");
     expect(additive).not.toContain("user_id");
+  });
+
+  it("pointe key_id des contenus vers la DEK et ferme result", () => {
+    const additive = readFileSync(join(root, "apps/server/drizzle/0002_dek_audit.sql"), "utf8");
+    expect(additive).toContain("ADD CONSTRAINT user_keys_id_owner_uidx UNIQUE (id, owner_id)");
+    expect(additive).toContain("ALTER TABLE flaw.documents ALTER COLUMN key_id TYPE uuid USING key_id::uuid");
+    expect(additive).toContain(
+      "FOREIGN KEY (key_id, owner_id) REFERENCES flaw.user_keys (id, owner_id) ON DELETE CASCADE",
+    );
+    expect(additive).toContain("auth_factors_dek_owner_fk");
+    expect(additive).toContain("document_states_dek_owner_fk");
+    expect(additive).toContain("document_updates_dek_owner_fk");
+    expect(additive).toContain("document_versions_dek_owner_fk");
+    expect(additive).toContain("CHECK (result IN ('ok', 'refus', 'erreur'))");
+    expect(additive).not.toMatch(/RENAME/i);
+    expect(additive).not.toContain("dek_id");
+    expect(additive).toContain("user_keys.key_id reste l'identifiant de la KEK");
   });
 
   it("ne référence aucun traceur (AC-102)", () => {
@@ -496,6 +520,8 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     const userB = crypto.randomUUID();
     const documentA = crypto.randomUUID();
     const documentB = crypto.randomUUID();
+    const dekA = crypto.randomUUID();
+    const dekB = crypto.randomUUID();
     const generated = rowsOf(
       await db.execute(sql`insert into flaw.users (role) values ('user') returning id`),
     );
@@ -503,18 +529,19 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
 
     await withUser(db, userA, async (tx) => {
       await tx.execute(sql`insert into flaw.users (id, role) values (${userA}, 'user')`);
+      await insertDek(tx, userA, dekA);
       await tx.execute(sql`
         insert into flaw.documents (
           id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
         ) values (
-          ${documentA}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${documentA}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1
         )
       `);
       await tx.execute(sql`
         insert into flaw.document_states (
           document_id, owner_id, state_ct, state_nonce, key_id, enc_version
         ) values (
-          ${documentA}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${documentA}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1
         )
       `);
       await tx.execute(sql`insert into flaw.user_preferences (owner_id) values (${userA})`);
@@ -525,11 +552,12 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
 
     await withUser(db, userB, async (tx) => {
       await tx.execute(sql`insert into flaw.users (id, role) values (${userB}, 'user')`);
+      await insertDek(tx, userB, dekB);
       await tx.execute(sql`
         insert into flaw.documents (
           id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
         ) values (
-          ${documentB}, ${userB}, 'verse', 'fountain', 'mono', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${documentB}, ${userB}, 'verse', 'fountain', 'mono', '\\x01'::bytea, '\\x02'::bytea, ${dekB}, 1
         )
       `);
     });
@@ -568,7 +596,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
           insert into flaw.documents (
             id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
           ) values (
-            ${crypto.randomUUID()}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+            ${crypto.randomUUID()}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1
           )
         `),
       ),
@@ -577,15 +605,15 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     for (const run of [
       () => withUser(db, userA, async (tx) => tx.execute(sql`
         insert into flaw.document_states (document_id, owner_id, state_ct, state_nonce, key_id, enc_version)
-        values (${documentB}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1)
+        values (${documentB}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1)
       `)),
       () => withUser(db, userA, async (tx) => tx.execute(sql`
         insert into flaw.document_updates (document_id, owner_id, update_ct, update_nonce, key_id, enc_version)
-        values (${documentB}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1)
+        values (${documentB}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1)
       `)),
       () => withUser(db, userA, async (tx) => tx.execute(sql`
         insert into flaw.document_versions (document_id, owner_id, version_ct, version_nonce, key_id, enc_version)
-        values (${documentB}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1)
+        values (${documentB}, ${userA}, '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1)
       `)),
     ]) {
       let thrown: unknown;
@@ -600,13 +628,15 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
 
   it("ignore une injection dans le filtre, l'identifiant et le tri (SEC-DB-03)", async () => {
     const userA = crypto.randomUUID();
+    const dekA = crypto.randomUUID();
     await withUser(db, userA, async (tx) => {
       await tx.execute(sql`insert into flaw.users (id, role) values (${userA}, 'user')`);
+      await insertDek(tx, userA, dekA);
       await tx.execute(sql`
         insert into flaw.documents (
           id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
         ) values (
-          ${crypto.randomUUID()}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${crypto.randomUUID()}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1
         )
       `);
     });
@@ -709,13 +739,15 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
 
     const userA = crypto.randomUUID();
     const documentA = crypto.randomUUID();
+    const dekA = crypto.randomUUID();
     await withUser(db, userA, async (tx) => {
       await tx.execute(sql`insert into flaw.users (id, role) values (${userA}, 'user')`);
+      await insertDek(tx, userA, dekA);
       await tx.execute(sql`
         insert into flaw.documents (
           id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
         ) values (
-          ${documentA}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${documentA}, ${userA}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, ${dekA}, 1
         )
       `);
       await tx.execute(sql`delete from flaw.documents where id = ${documentA}`);
@@ -1000,22 +1032,23 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [otherId]);
     const ct = Buffer.from([1]);
     const nonce = Buffer.from([2]);
-    const insertKey = (owner: string, status: string) =>
+    const activeId = crypto.randomUUID();
+    const insertKey = (id: string, owner: string, status: string) =>
       app.query(
-        "INSERT INTO flaw.user_keys (owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status) VALUES ($1, $2, $3, 'kek-2026-10', 1, $4)",
-        [owner, ct, nonce, status],
+        "INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status) VALUES ($1, $2, $3, $4, 'kek-2026-10', 1, $5)",
+        [id, owner, ct, nonce, status],
       );
-    await insertKey(userId, "active");
+    await insertKey(activeId, userId, "active");
     let duplicate = false;
     try {
-      await insertKey(userId, "active");
+      await insertKey(crypto.randomUUID(), userId, "active");
     } catch (error) {
       duplicate = true;
       expect(errorText(error)).toMatch(/23505/);
     }
     expect(duplicate).toBe(true);
-    await insertKey(userId, "retired");
-    await insertKey(otherId, "active");
+    await insertKey(crypto.randomUUID(), userId, "retired");
+    await insertKey(crypto.randomUUID(), otherId, "active");
 
     const documentId = crypto.randomUUID();
     await withUser(db, userId, async (tx) => {
@@ -1023,21 +1056,21 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
         insert into flaw.documents (
           id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
         ) values (
-          ${documentId}, ${userId}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${documentId}, ${userId}, 'prose', 'plain', 'serif', '\\x01'::bytea, '\\x02'::bytea, ${activeId}, 1
         )
       `);
       await tx.execute(sql`
         insert into flaw.document_versions (
           document_id, owner_id, version_ct, version_nonce, key_id, enc_version
         ) values (
-          ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1
+          ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, ${activeId}, 1
         )
       `);
       await tx.execute(sql`
         insert into flaw.document_versions (
           document_id, owner_id, version_ct, version_nonce, key_id, enc_version, label_ct, label_nonce
         ) values (
-          ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1, '\\x03'::bytea, '\\x04'::bytea
+          ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, ${activeId}, 1, '\\x03'::bytea, '\\x04'::bytea
         )
       `);
     });
@@ -1048,7 +1081,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
           insert into flaw.document_versions (
             document_id, owner_id, version_ct, version_nonce, key_id, enc_version, label_ct
           ) values (
-            ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, 'kek-2026-10', 1, '\\x03'::bytea
+            ${documentId}, ${userId}, '\\x01'::bytea, '\\x02'::bytea, ${activeId}, 1, '\\x03'::bytea
           )
         `),
       );
@@ -1057,5 +1090,36 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       expect(errorText(error)).toMatch(/23514/);
     }
     expect(orphan).toBe(true);
+  });
+
+  it("supprime user_keys avec le compte et refuse un result hors codes", async () => {
+    const userId = crypto.randomUUID();
+    const dekId = crypto.randomUUID();
+    await app.query("INSERT INTO flaw.users (id, role) VALUES ($1, 'user')", [userId]);
+    await app.query(
+      "INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version) VALUES ($1, $2, $3, $4, 'kek-2026-10', 1)",
+      [dekId, userId, Buffer.from([1]), Buffer.from([2])],
+    );
+    await app.query(
+      "INSERT INTO flaw.audit_events (owner_id, event_type, result) VALUES ($1, 'purge_journaux', 'ok')",
+      [userId],
+    );
+    let refused = false;
+    try {
+      await app.query(
+        "INSERT INTO flaw.audit_events (owner_id, event_type, result) VALUES ($1, 'purge_journaux', 'lignes')",
+        [userId],
+      );
+    } catch (error) {
+      refused = true;
+      expect(errorText(error)).toMatch(/23514/);
+    }
+    expect(refused).toBe(true);
+    await app.query("DELETE FROM flaw.users WHERE id = $1", [userId]);
+    const left = await app.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.user_keys WHERE owner_id = $1",
+      [userId],
+    );
+    expect(left.rows[0]?.n).toBe(0);
   });
 });

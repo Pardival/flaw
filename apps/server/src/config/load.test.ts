@@ -58,13 +58,12 @@ function validSet(overrides: Partial<{
   recoveryPepper: string;
   hmacPepper: string;
 }> = {}) {
-  const key = validKey();
   return {
     databasePassword: HEX,
     betterAuthSecret: HEX,
-    kek: key,
-    recoveryPepper: key,
-    hmacPepper: key,
+    kek: validKey(),
+    recoveryPepper: validKey(),
+    hmacPepper: validKey(),
     ...overrides,
   };
 }
@@ -135,13 +134,12 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
   });
 
   it("accepte une clé openssl suivie de CRLF et laisse l'espace au validateur commun", () => {
-    const key = `${validKey()}\r\n`;
     const env = writeSecrets(validSet({
       databasePassword: `${HEX}\r\n`,
       betterAuthSecret: `${HEX} `,
-      kek: key,
-      recoveryPepper: key,
-      hmacPepper: key,
+      kek: `${validKey()}\r\n`,
+      recoveryPepper: `${validKey()}\n`,
+      hmacPepper: `${validKey()}\n`,
     }));
     const direct = readSecretFile(env.BETTER_AUTH_SECRET_FILE ?? "", "secret");
     const loaded = loadSecrets(env);
@@ -150,6 +148,17 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
     if (loaded.ok && direct.ok) {
       expect(loaded.secrets.betterAuthSecret).toBe(direct.value);
       expect(loaded.secrets.databasePassword).toBe(HEX);
+    }
+  });
+
+  it("refuse un poivre égal à la KEK", () => {
+    const kek = validKey();
+    const env = writeSecrets(validSet({ kek, hmacPepper: kek }));
+    const result = loadSecrets(env);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.message).toBe("refus de démarrer : poivre");
+      expect(result.message).not.toContain(kek);
     }
   });
 

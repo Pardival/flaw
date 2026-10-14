@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { deriveIdentifierHmacKey, deriveRecoveryCodeKey } from "@flaw/crypto";
 
 import { validateKeyMaterial } from "../platform/healthz.ts";
-import { loadKekFile } from "./kek.ts";
+import { loadKekFile, peppersMatchKek } from "./kek.ts";
 import { PurgeRefusee, consignerResultatPurge } from "./purge.ts";
 
 const directories: string[] = [];
@@ -158,19 +158,46 @@ describe("purge_journaux — codes en clair dans audit_events", () => {
   });
 });
 
-describe("poivres — même décodeur que la KEK", () => {
-  it("dérive HMAC et codes de secours depuis le secret validé", () => {
-    const encoded = validKey();
-    const loaded = loadKekFile(writeKey(`${encoded}\n`));
-    expect(loaded.ok).toBe(true);
-    if (!loaded.ok) {
+describe("poivres hmac_pepper et recovery_pepper", () => {
+  function writeNamed(name: string, contents: string): string {
+    const directory = mkdtempSync(join(tmpdir(), "flaw-pepper-"));
+    directories.push(directory);
+    const filePath = join(directory, name);
+    writeFileSync(filePath, contents);
+    chmodSync(filePath, 0o600);
+    return filePath;
+  }
+
+  it("dérive chaque poivre depuis son fichier, jamais depuis la KEK", () => {
+    const kek = validKey();
+    const hmac = validKey();
+    const recovery = validKey();
+    const loadedHmac = loadKekFile(writeNamed("hmac_pepper", `${hmac}\n`));
+    const loadedRecovery = loadKekFile(writeNamed("recovery_pepper", `${recovery}\n`));
+    const loadedKek = loadKekFile(writeNamed("flaw_kek", `${kek}\n`));
+    expect(loadedHmac.ok && loadedRecovery.ok && loadedKek.ok).toBe(true);
+    if (!loadedHmac.ok || !loadedRecovery.ok || !loadedKek.ok) {
       return;
     }
-    const identifiants = deriveIdentifierHmacKey(loaded.kek, "pep-hmac-2026-10");
-    const secours = deriveRecoveryCodeKey(loaded.kek, "pep-2026-10");
+    const identifiants = deriveIdentifierHmacKey(loadedHmac.kek, "pep-hmac-2026-10");
+    const secours = deriveRecoveryCodeKey(loadedRecovery.kek, "pep-2026-10");
     expect(identifiants.length).toBe(32);
     expect(secours.length).toBe(32);
     expect(Buffer.from(identifiants).equals(Buffer.from(secours))).toBe(false);
+    expect(peppersMatchKek(kek, hmac, recovery)).toBe(false);
+    loadedHmac.kek.fill(0);
+    loadedRecovery.kek.fill(0);
+    loadedKek.kek.fill(0);
+  });
+
+  it("refuse de démarrer si un poivre égale la KEK", () => {
+    const kek = validKey();
+    const other = validKey();
+    expect(peppersMatchKek(kek, kek, other)).toBe(true);
+    expect(peppersMatchKek(kek, other, kek)).toBe(true);
+    expect(peppersMatchKek(kek, other, validKey())).toBe(false);
+    const source = readFileSync(join(cryptoRoot, "kek.ts"), "utf8");
+    expect(source).toContain("decoded.fill(0)");
   });
 });
 

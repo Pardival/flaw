@@ -4,6 +4,8 @@
  * 19 tables (ARC-SUM 0.4.16). La projection chiffrée est l'enveloppe
  * `projection_ct`. T-006 ajoute `label_ct` / `label_nonce` (nullables, appariés)
  * et `user_keys.status` (une seule DEK active par `owner_id`).
+ * `user_keys.key_id` est l'identifiant de la KEK. Le `key_id` des contenus
+ * (projection, état, journal, version, secret TOTP) est l'id de la DEK.
  *
  * RLS forcée seulement sur les 4 tables de contenu. `users`, `accounts` et
  * `sessions` n'ont pas de RLS. Le prédicat est
@@ -112,6 +114,30 @@ export const sessions = flaw.table(
   ],
 );
 
+/**
+ * DEK enveloppée par la KEK. key_id ici est l'identifiant de la KEK.
+ * (id, owner_id) est unique pour la FK des contenus.
+ */
+export const userKeys = flaw.table(
+  "user_keys",
+  {
+    id: uuidv7("id"),
+    ownerId: ownerId(),
+    wrappedCt: bytea("wrapped_ct").notNull(),
+    wrappedNonce: bytea("wrapped_nonce").notNull(),
+    keyId: text("key_id").notNull(),
+    encVersion: integer("enc_version").notNull(),
+    createdAt: createdAt(),
+    status: text("status").notNull().default("active"),
+  },
+  (table) => [
+    index("user_keys_owner_id_idx").on(table.ownerId),
+    unique("user_keys_id_owner_uidx").on(table.id, table.ownerId),
+    check("user_keys_status_check", sql`${table.status} in ('active', 'retired')`),
+    uniqueIndex("user_keys_one_active_uidx").on(table.ownerId).where(sql`${table.status} = 'active'`),
+  ],
+);
+
 /** identifier = HMAC-SHA256 poivré (hmac_pepper), hex 64. Pas de RLS. */
 export const verifications = flaw.table(
   "verifications",
@@ -136,11 +162,18 @@ export const authFactors = flaw.table(
     kind: text("kind").notNull(),
     secretCt: bytea("secret_ct").notNull(),
     secretNonce: bytea("secret_nonce").notNull(),
-    keyId: text("key_id").notNull(),
+    keyId: uuid("key_id").notNull(),
     encVersion: integer("enc_version").notNull(),
     createdAt: createdAt(),
   },
-  (table) => [index("auth_factors_owner_id_idx").on(table.ownerId)],
+  (table) => [
+    index("auth_factors_owner_id_idx").on(table.ownerId),
+    foreignKey({
+      columns: [table.keyId, table.ownerId],
+      foreignColumns: [userKeys.id, userKeys.ownerId],
+      name: "auth_factors_dek_owner_fk",
+    }).onDelete("cascade"),
+  ],
 );
 
 /**
@@ -164,25 +197,6 @@ export const recoveryCodes = flaw.table(
   (table) => [
     unique("recovery_codes_user_code_hmac_uidx").on(table.userId, table.codeHmac),
     check("recovery_codes_code_hmac_len", sql`octet_length(${table.codeHmac}) = 32`),
-  ],
-);
-
-export const userKeys = flaw.table(
-  "user_keys",
-  {
-    id: uuidv7("id"),
-    ownerId: ownerId(),
-    wrappedCt: bytea("wrapped_ct").notNull(),
-    wrappedNonce: bytea("wrapped_nonce").notNull(),
-    keyId: text("key_id").notNull(),
-    encVersion: integer("enc_version").notNull(),
-    createdAt: createdAt(),
-    status: text("status").notNull().default("active"),
-  },
-  (table) => [
-    index("user_keys_owner_id_idx").on(table.ownerId),
-    check("user_keys_status_check", sql`${table.status} in ('active', 'retired')`),
-    uniqueIndex("user_keys_one_active_uidx").on(table.ownerId).where(sql`${table.status} = 'active'`),
   ],
 );
 
@@ -297,7 +311,10 @@ export const auditEvents = flaw.table(
     result: text("result").notNull(),
     createdAt: createdAt(),
   },
-  (table) => [index("audit_events_owner_id_idx").on(table.ownerId)],
+  (table) => [
+    index("audit_events_owner_id_idx").on(table.ownerId),
+    check("audit_events_result_check", sql`${table.result} in ('ok', 'refus', 'erreur')`),
+  ],
 );
 
 /** Échecs sans compte. INSERT seul. HMAC hex 64 (nullable). Pas de RLS. */
@@ -334,12 +351,17 @@ export const documents = flaw
       revision: integer("revision").notNull().default(0),
       projectionCt: bytea("projection_ct").notNull(),
       projectionNonce: bytea("projection_nonce").notNull(),
-      keyId: text("key_id").notNull(),
+      keyId: uuid("key_id").notNull(),
       encVersion: integer("enc_version").notNull(),
       ...timestamps(),
     },
     (table) => [
       unique("documents_id_owner_uidx").on(table.id, table.ownerId),
+      foreignKey({
+        columns: [table.keyId, table.ownerId],
+        foreignColumns: [userKeys.id, userKeys.ownerId],
+        name: "documents_dek_owner_fk",
+      }).onDelete("cascade"),
       index("documents_owner_id_idx").on(table.ownerId),
       ownerPolicy("documents"),
     ],
@@ -354,7 +376,7 @@ export const documentStates = flaw
       ownerId: ownerId(),
       stateCt: bytea("state_ct").notNull(),
       stateNonce: bytea("state_nonce").notNull(),
-      keyId: text("key_id").notNull(),
+      keyId: uuid("key_id").notNull(),
       encVersion: integer("enc_version").notNull(),
       updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
     },
@@ -363,6 +385,11 @@ export const documentStates = flaw
         columns: [table.documentId, table.ownerId],
         foreignColumns: [documents.id, documents.ownerId],
         name: "document_states_document_owner_fk",
+      }).onDelete("cascade"),
+      foreignKey({
+        columns: [table.keyId, table.ownerId],
+        foreignColumns: [userKeys.id, userKeys.ownerId],
+        name: "document_states_dek_owner_fk",
       }).onDelete("cascade"),
       index("document_states_owner_id_idx").on(table.ownerId),
       ownerPolicy("document_states"),
@@ -379,7 +406,7 @@ export const documentUpdates = flaw
       ownerId: ownerId(),
       updateCt: bytea("update_ct").notNull(),
       updateNonce: bytea("update_nonce").notNull(),
-      keyId: text("key_id").notNull(),
+      keyId: uuid("key_id").notNull(),
       encVersion: integer("enc_version").notNull(),
       createdAt: createdAt(),
     },
@@ -388,6 +415,11 @@ export const documentUpdates = flaw
         columns: [table.documentId, table.ownerId],
         foreignColumns: [documents.id, documents.ownerId],
         name: "document_updates_document_owner_fk",
+      }).onDelete("cascade"),
+      foreignKey({
+        columns: [table.keyId, table.ownerId],
+        foreignColumns: [userKeys.id, userKeys.ownerId],
+        name: "document_updates_dek_owner_fk",
       }).onDelete("cascade"),
       index("document_updates_owner_id_idx").on(table.ownerId),
       index("document_updates_document_id_idx").on(table.documentId),
@@ -405,7 +437,7 @@ export const documentVersions = flaw
       ownerId: ownerId(),
       versionCt: bytea("version_ct").notNull(),
       versionNonce: bytea("version_nonce").notNull(),
-      keyId: text("key_id").notNull(),
+      keyId: uuid("key_id").notNull(),
       encVersion: integer("enc_version").notNull(),
       createdAt: createdAt(),
       labelCt: bytea("label_ct"),
@@ -416,6 +448,11 @@ export const documentVersions = flaw
         columns: [table.documentId, table.ownerId],
         foreignColumns: [documents.id, documents.ownerId],
         name: "document_versions_document_owner_fk",
+      }).onDelete("cascade"),
+      foreignKey({
+        columns: [table.keyId, table.ownerId],
+        foreignColumns: [userKeys.id, userKeys.ownerId],
+        name: "document_versions_dek_owner_fk",
       }).onDelete("cascade"),
       index("document_versions_owner_id_idx").on(table.ownerId),
       index("document_versions_document_id_idx").on(table.documentId),

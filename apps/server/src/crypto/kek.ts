@@ -4,6 +4,7 @@
  * Le décodage base64 suit une validation déjà réussie.
  */
 import { Buffer } from "node:buffer";
+import { timingSafeEqual } from "node:crypto";
 
 import { KEY_LENGTH } from "@flaw/crypto";
 
@@ -15,10 +16,32 @@ export type KekLoad =
 
 export function decodeValidatedKey(encoded: string): Uint8Array | null {
   const decoded = Buffer.from(encoded, "base64");
-  if (decoded.length !== KEY_LENGTH || decoded.toString("base64") !== encoded) {
-    return null;
+  try {
+    if (decoded.length !== KEY_LENGTH || decoded.toString("base64") !== encoded) {
+      return null;
+    }
+    return Uint8Array.from(decoded);
+  } finally {
+    decoded.fill(0);
   }
-  return Uint8Array.from(decoded);
+}
+
+function sameKey(left: Uint8Array | null, right: Uint8Array | null): boolean {
+  try {
+    if (left === null || right === null || left.length !== right.length) {
+      return false;
+    }
+    return timingSafeEqual(left, right);
+  } finally {
+    left?.fill(0);
+    right?.fill(0);
+  }
+}
+
+/** Refus de démarrer si hmac_pepper ou recovery_pepper égale la KEK. */
+export function peppersMatchKek(kek: string, hmacPepper: string, recoveryPepper: string): boolean {
+  return sameKey(decodeValidatedKey(kek), decodeValidatedKey(hmacPepper))
+    || sameKey(decodeValidatedKey(kek), decodeValidatedKey(recoveryPepper));
 }
 
 export function loadKekFile(filePath: string): KekLoad {
