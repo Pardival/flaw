@@ -193,6 +193,9 @@ importers:
 
   apps/server:
     dependencies:
+      '@flaw/crypto':
+        specifier: workspace:*
+        version: link:../../packages/crypto
       drizzle-orm:
         specifier: 0.45.3
         version: 0.45.3(@types/pg@8.15.5)(pg@8.16.3)
@@ -217,7 +220,14 @@ importers:
 
   packages/api-client: {}
 
-  packages/crypto: {}
+  packages/crypto:
+    dependencies:
+      '@noble/ciphers':
+        specifier: 2.4.0
+        version: 2.4.0
+      '@noble/hashes':
+        specifier: 2.4.0
+        version: 2.4.0
 
   packages/exporters: {}
 
@@ -488,6 +498,14 @@ packages:
     cpu: [x64]
     os: [linux]
     libc: [glibc]
+
+  '@noble/ciphers@2.4.0':
+    resolution: {integrity: sha512-AnjFn0Jv92laAkvMrghlFZq4qQCIN/4DxFV/eooqtC2YTjB7kBeLMS2T9KJX4Dn+ZVXLOwK0lSgqDtx9gvxtiw==}
+    engines: {node: '>= 20.19.0'}
+
+  '@noble/hashes@2.4.0':
+    resolution: {integrity: sha512-X5XaVWZIBCT7HHZGm5I7ZQXDwLG+bGXuSrMQAW+7Zvl87h1kmc1ZB1VSRJcpUfoUrGQp4Fkoxm5kZ+Ms+aW+eA==}
+    engines: {node: '>= 20.19.0'}
 
   '@pinojs/redact@0.4.0':
     resolution: {integrity: sha512-k2ENnmBugE/rzQfEcdWHcCY+/FM3VLzH9cYEsbdsoqrvzAKRhUZeRNhAZvB8OitQJ1TBed3yqWtdjzS6wJKBwg==}
@@ -1644,6 +1662,10 @@ snapshots:
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
+
+  '@noble/ciphers@2.4.0': {}
+
+  '@noble/hashes@2.4.0': {}
 
   '@pinojs/redact@0.4.0': {}
 

@@ -2,9 +2,16 @@
   "name": "@flaw/crypto",
   "private": true,
   "version": "0.0.0",
-  "description": "Placeholder cryptographie (A-019).",
+  "description": "Enveloppe KEK vers DEK, XChaCha20-Poly1305 (A-013, T-006).",
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@noble/ciphers": "2.4.0",
+    "@noble/hashes": "2.4.0"
   }
 }
