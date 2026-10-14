@@ -2,7 +2,6 @@
  * T-005 — AC-095, AC-096, AC-102, SEC-DB-02, SEC-DB-03, SEC-DB-05, SEC-DATA-01.
  * Postgres 18.6 épinglé, le même digest que infra/docker-compose.yml.
  */
-import { createHmac } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -17,7 +16,9 @@ import { APP_USER_PREDICATE, OWNER_TABLES, RLS_TABLES, TABLE_NAMES } from "./sch
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
 const DB_PASSWORD = "0123456789abcdef0123456789abcdef";
-const HMAC_PEPPER = "0123456789abcdef0123456789abcdef";
+const HMAC_A = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const HMAC_B = "0123456789abcde00123456789abcde00123456789abcde00123456789abcde0";
+const HMAC_C = "0123456789abcde10123456789abcde10123456789abcde10123456789abcde1";
 const INJECTION = "' OR 1=1 --";
 const TRACKERS = ["google-analytics", "googletagmanager", "segment.io", "plausible.io"];
 
@@ -31,10 +32,6 @@ const SORTS = {
 } as const;
 
 type Database = NodePgDatabase;
-
-function pepperedHmac(value: string): string {
-  return createHmac("sha256", HMAC_PEPPER).update(value).digest("hex");
-}
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(result)) {
@@ -462,8 +459,8 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     await expect(app.query("DELETE FROM flaw.audit_events")).rejects.toThrow();
     await expect(app.query("DELETE FROM flaw.erasure_log")).rejects.toThrow();
 
-    const subject = pepperedHmac("ada@example.invalid");
-    const ip = pepperedHmac("203.0.113.9");
+    const subject = HMAC_A;
+    const ip = HMAC_B;
     await app.query(
       "INSERT INTO flaw.auth_events (event_type, subject_hmac, ip_hmac, user_agent_summary) VALUES ($1, $2, $3, $4)",
       ["login_failed", subject, ip, "Mozilla"],
@@ -473,23 +470,23 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
 
   it("n'accepte aucun jeton en clair dans verifications.identifier et purge les lignes expirées", async () => {
     const token = "reset-password:0123456789abcdef0123456789abcdef";
-    const identifier = pepperedHmac(token);
+    const identifier = HMAC_A;
     await expect(
       app.query(
         "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')",
-        [token, pepperedHmac("valeur")],
+        [token, HMAC_C],
       ),
     ).rejects.toThrow();
 
     await app.query(
       "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, now() + interval '1 day')",
-      [identifier, pepperedHmac("valeur")],
+      [identifier, HMAC_C],
     );
     await app.query(
       "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, now() - interval '1 minute')",
-      [pepperedHmac("expire"), pepperedHmac("ancienne")],
+      [HMAC_B, HMAC_C],
     );
-    const bucket = pepperedHmac("login:203.0.113.9");
+    const bucket = HMAC_C;
     await app.query(
       "INSERT INTO flaw.rate_limits (bucket, window_start, hits) VALUES ($1, now() - interval '1 hour', 1)",
       [bucket],
