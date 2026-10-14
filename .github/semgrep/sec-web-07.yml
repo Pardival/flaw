@@ -1,0 +1,78 @@
+rules:
+  - id: sec-web-07-dom-sink
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SEC-WEB-07 : sink DOM interdit (innerHTML, outerHTML, insertAdjacentHTML,
+      document.write, eval, Function, setTimeout ou setInterval avec une chaîne).
+      Exception uniquement avec DOMPurify et revue, sans contournement automatique.
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      confidence: HIGH
+    pattern-either:
+      - pattern: $EL.innerHTML = $VAL
+      - pattern: $EL.outerHTML = $VAL
+      - pattern: $EL.innerHTML += $VAL
+      - pattern: $EL.outerHTML += $VAL
+      - pattern: $EL.insertAdjacentHTML(...)
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+      - pattern: eval(...)
+      - pattern: window.eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+      - pattern: setTimeout("...", ...)
+      - pattern: setInterval("...", ...)
+      - pattern: $EL["innerHTML"] = $VAL
+      - pattern: $EL["outerHTML"] = $VAL
+      - pattern: $EL["insertAdjacentHTML"](...)
+      - pattern: document["write"](...)
+      - pattern: document["writeln"](...)
+
+  - id: sec-web-07-dangerous-html
+    languages: [javascript, typescript]
+    severity: ERROR
+    message: >-
+      SEC-WEB-07 : dangerouslySetInnerHTML est interdit. Exception uniquement
+      avec DOMPurify et revue, sans contournement automatique.
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      confidence: HIGH
+    pattern-either:
+      - pattern: <$EL dangerouslySetInnerHTML={$VAL} />
+      - pattern: <$EL dangerouslySetInnerHTML={$VAL}>...</$EL>
+      - pattern: "{ dangerouslySetInnerHTML: $VAL }"
+
+  # Le parseur vue de Semgrep 1.180.0 ne voit pas le template. Motif limité aux .vue.
+  - id: sec-web-07-vue-v-html
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.vue"
+    message: >-
+      SEC-WEB-07 : v-html est interdit. Exception uniquement avec DOMPurify et
+      revue, sans contournement automatique.
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      confidence: HIGH
+    pattern-regex: 'v-html\s*='
+
+  # Semgrep 1.180.0 n'a pas de langage svelte. Le motif est limité aux fichiers .svelte.
+  - id: sec-web-07-svelte-html
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.svelte"
+    message: >-
+      SEC-WEB-07 : {@html} est interdit. Exception uniquement avec DOMPurify et
+      revue, sans contournement automatique.
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      confidence: HIGH
+    pattern-regex: '\{@html\b'

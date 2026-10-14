@@ -1,0 +1,167 @@
+# T-003 — CI bloquante sur chaque push et chaque pull request.
+# SEC-SUPPLY-01 install déterministe, SEC-WEB-07 lint, AC-092 licences,
+# SEC-SUPPLY-03 audit, SEC-SECRET-02 gitleaks, SEC-SUPPLY-04 Semgrep.
+# CodeQL (SEC-SUPPLY-04) seulement lorsque le dépôt est public.
+# SEC-GOV-03 (tests d'auth, ZAP préproduction) n'est pas dans ce workflow :
+# aucune cible de préproduction ni test SEC-API-01/02 n'est défini.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: install, lint, typecheck, vitest, licences, audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Node.js 24.21.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Installation déterministe
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Vitest et tests node:test
+        run: pnpm test
+
+      - name: Licences
+        run: pnpm licenses:check
+
+      - name: Audit des dépendances
+        run: node scripts/check-audit.mjs
+
+  image:
+    name: build image
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build de l'image serveur
+        run: docker build -f apps/server/Dockerfile -t flaw-app:ci .
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Installer gitleaks 8.30.1
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: gitleaks
+        run: gitleaks detect --source . --redact --no-banner
+
+      - name: Preuve SEC-SECRET-02
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          git init -q "$tmp"
+          git -C "$tmp" config user.email "ci@example.com"
+          git -C "$tmp" config user.name "ci"
+          python3 -c 'import pathlib,secrets,string,sys; root=pathlib.Path(sys.argv[1]); alphabet=string.ascii_uppercase+string.digits; access="AKIA"+"".join(secrets.choice(alphabet) for _ in range(16)); secret="".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(40)); (root/"leak.env").write_text("aws_access_key_id=%s\naws_secret_access_key=%s\n" % (access, secret), encoding="utf-8")' "$tmp"
+          git -C "$tmp" add leak.env
+          git -C "$tmp" commit -q -m "commit de test SEC-SECRET-02"
+          if gitleaks detect --source "$tmp" --redact --no-banner; then
+            echo "SEC-SECRET-02 : le commit de test aurait dû être bloqué."
+            exit 1
+          fi
+          echo "SEC-SECRET-02 : commit de test bloqué."
+
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Installer Semgrep 1.180.0
+        run: pip install semgrep==1.180.0
+
+      # p/default exige minimumReleaseAge, trustPolicy et blockExoticSubdeps,
+      # réglages d'installation non décidés ici. Les packs communautaires
+      # de langage et de sécurité couvrent le SAST sans changer cette politique.
+      - name: Semgrep
+        env:
+          SEMGREP_SEND_METRICS: "off"
+          SEMGREP_ENABLE_VERSION_CHECK: "0"
+        run: |
+          semgrep scan \
+            --config p/javascript \
+            --config p/typescript \
+            --config p/nodejs \
+            --config p/docker \
+            --config p/security-audit \
+            --config .github/semgrep/sec-web-07.yml \
+            --error \
+            --metrics=off \
+            --exclude 'fixtures/**'
+
+      - name: Preuve SEC-WEB-07
+        env:
+          SEMGREP_SEND_METRICS: "off"
+          SEMGREP_ENABLE_VERSION_CHECK: "0"
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          printf '%s\n' 'const el = {};' 'const doc = { title: "t" };' 'el.innerHTML = doc.title;' > "$tmp/sample.js"
+          if semgrep scan --config .github/semgrep/sec-web-07.yml --error --metrics=off --quiet "$tmp/sample.js"; then
+            echo "SEC-WEB-07 : el.innerHTML = doc.title aurait dû être signalé."
+            exit 1
+          fi
+          echo "SEC-WEB-07 : el.innerHTML = doc.title signalé."
+
+  codeql:
+    name: codeql
+    if: github.event.repository.visibility == 'public' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+        with:
+          languages: javascript-typescript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@24c54180a607b1449ed407dd24f251e4e9147c8d # v4.38.3

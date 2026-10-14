@@ -2,6 +2,14 @@ packages:
   - "apps/*"
   - "packages/*"
 
+# esbuild est une dépendance de Vitest. pnpm 12 n'exécute son postinstall
+# que s'il est autorisé ici.
+allowBuilds:
+  esbuild: true
+
 # minimatch 10+ est sous BlueOak-1.0.0, hors liste A-002. 9.0.9 est ISC.
 overrides:
   minimatch: "9.0.9"
+  # Vitest 3.2.7 dépend de tinypool 1.1.1, dans la plage critique
+  # GHSA-5gmw-xhrv-c9v3 et GHSA-85c8-ppgw-ccpr (correctif >= 2.1.2). 2.2.0 est MIT.
+  tinypool: "2.2.0"
