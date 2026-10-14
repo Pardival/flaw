@@ -130,11 +130,13 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     expect(match).not.toBeNull();
     port = Number(match?.[1]);
 
-    const deadline = Date.now() + 60_000;
+    const deadline = Date.now() + 90_000;
     let ready = false;
     while (Date.now() < deadline) {
-      const probe = docker(["exec", container, "pg_isready", "-U", "postgres", "-d", "flaw"]);
-      if (probe.status === 0) {
+      const logs = docker(["logs", container]);
+      const text = `${logs.stdout}\n${logs.stderr}`;
+      const marker = text.lastIndexOf("PostgreSQL init process complete");
+      if (marker >= 0 && text.slice(marker).includes("database system is ready to accept connections")) {
         ready = true;
         break;
       }
@@ -142,36 +144,49 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     }
     expect(ready).toBe(true);
 
-    admin = new Client({
-      host: "127.0.0.1",
-      port,
-      database: "flaw",
-      user: "postgres",
-      password: DB_PASSWORD,
-    });
-    await admin.connect();
-    await admin.query(
-      "CREATE ROLE flaw_app LOGIN PASSWORD '0123456789abcdef0123456789abcdef' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
-    );
+    async function connectStable(user: string): Promise<Client> {
+      let last = "connexion impossible";
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const client = new Client({
+          host: "127.0.0.1",
+          port,
+          database: "flaw",
+          user,
+          password: DB_PASSWORD,
+          connectionTimeoutMillis: 5000,
+        });
+        try {
+          await client.connect();
+          await client.query("SELECT 1");
+          return client;
+        } catch (error) {
+          last = error instanceof Error ? error.message : "connexion impossible";
+          await client.end().catch(() => undefined);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        }
+      }
+      throw new Error(last);
+    }
+
+    admin = await connectStable("postgres");
+    const existing = await admin.query("SELECT 1 FROM pg_roles WHERE rolname = 'flaw_app'");
+    if (existing.rows.length === 0) {
+      await admin.query(
+        "CREATE ROLE flaw_app LOGIN PASSWORD '0123456789abcdef0123456789abcdef' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS",
+      );
+    }
     await admin.query("REVOKE ALL ON SCHEMA public FROM PUBLIC");
-    await admin.query("CREATE SCHEMA flaw AUTHORIZATION flaw_app");
+    await admin.query("CREATE SCHEMA IF NOT EXISTS flaw AUTHORIZATION flaw_app");
     await admin.query("ALTER ROLE flaw_app SET search_path = flaw");
     await admin.query("GRANT CONNECT ON DATABASE flaw TO flaw_app");
     await admin.query("GRANT CREATE ON DATABASE flaw TO flaw_app");
     await admin.end();
 
-    app = new Client({
-      host: "127.0.0.1",
-      port,
-      database: "flaw",
-      user: "flaw_app",
-      password: DB_PASSWORD,
-    });
-    await app.connect();
+    app = await connectStable("flaw_app");
     await assertAppRole(app);
     await applyMigrations(app);
     db = drizzle(app);
-  }, 120_000);
+  }, 180_000);
 
   afterAll(async () => {
     await app?.end().catch(() => undefined);
