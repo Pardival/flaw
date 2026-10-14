@@ -27,7 +27,7 @@ COPY --from=build /out/ /app/
 COPY --from=build /src/apps/server/package.json /app/apps/server/package.json
 COPY --from=build /src/apps/server/src /app/apps/server/src
 COPY --from=build /src/apps/server/drizzle /app/apps/server/drizzle
-COPY --from=build /src/infra/droits-flaw.sql /src/infra/assert-app-role.sql /app/infra/
+COPY infra/droits-flaw.sql infra/assert-app-role.sql /app/infra/
 RUN chown -R root:root /app \
   && chmod 444 /app/infra/droits-flaw.sql /app/infra/assert-app-role.sql \
   && chmod -R a-w /app \
