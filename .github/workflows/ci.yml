@@ -112,6 +112,9 @@ jobs:
             sudo docker compose down -v --remove-orphans || true
           }
           trap cleanup EXIT
+          # --pull never garde l'image locale flaw-app:ci. Postgres, lui, n'est
+          # pas dans le cache du runner : on le tire par le digest du compose.
+          sudo docker pull postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
           if ! sudo docker compose up -d --pull never app; then
             sudo docker compose logs --no-color db migrate app || true
             echo "healthz non atteint"
