@@ -369,3 +369,51 @@ describe("lecture des fichiers", () => {
     }
   });
 });
+
+describe("refus de démarrer si un poivre égale la KEK", () => {
+  function cleValide(): string {
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const encoded = randomBytes(32).toString("base64");
+      if (validateKeyMaterial(encoded) === null) {
+        return encoded;
+      }
+    }
+    throw new Error("aucune cle de test");
+  }
+
+  it("quitte si hmac_pepper égale la KEK", () => {
+    const source = readFileSync(fileURLToPath(new URL("./healthz.ts", import.meta.url)), "utf8");
+    assert.match(source, /peppersMatchKek\(kek, hmacPepper, recoveryPepper\)/);
+    assert.match(source, /refuse\("refus de démarrer : poivre"\)/);
+
+    const kek = cleValide();
+    const recovery = cleValide();
+    const directory = mkdtempSync(join(tmpdir(), "flaw-healthz-poivre-"));
+    const file = (name: string, contents: string) => {
+      const path = join(directory, name);
+      writeFileSync(path, contents);
+      chmodSync(path, 0o600);
+      return path;
+    };
+    try {
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL("./healthz.ts", import.meta.url))], {
+        encoding: "utf8",
+        timeout: 8_000,
+        env: {
+          PATH: process.env.PATH ?? "",
+          PORT: "0",
+          DATABASE_PASSWORD_FILE: file("app_db_password", HEX),
+          BETTER_AUTH_SECRET_FILE: file("better_auth_secret", HEX),
+          FLAW_KEK_FILE: file("flaw_kek", kek),
+          HMAC_PEPPER_FILE: file("hmac_pepper", kek),
+          RECOVERY_PEPPER_FILE: file("recovery_pepper", recovery),
+        },
+      });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr ?? "", /refus de démarrer : poivre/);
+      assert.doesNotMatch(`${result.stdout ?? ""}${result.stderr ?? ""}`, new RegExp(kek.replace(/[+/]/g, "\\$&")));
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});

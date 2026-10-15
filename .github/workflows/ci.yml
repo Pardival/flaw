@@ -44,7 +44,23 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y gawk
 
       - name: Vitest et tests node:test
-        run: pnpm test
+        run: |
+          set -euo pipefail
+          set +e
+          pnpm test
+          code=$?
+          set -e
+          if [ -f /tmp/flaw-db-tests-count.txt ]; then
+            count="$(tr -d '[:space:]' < /tmp/flaw-db-tests-count.txt)"
+          else
+            count=0
+          fi
+          echo "tests DB exécutés: ${count}"
+          if [ "${count}" -lt 1 ]; then
+            echo "DB absente en CI : aucun test Postgres exécuté"
+            exit 1
+          fi
+          exit "${code}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.
       # oasdiff signale une rupture entre main et la tête. Les ajouts compatibles passent.
@@ -66,15 +82,66 @@ jobs:
         run: node scripts/check-audit.mjs
 
   image:
-    name: build image
+    name: build image, postgres, healthz
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build de l'image serveur
         run: docker build -f apps/server/Dockerfile -t flaw-app:ci .
+
+      - name: Compose Postgres et healthz
+        run: |
+          set -euo pipefail
+          cd infra
+          sudo sh creer-secrets.sh
+          umask 077
+          cat > .env << 'EOF'
+          FLAW_DOMAIN=localhost
+          ACME_EMAIL=ci@example.com
+          FLAW_IMAGE=flaw-app:ci
+          EDGE_SUBNET=172.31.250.0/24
+          CADDY_IP=172.31.250.10
+          POSTGRES_DB=flaw
+          LOG_LEVEL=info
+          EOF
+          chmod 600 .env
+          cleanup() {
+            sudo docker compose down -v --remove-orphans || true
+          }
+          trap cleanup EXIT
+          # --pull never garde l'image locale flaw-app:ci. Postgres, lui, n'est
+          # pas dans le cache du runner : on le tire par le digest du compose.
+          sudo docker pull postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+          if ! sudo docker compose up -d --pull never app; then
+            sudo docker compose logs --no-color db migrate app || true
+            echo "healthz non atteint"
+            exit 1
+          fi
+          ok=0
+          for _ in $(seq 1 40); do
+            cid="$(sudo docker compose ps -q app || true)"
+            health="absent"
+            if [ -n "${cid}" ]; then
+              health="$(sudo docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${cid}")"
+            fi
+            echo "app health: ${health}"
+            if [ "${health}" = "healthy" ]; then
+              ok=1
+              break
+            fi
+            sleep 3
+          done
+          sudo docker compose ps -a
+          if [ "${ok}" != 1 ]; then
+            sudo docker compose logs --no-color db migrate app || true
+            echo "healthz non atteint"
+            exit 1
+          fi
+          sudo docker compose exec -T app node -e 'fetch("http://127.0.0.1:3000/api/v1/healthz").then(async (r) => { const t = await r.text(); console.log(t); if (!r.ok || !t.includes("\"status\":\"ok\"")) process.exit(1); }).catch((e) => { console.error(e); process.exit(1); })'
+          echo "healthz: ok"
 
   gitleaks:
     name: gitleaks
@@ -115,7 +182,7 @@ jobs:
           tmp="$(mktemp -d)"
           cp .gitleaks.toml "$tmp/.gitleaks.toml"
           python3 - "$tmp" << 'PY'
-          import json, pathlib, secrets, string, subprocess, sys
+          import json, math, pathlib, secrets, string, subprocess, sys
           tmp = pathlib.Path(sys.argv[1])
           marker = "MARQUEUR" + "CONNEXION9f3a"
           hex_value = "0123456789abcde" + "f0123456789abcdef"
@@ -156,8 +223,22 @@ jobs:
               print(err)
               print("allowlist : un marqueur hors .test.ts aurait dû être signalé.")
               raise SystemExit(1)
-          alphabet = string.ascii_uppercase + string.digits
-          access = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+          # gitleaks 8.30 : aws-access-token = AKIA + 16 caractères [A-Z2-7], entropie >= 3.
+          alphabet = string.ascii_uppercase + "234567"
+          def shannon(value):
+              counts = {}
+              for char in value:
+                  counts[char] = counts.get(char, 0) + 1
+              total = len(value)
+              return -sum((count / total) * math.log2(count / total) for count in counts.values())
+          access = ""
+          for _ in range(100):
+              candidate = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+              if shannon(candidate) >= 3:
+                  access = candidate
+                  break
+          if access == "":
+              raise SystemExit("clef AWS de test introuvable")
           secret = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
           leak = tmp / "leak.test.ts"
           leak.write_text(
@@ -189,7 +270,30 @@ jobs:
           git init -q "$tmp"
           git -C "$tmp" config user.email "ci@example.com"
           git -C "$tmp" config user.name "ci"
-          python3 -c 'import pathlib,secrets,string,sys; root=pathlib.Path(sys.argv[1]); alphabet=string.ascii_uppercase+string.digits; access="AKIA"+"".join(secrets.choice(alphabet) for _ in range(16)); secret="".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(40)); (root/"leak.env").write_text("aws_access_key_id=%s\naws_secret_access_key=%s\n" % (access, secret), encoding="utf-8")' "$tmp"
+          python3 - "$tmp" << 'PY'
+          import math, pathlib, secrets, string, sys
+          root = pathlib.Path(sys.argv[1])
+          alphabet = string.ascii_uppercase + "234567"
+          def shannon(value):
+              counts = {}
+              for char in value:
+                  counts[char] = counts.get(char, 0) + 1
+              total = len(value)
+              return -sum((count / total) * math.log2(count / total) for count in counts.values())
+          access = ""
+          for _ in range(100):
+              candidate = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+              if shannon(candidate) >= 3:
+                  access = candidate
+                  break
+          if access == "":
+              raise SystemExit("clef AWS de test introuvable")
+          secret = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
+          (root / "leak.env").write_text(
+              "aws_access_key_id=%s\naws_secret_access_key=%s\n" % (access, secret),
+              encoding="utf-8",
+          )
+          PY
           git -C "$tmp" add leak.env
           git -C "$tmp" commit -q -m "commit de test SEC-SECRET-02"
           if gitleaks detect --source "$tmp" --redact --no-banner; then

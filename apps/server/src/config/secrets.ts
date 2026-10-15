@@ -3,6 +3,7 @@
  * Aucune règle n'est réécrite : readSecretFile est le validateur T-002
  * (identique à infra/creer-secrets.sh).
  */
+import { peppersMatchKek } from "../crypto/kek.ts";
 import { readSecretFile, type SecretKind } from "../platform/healthz.ts";
 
 export type SecretName = "databasePassword" | "betterAuthSecret" | "kek" | "recoveryPepper" | "hmacPepper";
@@ -62,6 +63,9 @@ export function loadSecrets(env: NodeJS.ProcessEnv): SecretsResult {
       return result;
     }
     secrets[spec.name] = result.value;
+  }
+  if (peppersMatchKek(secrets.kek, secrets.hmacPepper, secrets.recoveryPepper)) {
+    return { ok: false, message: "refus de démarrer : poivre" };
   }
   return { ok: true, secrets };
 }
