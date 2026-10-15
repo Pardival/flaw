@@ -9,7 +9,7 @@ export const LOGIN_HTML = `<!DOCTYPE html>
 <form method="post" action="/api/auth/sign-in">
 <label>Identifiant <input name="identifier" autocomplete="username"></label>
 <label>Mot de passe <input name="password" type="password" autocomplete="current-password"></label>
-<label>Nouveau mot de passe <input name="new-password" type="password" autocomplete="new-password"></label>
+<button type="submit">Connexion</button>
 <p>Mot de passe oublié ? L'administrateur fournit un mot de passe provisoire (commande serveur).</p>
 </form>
 </body>

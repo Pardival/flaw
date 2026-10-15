@@ -1,13 +1,23 @@
 /**
- * HMAC des identifiants. Clé HKDF-SHA-256 dérivée de hmac_pepper et HMAC_PEPPER_ID.
+ * HMAC des identifiants. La clé vient de deriveIdentifierHmacKey (T-006) :
+ * HKDF-SHA-256, sel omis, info « flaw/hmac-identifiants/v1| » ‖ HMAC_PEPPER_ID.
  */
-import { createHmac, hkdfSync } from "node:crypto";
+import { createHmac } from "node:crypto";
+
+import { deriveIdentifierHmacKey } from "@flaw/crypto";
+
+import { decodeValidatedKey } from "../crypto/kek.ts";
 
 export function hmacKey(pepperBase64: string, pepperId: string): Buffer {
-  const ikm = Buffer.from(pepperBase64, "base64");
-  return Buffer.from(
-    hkdfSync("sha256", ikm, Buffer.from(pepperId, "utf8"), Buffer.from("flaw/hmac/v1", "utf8"), 32),
-  );
+  const decoded = decodeValidatedKey(pepperBase64);
+  if (decoded === null) {
+    throw new Error("refus de démarrer : hmac");
+  }
+  try {
+    return Buffer.from(deriveIdentifierHmacKey(decoded, pepperId));
+  } finally {
+    decoded.fill(0);
+  }
 }
 
 export function hmacHex(key: Buffer, value: string): string {

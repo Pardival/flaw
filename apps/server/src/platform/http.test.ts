@@ -73,7 +73,9 @@ describe("API-023 santé", () => {
       headers: { "x-real-ip": "203.0.113.9" },
     });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ status: "ok", clientIp: "203.0.113.9" });
+    expect(response.json()).toEqual({ status: "ok" });
+    expect(response.body).not.toContain("clientIp");
+    expect(response.body).not.toContain("203.0.113.9");
     expect(response.headers["cache-control"]).toBe("no-store");
     await app.close();
   });
@@ -86,7 +88,8 @@ describe("API-023 santé", () => {
       remoteAddress: "203.0.113.4",
       headers: { "x-real-ip": "198.51.100.8" },
     });
-    expect(response.json()).toEqual({ status: "ok", clientIp: "203.0.113.4" });
+    expect(response.json()).toEqual({ status: "ok" });
+    expect(response.body).not.toContain("198.51.100.8");
     await app.close();
   });
 });
@@ -110,7 +113,7 @@ describe("SEC-WEB-10 et SEC-WEB-11", () => {
   });
 
   it("renvoie une erreur 500 générique, sans pile ni version", async () => {
-    const { app, logs } = appWithLogs();
+    const { app, logs } = appWithLogs({}, { extraPublicRoutes: ["GET /api/v1/__erreur"] });
     app.get("/api/v1/__erreur", async () => {
       throw new Error(`SELECT ${PHRASE} FROM users WHERE secret = '${MARQUEUR}' at /opt/flaw/app.ts fastify Zod`);
     });
@@ -174,7 +177,7 @@ describe("SEC-API-03", () => {
   });
 
   it("refuse un champ inconnu ou un type erroné", async () => {
-    const { app } = appWithLogs();
+    const { app } = appWithLogs({}, { extraPublicRoutes: ["POST /api/v1/__corps"] });
     const unknown = await app.inject({ method: "GET", url: "/api/v1/healthz?traceur=1" });
     expect(unknown.statusCode).toBe(400);
     expect(unknown.json()).toMatchObject({ code: "invalid_request" });
@@ -191,7 +194,7 @@ describe("SEC-API-03", () => {
   });
 
   it("refuse un titre de 301 caractères", async () => {
-    const { app } = appWithLogs();
+    const { app } = appWithLogs({}, { extraPublicRoutes: ["POST /api/v1/__corps"] });
     app.post("/api/v1/__corps", async (request) => {
       return { keys: Object.keys(request.body as object).sort() };
     });
@@ -234,7 +237,7 @@ describe("SEC-API-07 et AC-096", () => {
       revision: 4,
     };
     expect(omitServerAssigned(input)).toEqual({ title: "Chapitre" });
-    const { app } = appWithLogs();
+    const { app } = appWithLogs({}, { extraPublicRoutes: ["POST /api/v1/__corps"] });
     app.post("/api/v1/__corps", async (request) => {
       return request.body;
     });

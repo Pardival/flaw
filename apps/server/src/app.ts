@@ -10,7 +10,7 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { Client, Pool } from "pg";
 import { z } from "zod";
 
-import { registerAuth, type AuthRuntime } from "./auth/routes.ts";
+import { registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
 import { assertPasswordMinLength } from "./auth/password.ts";
 import { holdSecrets, loadConfig, type AppConfig } from "./config/load.ts";
 import type { LoadedSecrets } from "./config/secrets.ts";
@@ -23,6 +23,23 @@ import { documentTitleSchema, SERVER_ASSIGNED_KEYS } from "./platform/validation
 const healthQuerySchema = z.object({}).strict();
 
 export type BuildOptions = AuthRuntime;
+
+const declared = new WeakMap<FastifyInstance, Array<{ method: string; url: string }>>();
+
+function trackRoutes(app: FastifyInstance): void {
+  const list: Array<{ method: string; url: string }> = [];
+  declared.set(app, list);
+  app.addHook("onRoute", (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    for (const method of methods) {
+      list.push({ method, url: route.url });
+    }
+  });
+}
+
+export function declaredRoutes(app: FastifyInstance): ReadonlyArray<{ method: string; url: string }> {
+  return declared.get(app) ?? [];
+}
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
@@ -80,6 +97,9 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
       },
     },
   });
+
+  trackRoutes(app);
+  registerAuth(app, config, { ...options, logStream: stream });
 
   app.addHook("onRequest", async (request, reply) => {
     const length = Number(headerValue(request.headers["content-length"]));
@@ -141,13 +161,9 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
     if (!healthQuerySchema.safeParse(request.query).success) {
       return sendProblem(reply, 400);
     }
-    return {
-      status: "ok" as const,
-      clientIp: clientIp(request, config.TRUSTED_PROXY_CIDR),
-    };
+    return { status: "ok" as const };
   });
 
-  registerAuth(app, config, { ...options, logStream: stream });
   return app;
 }
 
@@ -223,6 +239,7 @@ async function start(config: AppConfig, secrets: LoadedSecrets): Promise<void> {
   }
   const app = buildApp(config, { pool, secrets });
   try {
+    await whenAuthReady(app);
     await app.listen({ host: "0.0.0.0", port: config.PORT });
   } catch {
     await pool.end().catch(() => undefined);

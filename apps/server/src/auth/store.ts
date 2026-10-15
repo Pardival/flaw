@@ -296,8 +296,38 @@ export async function maxLockStage(sql: Sql, bucket: string): Promise<number> {
 
 export async function insertLock(sql: Sql, bucket: string, until: Date, stage: number): Promise<void> {
   await sql.query(
-    "INSERT INTO flaw.rate_limits (bucket, window_start, hits) VALUES ($1, $2, $3)",
+    `INSERT INTO flaw.rate_limits (bucket, window_start, hits)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (bucket, window_start) DO NOTHING`,
     [bucket, until, stage],
+  );
+}
+
+export async function recentRate(
+  sql: Sql,
+  bucket: string,
+  since: Date,
+  now: Date,
+): Promise<{ hits: number; oldest: Date | null }> {
+  const result = await sql.query<{ hits: number; oldest: Date | null }>(
+    `SELECT COALESCE(SUM(hits), 0)::int AS hits, MIN(window_start) AS oldest
+     FROM flaw.rate_limits
+     WHERE bucket = $1 AND window_start >= $2 AND window_start <= $3`,
+    [bucket, since, now],
+  );
+  return { hits: result.rows[0]?.hits ?? 0, oldest: result.rows[0]?.oldest ?? null };
+}
+
+export async function purgeRateLimits(sql: Sql, cutoff: Date): Promise<void> {
+  await sql.query("DELETE FROM flaw.rate_limits WHERE window_start < $1", [cutoff]);
+}
+
+export async function rotateSession(sql: Sql, sessionId: string, tokenHash: Buffer, at: Date): Promise<void> {
+  await sql.query(
+    `UPDATE flaw.sessions
+     SET token_hash = $2, last_activity_at = $3
+     WHERE id = $1 AND revoked_at IS NULL`,
+    [sessionId, tokenHash, at],
   );
 }
 

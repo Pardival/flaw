@@ -10,7 +10,6 @@ import { documentTitleSchema } from "./validation.ts";
 export const healthResponseSchema = z
   .object({
     status: z.literal("ok"),
-    clientIp: z.string(),
   })
   .strict();
 

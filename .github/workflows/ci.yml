@@ -43,7 +43,7 @@ jobs:
       - name: gawk pour la parité SEC-SECRET-07
         run: sudo apt-get update && sudo apt-get install -y gawk
 
-      # Q-012 — le compteur DB_TESTS_EXECUTED est vérifié, pas seulement le code de sortie.
+      # Q-012 — seuil par fichier (ci/db-tests.json), pas une somme ni la dernière valeur.
       - name: Vitest et tests node:test
         run: |
           set -euo pipefail
@@ -51,12 +51,7 @@ jobs:
           pnpm test | tee "$RUNNER_TEMP/test.log"
           status=${PIPESTATUS[0]}
           set -e
-          count="$(grep -oE 'DB_TESTS_EXECUTED=[0-9]+' "$RUNNER_TEMP/test.log" | tail -1 | cut -d= -f2 || true)"
-          if [ -z "${count}" ] || [ "${count}" -lt 12 ]; then
-            echo "DB_TESTS_EXECUTED insuffisant: ${count:-absent}"
-            exit 1
-          fi
-          echo "DB_TESTS_EXECUTED=${count}"
+          node scripts/check-db-tests.mjs "$RUNNER_TEMP/test.log"
           exit "${status}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.

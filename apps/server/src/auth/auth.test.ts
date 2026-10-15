@@ -8,13 +8,13 @@ import { spawnSync } from "node:child_process";
 import { chmodSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { Client, Pool } from "pg";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { assertAppPool, buildApp, notifyStartupRefusal } from "../app.ts";
+import { assertAppPool, buildApp, declaredRoutes, notifyStartupRefusal } from "../app.ts";
 import { loadConfig, type AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
@@ -40,9 +40,10 @@ import {
   hashPassword,
   verifyPassword,
 } from "./password.ts";
-import { AUTH_ROUTES } from "./routes.ts";
+import * as passwordModule from "./password.ts";
+import { AUTH_ROUTES, isPublicRoute } from "./routes.ts";
 import { openAuth } from "./service.ts";
-import { listAuditEvents } from "./store.ts";
+import { insertLock, listAuditEvents, purgeRateLimits } from "./store.ts";
 
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -52,6 +53,7 @@ const ORIGIN = "https://flaw.test";
 const PASSWORD = "phrase-secrete-ok";
 const TRACKERS = ["google-analytics", "googletagmanager", "segment.io", "plausible.io", "doubleclick.net"];
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
+const dbTestsLabel = basename(fileURLToPath(import.meta.url));
 const cliPath = fileURLToPath(new URL("../admin/cli.ts", import.meta.url));
 const container = `flaw-t007-auth-${process.pid}`;
 
@@ -200,7 +202,10 @@ describe("politique et fichiers (hors base)", () => {
   it("pose autocomplete et n'embarque aucun traceur (SEC-AUTH-02, AC-102)", () => {
     expect(LOGIN_HTML).toContain('autocomplete="username"');
     expect(LOGIN_HTML).toContain('autocomplete="current-password"');
-    expect(LOGIN_HTML).toContain('autocomplete="new-password"');
+    expect(LOGIN_HTML).toContain('method="post"');
+    expect(LOGIN_HTML).toContain('action="/api/auth/sign-in"');
+    expect(LOGIN_HTML).not.toContain("Nouveau mot de passe");
+    expect(LOGIN_HTML).not.toContain("new-password");
     expect(LOGIN_HTML.toLowerCase()).not.toContain("onpaste");
     expect(LOGIN_HTML).not.toContain("localStorage");
     expect(LOGIN_HTML).not.toContain("sessionStorage");
@@ -252,11 +257,63 @@ describe("politique et fichiers (hors base)", () => {
     expect(dockerfile).toContain("/usr/local/bin/flaw-admin");
   });
 
+  it("dérive la clé HMAC des identifiants selon le vecteur T-006", () => {
+    const pepper = Buffer.from("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", "hex").toString(
+      "base64",
+    );
+    const key = hmacKey(pepper, "pep-hmac-vecteur-1");
+    expect(key.toString("hex")).toBe("a87a5ab0e5693726ea63e40cb65826db845c362178654c196ea8ad6a953ff201");
+  });
+
+  it("calcule le hachage leurre dès l'ouverture", async () => {
+    const auth = openAuth({
+      pool: {} as Pool,
+      pepper: validKey(),
+      pepperId: "pep-hmac-2026-10",
+      minLength: 15,
+      idleDays: 30,
+      maxDays: 90,
+      argon: ARGON_FLOOR,
+      now: () => new Date(),
+    });
+    const first = auth.ready();
+    expect(auth.ready()).toBe(first);
+    await first;
+  });
+
+  it("exige une session sur chaque route hors liste blanche (SEC-API-01)", async () => {
+    const app = buildApp(config());
+    app.get("/api/v1/nouvelle", async () => ({ ok: true }));
+    const routes = declaredRoutes(app);
+    expect(routes.length).toBeGreaterThan(0);
+    expect(routes.some((route) => route.method === "GET" && route.url === "/api/v1/nouvelle")).toBe(true);
+    for (const route of routes) {
+      const url = route.url.includes(":")
+        ? route.url.replace(/:id/g, "00000000-0000-4000-8000-000000000001")
+        : route.url;
+      const response = await app.inject({
+        method: route.method as "GET",
+        url,
+        headers: route.method === "GET" || route.method === "HEAD" ? {} : { origin: ORIGIN },
+      });
+      if (isPublicRoute(route.method, route.url)) {
+        expect(response.statusCode, `${route.method} ${route.url}`).not.toBe(401);
+      } else {
+        expect(response.statusCode, `${route.method} ${route.url}`).toBe(401);
+        if (route.method !== "HEAD") {
+          expect(response.json(), `${route.method} ${route.url}`).toEqual({ message: AUTH_REQUIRED });
+        }
+      }
+    }
+    await app.close();
+  });
+
   it("exige une session sur les routes protégées et laisse la santé sans version (SEC-API-01, AC-030)", async () => {
     const app = buildApp(config());
     const health = await app.inject({ method: "GET", url: "/api/v1/healthz" });
     expect(health.statusCode).toBe(200);
-    expect(health.json()).toEqual({ status: "ok", clientIp: expect.any(String) });
+    expect(health.json()).toEqual({ status: "ok" });
+    expect(health.body).not.toContain("clientIp");
     expect(health.body).not.toContain("version");
     const login = await app.inject({ method: "GET", url: "/login" });
     expect(login.statusCode).toBe(200);
@@ -458,7 +515,7 @@ describe("authentification sur PostgreSQL", () => {
     secrets.kek = validKey();
     secrets.recoveryPepper = validKey();
     secrets.hmacPepper = pepper;
-    const removed = docker(["rm", "-f", container]);
+    const removed = docker(["rm", "-fv", container]);
     expect([0, 1]).toContain(removed.status);
     const started = docker([
       "run",
@@ -577,14 +634,14 @@ describe("authentification sur PostgreSQL", () => {
   }, 180_000);
 
   afterAll(async () => {
-    process.stdout.write(`DB_TESTS_EXECUTED=${dbTests}\n`);
+    process.stdout.write(`DB_TESTS_EXECUTED[${dbTestsLabel}]=${dbTests}\n`);
     await pool?.end().catch(() => undefined);
     await appClient?.end().catch(() => undefined);
     await owner?.end().catch(() => undefined);
     if (secretDir !== "") {
       rmSync(secretDir, { recursive: true, force: true });
     }
-    docker(["rm", "-f", container]);
+    docker(["rm", "-fv", container]);
   });
 
   function dbTest(name: string, fn: () => Promise<void>, timeout = 60_000): void {
@@ -780,16 +837,24 @@ describe("authentification sur PostgreSQL", () => {
     });
     expect(changed.statusCode).toBe(200);
     expect(logText.slice(mark)).toContain("password_changed");
+    const rotated = setCookie(changed.headers);
+    expect(tokenOf(rotated)).not.toBe(tokenOf(secondCookie));
     const other = await app.inject({
       method: "GET",
       url: "/api/v1/me",
       headers: { cookie: cookiePair(firstCookie) },
     });
     expect(other.statusCode).toBe(401);
-    const current = await app.inject({
+    const previous = await app.inject({
       method: "GET",
       url: "/api/v1/me",
       headers: { cookie: cookiePair(secondCookie) },
+    });
+    expect(previous.statusCode).toBe(401);
+    const current = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: cookiePair(rotated) },
     });
     expect(current.statusCode).toBe(200);
     await app.close();
@@ -1326,4 +1391,200 @@ describe("authentification sur PostgreSQL", () => {
     expect(fresh.statusCode).toBe(200);
     await app.close();
   }, 180_000);
+
+  dbTest("compte les échecs sur 15 minutes glissantes (SEC-AUTH-04)", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const ip = nextIp();
+    clock.ms = Date.parse("2026-01-15T00:14:00.000Z");
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const failed = await sign(app, email, "mauvais-mot-de-passe", ip);
+      expect(failed.statusCode).toBe(401);
+    }
+    clock.ms = Date.parse("2026-01-15T00:16:00.000Z");
+    const fifth = await sign(app, email, "mauvais-mot-de-passe", ip);
+    expect(fifth.statusCode).toBe(401);
+    const locked = await sign(app, email, PASSWORD, ip);
+    expect(locked.statusCode).toBe(429);
+    await app.close();
+  });
+
+  dbTest("compte les tentatives d'une IP sur 15 minutes glissantes (SEC-AUTH-04)", async () => {
+    const app = buildApp(config(), appOptions());
+    const ip = nextIp();
+    clock.ms = Date.parse("2026-01-15T00:14:00.000Z");
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const failed = await sign(app, nextEmail(), PASSWORD, ip);
+      expect(failed.statusCode).toBe(401);
+    }
+    clock.ms = Date.parse("2026-01-15T00:16:00.000Z");
+    const limited = await sign(app, nextEmail(), PASSWORD, ip);
+    expect(limited.statusCode).toBe(429);
+    await app.close();
+  });
+
+  dbTest("limite le changement de mot de passe (SEC-AUTH-10)", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp(), true);
+    const cookie = cookiePair(setCookie(signed.headers));
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const wrong = await app.inject({
+        method: "POST",
+        url: "/api/auth/change-password",
+        remoteAddress: "172.31.250.10",
+        headers: { cookie, origin: ORIGIN, "content-type": "application/json" },
+        payload: JSON.stringify({ currentPassword: "mauvais-mot-de-passe", newPassword: `${PASSWORD}-nouveau-2` }),
+      });
+      expect(wrong.statusCode).toBe(401);
+    }
+    const limited = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      remoteAddress: "172.31.250.10",
+      headers: { cookie, origin: ORIGIN, "content-type": "application/json" },
+      payload: JSON.stringify({ currentPassword: PASSWORD, newPassword: `${PASSWORD}-nouveau-3` }),
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBeDefined();
+    await app.close();
+  });
+
+  dbTest("limite l'oubli de mot de passe (AC-032)", async () => {
+    const app = buildApp(config(), appOptions());
+    const ip = nextIp();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/forget-password",
+        remoteAddress: "172.31.250.10",
+        headers: { "content-type": "application/json", origin: ORIGIN, "x-real-ip": ip },
+        payload: JSON.stringify({ identifier: nextEmail() }),
+      });
+      expect(response.statusCode).toBe(200);
+    }
+    const limited = await app.inject({
+      method: "POST",
+      url: "/api/auth/forget-password",
+      remoteAddress: "172.31.250.10",
+      headers: { "content-type": "application/json", origin: ORIGIN, "x-real-ip": ip },
+      payload: JSON.stringify({ identifier: nextEmail() }),
+    });
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBeDefined();
+    await app.close();
+  });
+
+  dbTest("ignore un second verrou identique et purge les compteurs périmés", async () => {
+    const key = hmacKey(pepper, "pep-hmac-2026-10");
+    const bucket = bucketHmac(key, "lock|conflit");
+    const until = new Date(Date.parse("2026-01-15T00:05:00.000Z"));
+    await insertLock(pool, bucket, until, 1);
+    await insertLock(pool, bucket, until, 4);
+    const rows = await pool.query<{ hits: number }>("SELECT hits FROM flaw.rate_limits WHERE bucket = $1", [bucket]);
+    expect(rows.rows).toHaveLength(1);
+    expect(rows.rows[0]?.hits).toBe(1);
+    const stale = bucketHmac(key, "lock|vieux");
+    await pool.query("INSERT INTO flaw.rate_limits (bucket, window_start, hits) VALUES ($1, $2, 1)", [
+      stale,
+      new Date(Date.parse("2026-01-14T23:44:00.000Z")),
+    ]);
+    await purgeRateLimits(pool, new Date(Date.parse("2026-01-14T23:45:00.000Z")));
+    const gone = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM flaw.rate_limits WHERE bucket = $1", [
+      stale,
+    ]);
+    expect(gone.rows[0]?.n).toBe(0);
+    const kept = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM flaw.rate_limits WHERE bucket = $1", [
+      bucket,
+    ]);
+    expect(kept.rows[0]?.n).toBe(1);
+  });
+
+  dbTest("vérifie argon2 même quand le compte est inconnu", async () => {
+    const spy = vi.spyOn(passwordModule, "verifyPassword");
+    try {
+      const app = buildApp(config(), appOptions());
+      const response = await sign(app, nextEmail(), PASSWORD, nextIp());
+      expect(response.statusCode).toBe(401);
+      expect(spy).toHaveBeenCalled();
+      const hashes = spy.mock.calls.map((call) => call[1]);
+      expect(hashes.some((hash) => typeof hash === "string" && hash.startsWith("$argon2id$"))).toBe(true);
+      await app.close();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  dbTest("ignore l'en-tête x-user-id envoyé par le client", async () => {
+    const emailA = nextEmail();
+    const emailB = nextEmail();
+    const userA = await seedUser(emailA, PASSWORD);
+    const userB = await seedUser(emailB, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const anonymous = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { "x-user-id": userB },
+    });
+    expect(anonymous.statusCode).toBe(401);
+    const signed = await sign(app, emailA, PASSWORD, nextIp(), true);
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: cookiePair(setCookie(signed.headers)), "x-user-id": userB },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toEqual({ id: userA, role: "user", identifier: emailA });
+    await app.close();
+  });
+
+  dbTest("accepte un DELETE sans corps quand l'origine est valide (SEC-WEB-05)", async () => {
+    const email = nextEmail();
+    const userId = await seedUser(email, PASSWORD);
+    const documentId = await seedDocument(userId);
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp(), true);
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/documents/${documentId}`,
+      remoteAddress: "172.31.250.10",
+      headers: { cookie: cookiePair(setCookie(signed.headers)), origin: ORIGIN },
+    });
+    expect(removed.statusCode).toBe(204);
+    expect(await documentExists(userId, documentId)).toBe(false);
+    await app.close();
+  });
+
+  dbTest("accepte le formulaire de connexion quand l'origine est valide", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const denied = await app.inject({
+      method: "POST",
+      url: "/api/auth/sign-in",
+      remoteAddress: "172.31.250.10",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: `identifier=${encodeURIComponent(email)}&password=${encodeURIComponent(PASSWORD)}`,
+    });
+    expect(denied.statusCode).toBe(403);
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/api/auth/sign-in",
+      remoteAddress: "172.31.250.10",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: ORIGIN },
+      payload: `identifier=${encodeURIComponent(email)}&password=${encodeURIComponent(PASSWORD)}`,
+    });
+    expect(accepted.statusCode).toBe(200);
+    expect(setCookie(accepted.headers).startsWith("__Secure-flaw.session_token=")).toBe(true);
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: cookiePair(setCookie(accepted.headers)) },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).toMatchObject({ identifier: email });
+    await app.close();
+  });
 });

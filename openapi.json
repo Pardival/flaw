@@ -21,14 +21,10 @@
                     "status": {
                       "type": "string",
                       "const": "ok"
-                    },
-                    "clientIp": {
-                      "type": "string"
                     }
                   },
                   "required": [
-                    "status",
-                    "clientIp"
+                    "status"
                   ],
                   "additionalProperties": false
                 }

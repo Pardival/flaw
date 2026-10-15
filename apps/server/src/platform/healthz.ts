@@ -250,24 +250,18 @@ function sendJson(response: ServerResponse, status: number, body: unknown): void
   response.end(`${JSON.stringify(body)}\n`);
 }
 
-function handle(request: IncomingMessage, response: ServerResponse, cidr: string): void {
+function handle(request: IncomingMessage, response: ServerResponse): void {
   const path = (request.url ?? "/").split("?")[0] ?? "/";
   if (request.method === "GET" && path === "/api/v1/healthz") {
-    const peer = request.socket.remoteAddress ?? "";
-    const rawHeader = request.headers["x-real-ip"];
-    const header = Array.isArray(rawHeader) ? rawHeader[0] : rawHeader;
-    sendJson(response, 200, {
-      status: "ok",
-      clientIp: resolvedClientIp(peer, header, cidr),
-    });
+    sendJson(response, 200, { status: "ok" });
     return;
   }
   sendJson(response, 404, { error: "not_found" });
 }
 
-function listen(port: number, cidr: string): void {
+function listen(port: number): void {
   createServer((request, response) => {
-    handle(request, response, cidr);
+    handle(request, response);
   }).listen(port, "0.0.0.0");
 }
 
@@ -287,7 +281,7 @@ async function main(): Promise<void> {
     refuse("refus de démarrer : poivre");
   }
   const port = Number(process.env.PORT ?? "3000");
-  listen(port, process.env.TRUSTED_PROXY_CIDR ?? "");
+  listen(port);
 }
 
 function isDirectRun(): boolean {

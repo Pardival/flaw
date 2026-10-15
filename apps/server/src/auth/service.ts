@@ -17,9 +17,9 @@ import {
   hashPassword,
   passwordNeedsRehash,
   provisionalPassword,
-  verifyPassword,
   type ArgonParams,
 } from "./password.ts";
+import * as passwordApi from "./password.ts";
 import {
   absentUserId,
   activeLock,
@@ -37,6 +37,9 @@ import {
   insertAuthEvent,
   insertLock,
   insertSession,
+  purgeRateLimits,
+  recentRate,
+  rotateSession,
   insertUser,
   insertVerification,
   listDevices,
@@ -51,6 +54,7 @@ import {
 } from "./store.ts";
 
 const WINDOW_MS = 15 * 60 * 1000;
+const SLICE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEMP_TTL_MS = DAY_MS;
 const LOCK_DELAYS = [60, 300, 900];
@@ -87,8 +91,12 @@ type AttemptContext = {
   remember: boolean;
 };
 
-function windowStart(now: Date): Date {
-  return new Date(Math.floor(now.getTime() / WINDOW_MS) * WINDOW_MS);
+function sliceStart(now: Date): Date {
+  return new Date(Math.floor(now.getTime() / SLICE_MS) * SLICE_MS);
+}
+
+function windowSince(now: Date): Date {
+  return new Date(now.getTime() - WINDOW_MS);
 }
 
 function delayForStage(stage: number): number {
@@ -104,10 +112,14 @@ export function openAuth(deps: AuthDeps) {
   assertPasswordMinLength(deps.minLength);
   assertArgonParams(deps.argon);
   const key = hmacKey(deps.pepper, deps.pepperId);
-  let dummy: Promise<string> | null = null;
+  const dummy = hashPassword(dummyPasswordMaterial(), deps.argon);
+  const readyPromise = dummy.then(() => undefined);
+
+  function ready(): Promise<void> {
+    return readyPromise;
+  }
 
   function dummyHash(): Promise<string> {
-    dummy ??= hashPassword(dummyPasswordMaterial(), deps.argon);
     return dummy;
   }
 
@@ -117,7 +129,7 @@ export function openAuth(deps: AuthDeps) {
 
   async function checkSecret(password: string, hashed: string | null): Promise<boolean> {
     const material = hashed !== null && hashed.startsWith("$argon2id$") ? hashed : await dummyHash();
-    const matches = await verifyPassword(password, material);
+    const matches = await passwordApi.verifyPassword(password, material);
     return hashed !== null && hashed.startsWith("$argon2id$") && matches;
   }
 
@@ -125,9 +137,8 @@ export function openAuth(deps: AuthDeps) {
     const now = deps.now();
     const device = summarizeDevice(input.userAgent);
     const summary = deviceLabel(device);
-    const ipBucket = bucketHmac(key, `ip|${input.ip}`);
-    const ipHits = await bumpRate(deps.pool, ipBucket, windowStart(now));
-    if (ipHits > 20) {
+    const ipHit = await noteHit(bucketHmac(key, `ip|${input.ip}`), now);
+    if (ipHit.hits > 20) {
       await insertAuthEvent(
         deps.pool,
         "login_rate_limited",
@@ -136,7 +147,7 @@ export function openAuth(deps: AuthDeps) {
         summary,
       );
       emit({ type: "rate_limited", result: "echec", ip: input.ip, userAgent: input.userAgent ?? null });
-      return { kind: "limited", retryAfter: retrySeconds(new Date(windowStart(now).getTime() + WINDOW_MS), now) };
+      return { kind: "limited", retryAfter: ipHit.retryAfter };
     }
 
     const account = await findAccount(deps.pool, input.identifier);
@@ -230,10 +241,18 @@ export function openAuth(deps: AuthDeps) {
     };
   }
 
+  async function noteHit(bucket: string, now: Date): Promise<{ hits: number; retryAfter: number }> {
+    const since = windowSince(now);
+    await purgeRateLimits(deps.pool, since);
+    await bumpRate(deps.pool, bucket, sliceStart(now));
+    const recent = await recentRate(deps.pool, bucket, since, now);
+    const oldest = recent.oldest ?? sliceStart(now);
+    return { hits: recent.hits, retryAfter: retrySeconds(new Date(oldest.getTime() + WINDOW_MS), now) };
+  }
+
   async function registerFailure(identifier: string, now: Date): Promise<void> {
-    const bucket = bucketHmac(key, `acct-fail|${identifier}`);
-    const hits = await bumpRate(deps.pool, bucket, windowStart(now));
-    if (hits < 5) {
+    const hit = await noteHit(bucketHmac(key, `acct-fail|${identifier}`), now);
+    if (hit.hits < 5) {
       return;
     }
     const lockBucket = bucketHmac(key, `acct-lock|${identifier}`);
@@ -287,29 +306,58 @@ export function openAuth(deps: AuthDeps) {
     nextPassword: string,
     ip: string,
     userAgent: string | undefined,
-  ): Promise<"ok" | "invalid" | "rejected"> {
+  ): Promise<
+    | { kind: "ok"; token: string; maxAge: number | null }
+    | { kind: "invalid" }
+    | { kind: "rejected" }
+    | { kind: "limited"; retryAfter: number }
+  > {
+    const now = deps.now();
+    const hit = await noteHit(bucketHmac(key, `pwd-change|${userId}`), now);
+    if (hit.hits > 5) {
+      emit({ type: "rate_limited", result: "echec", userId, sessionId, ip, userAgent: userAgent ?? null });
+      return { kind: "limited", retryAfter: hit.retryAfter };
+    }
     const account = await findAccountByUser(deps.pool, userId);
     if (account?.password_hash == null) {
-      return "invalid";
+      return { kind: "invalid" };
     }
     const current = currentPassword.normalize("NFC");
-    const matches = await verifyPassword(current, account.password_hash);
+    const matches = await passwordApi.verifyPassword(current, account.password_hash);
     if (!matches) {
-      return "invalid";
+      return { kind: "invalid" };
     }
     const assessed = assessPassword(nextPassword, deps.minLength);
     if (!assessed.ok) {
-      return "rejected";
+      return { kind: "rejected" };
     }
     const hashed = await hashPassword(assessed.password, deps.argon);
-    const now = deps.now();
     await setPassword(deps.pool, userId, hashed);
     await deleteVerification(deps.pool, tempHmac(key, userId));
     await revokeOtherSessions(deps.pool, userId, sessionId, now);
+    const issued = newSessionToken();
+    await rotateSession(deps.pool, sessionId, issued.hash, now);
+    const currentSession = await findSession(deps.pool, issued.hash);
     await insertAudit(deps.pool, userId, "password_changed", "ok");
     emit({ type: "password_changed", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
     emit({ type: "session_revoked", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
-    return "ok";
+    return {
+      kind: "ok",
+      token: issued.token,
+      maxAge: currentSession?.remember === true ? deps.maxDays * 24 * 60 * 60 : null,
+    };
+  }
+
+  async function forgetPassword(
+    ip: string,
+  ): Promise<{ kind: "ok" } | { kind: "limited"; retryAfter: number }> {
+    const now = deps.now();
+    const hit = await noteHit(bucketHmac(key, `forgot|${ip}`), now);
+    if (hit.hits > 5) {
+      emit({ type: "rate_limited", result: "echec", ip, userAgent: null });
+      return { kind: "limited", retryAfter: hit.retryAfter };
+    }
+    return { kind: "ok" };
   }
 
   async function issueProvisional(userId: string, at: Date): Promise<string> {
@@ -361,10 +409,12 @@ export function openAuth(deps: AuthDeps) {
   }
 
   return {
+    ready,
     signIn,
     resolve,
     signOut,
     changePassword,
+    forgetPassword,
     createUser,
     resetPassword,
     async profile(userId: string): Promise<{ id: string; role: string; identifier: string } | null> {

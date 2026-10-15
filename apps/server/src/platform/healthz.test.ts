@@ -178,7 +178,7 @@ describe("parité initdb, creer-secrets.sh et healthz.ts", () => {
   });
 
   after(() => {
-    spawnSync("docker", ["rm", "-f", awkContainer], { encoding: "utf8" });
+    spawnSync("docker", ["rm", "-fv", awkContainer], { encoding: "utf8" });
   });
 
   const preludes = {

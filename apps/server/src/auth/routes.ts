@@ -20,6 +20,7 @@ import { openAuth } from "./service.ts";
 
 export const PUBLIC_ROUTES = [
   { method: "GET", url: "/login", auth: false },
+  { method: "GET", url: "/api/v1/healthz", auth: false },
   { method: "POST", url: "/api/auth/sign-in", auth: false },
   { method: "POST", url: "/api/auth/sign-up", auth: false },
   { method: "POST", url: "/api/auth/forget-password", auth: false },
@@ -65,7 +66,25 @@ export type AuthRuntime = {
   now?: () => Date;
   argon?: ArgonParams;
   logStream?: Writable;
+  extraPublicRoutes?: readonly string[];
 };
+
+const readiness = new WeakMap<FastifyInstance, Promise<void>>();
+
+export function whenAuthReady(app: FastifyInstance): Promise<void> {
+  return readiness.get(app) ?? Promise.resolve();
+}
+
+export function isPublicRoute(method: string, url: string, extra: readonly string[] = []): boolean {
+  const key = `${method} ${url}`;
+  if (PUBLIC_ROUTES.some((route) => `${route.method} ${route.url}` === key) || extra.includes(key)) {
+    return true;
+  }
+  if (method === "HEAD") {
+    return isPublicRoute("GET", url, extra);
+  }
+  return false;
+}
 
 type SessionContext = {
   userId: string;
@@ -110,7 +129,13 @@ export function allowedOrigins(config: AppConfig): Set<string> {
 
 function csrfOk(request: FastifyRequest, config: AppConfig): boolean {
   const contentType = (headerValue(request.headers["content-type"]) ?? "").toLowerCase();
-  if (!contentType.startsWith("application/json")) {
+  const json = contentType.startsWith("application/json");
+  const bareDelete = request.method === "DELETE" && contentType.length === 0;
+  const formSignIn =
+    request.method === "POST" &&
+    request.routeOptions.url === "/api/auth/sign-in" &&
+    contentType.startsWith("application/x-www-form-urlencoded");
+  if (!json && !bareDelete && !formSignIn) {
     return false;
   }
   const allowed = allowedOrigins(config);
@@ -131,6 +156,19 @@ function sendMessage(
     reply.header("retry-after", String(retryAfter));
   }
   return reply.code(status).type("application/json; charset=utf-8").send({ message });
+}
+
+function credentialsFrom(body: unknown): unknown {
+  if (typeof body !== "string") {
+    return body;
+  }
+  const params = new URLSearchParams(body);
+  const remember = params.get("remember");
+  return {
+    identifier: params.get("identifier") ?? "",
+    password: params.get("password") ?? "",
+    ...(remember === "true" || remember === "false" ? { remember: remember === "true" } : {}),
+  };
 }
 
 function normalizeIdentifier(raw: string): string | null {
@@ -168,17 +206,16 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     },
   );
 
+  readiness.set(app, auth?.ready() ?? Promise.resolve());
+  const extraPublic = runtime.extraPublicRoutes ?? [];
+
   app.addHook("preHandler", async (request, reply) => {
     const pattern = request.routeOptions.url;
-    const key = `${request.method} ${pattern}`;
-    const known = AUTH_ROUTES.some((route) => route.method === request.method && route.url === pattern);
-    if (!known) {
-      return undefined;
-    }
+    const key = `${request.method} ${pattern ?? ""}`;
     const mutating = request.method === "POST" || request.method === "PUT" || request.method === "PATCH" || request.method === "DELETE";
     const cookie = readCookie(headerValue(request.headers.cookie), SESSION_COOKIE);
     const bearer = readBearer(headerValue(request.headers.authorization));
-    const isPublic = PUBLIC_ROUTES.some((route) => route.method === request.method && route.url === pattern);
+    const isPublic = pattern !== undefined && isPublicRoute(request.method, pattern, extraPublic);
     if (mutating && (cookie !== undefined || PUBLIC_MUTATING.has(key))) {
       if (!csrfOk(request, config)) {
         return sendMessage(reply, 403, ORIGIN_REJECTED);
@@ -214,6 +251,10 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (auth === null) {
       return sendProblem(reply, 500);
     }
+    const limited = await auth.forgetPassword(clientIp(request, config.TRUSTED_PROXY_CIDR));
+    if (limited.kind === "limited") {
+      return sendMessage(reply, 429, TOO_MANY, limited.retryAfter);
+    }
     const parsed = identifierSchema.safeParse(request.body);
     if (!parsed.success || normalizeIdentifier(parsed.data.identifier) === null) {
       return sendMessage(reply, 400, BAD_REQUEST);
@@ -231,7 +272,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (auth === null) {
       return sendProblem(reply, 500);
     }
-    const parsed = signInSchema.safeParse(request.body);
+    const parsed = signInSchema.safeParse(credentialsFrom(request.body));
     if (!parsed.success) {
       return sendMessage(reply, 400, BAD_REQUEST);
     }
@@ -288,12 +329,16 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       clientIp(request, config.TRUSTED_PROXY_CIDR),
       headerValue(request.headers["user-agent"]),
     );
-    if (result === "rejected") {
+    if (result.kind === "limited") {
+      return sendMessage(reply, 429, TOO_MANY, result.retryAfter);
+    }
+    if (result.kind === "rejected") {
       return sendMessage(reply, 400, PASSWORD_REJECTED);
     }
-    if (result === "invalid") {
+    if (result.kind === "invalid") {
       return sendMessage(reply, 401, INVALID_LOGIN);
     }
+    reply.header("set-cookie", serializeSessionCookie(result.token, result.maxAge));
     return { ok: true as const };
   });
 
