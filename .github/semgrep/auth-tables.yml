@@ -1,0 +1,18 @@
+rules:
+  - id: auth-tables-only-auth-module
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Seul apps/server/src/auth/** importe ou interroge users, accounts et sessions.
+    metadata:
+      category: security
+      cwe: "CWE-284"
+      confidence: HIGH
+    paths:
+      exclude:
+        - "**/apps/server/src/auth/**"
+        - "**/apps/server/src/db/schema.ts"
+        - "**/*.test.ts"
+        - "**/drizzle/**"
+    patterns:
+      - pattern-regex: (?i)(?:flaw\.(?:users|accounts|sessions)\b|(?:insert\s+into|update|delete\s+from|from)\s+(?:flaw\.)?(?:users|accounts|sessions)\b|(?:import|export)\s+(?:type\s+)?\{[^}\n]*\b(?:users|accounts|sessions)\b[^}\n]*\}\s+from\s+['\"][^'\"]*schema)

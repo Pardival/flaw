@@ -6,7 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { Client } from "pg";
 import { sql } from "drizzle-orm";
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
@@ -64,6 +64,7 @@ const GRANTS: Record<string, { sel: boolean; ins: boolean; upd: boolean; del: bo
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const container = `flaw-t005-rls-${process.pid}`;
+const dbTestsLabel = basename(fileURLToPath(import.meta.url));
 
 const SORTS = {
   created_at: sql.identifier("created_at"),
@@ -288,7 +289,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
         throw new Error("DB absent en CI : docker indisponible");
       }
     }
-    const removed = docker(["rm", "-f", container]);
+    const removed = docker(["rm", "-fv", container]);
     expect([0, 1]).toContain(removed.status);
     const started = docker([
       "run",
@@ -418,14 +419,14 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
   }, 180_000);
 
   afterAll(async () => {
+    process.stdout.write(`DB_TESTS_EXECUTED[${dbTestsLabel}]=${dbTestsRan}\n`);
     await app?.end().catch(() => undefined);
     await owner?.end().catch(() => undefined);
     await admin?.end().catch(() => undefined);
     if (secretDir !== "") {
       rmSync(secretDir, { recursive: true, force: true });
     }
-    docker(["rm", "-f", container]);
-    console.log(`DB_TESTS_EXECUTED=${dbTestsRan}`);
+    docker(["rm", "-fv", container]);
     if (process.env.CI === "true") {
       writeFileSync("/tmp/flaw-db-tests-count.txt", `${dbTestsRan}\n`);
     }

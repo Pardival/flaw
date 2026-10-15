@@ -1,0 +1,5 @@
+#!/bin/sh
+# Commande serveur : check-roles, create-user, reset-password.
+set -eu
+cd /app
+exec node apps/server/src/admin/cli.ts "$@"

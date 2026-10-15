@@ -1,5 +1,12 @@
 -- T-006. Additive. 0000_init n'est pas réécrit. Aucune colonne n'est renommée.
--- user_keys.key_id reste l'identifiant de la KEK (text).
+-- Conversion text → uuid (USING key_id::uuid) exécutée ci-dessous sur les
+-- colonnes de contenu : auth_factors, documents, document_states,
+-- document_updates, document_versions.
+-- user_keys.key_id reste l'identifiant de la KEK (text, ex. kek-2026-10).
+-- Il n'est pas converti.
+-- Sans objet pour les données en v1 : rien n'est déployé.
+-- Elle échouerait sur une base dont les key_id de contenu seraient des
+-- identifiants de KEK, qui ne sont pas des uuid.
 -- Le key_id des contenus désigne la DEK : FK (key_id, owner_id) vers user_keys.
 -- audit_events.result reste un code en clair.
 ALTER TABLE flaw.user_keys ADD CONSTRAINT user_keys_id_owner_uidx UNIQUE (id, owner_id);

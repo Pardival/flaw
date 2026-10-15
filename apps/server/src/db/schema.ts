@@ -91,11 +91,16 @@ export const accounts = flaw.table(
     ownerId: ownerId(),
     providerId: text("provider_id").notNull(),
     accountId: text("account_id").notNull(),
+    passwordHash: text("password_hash"),
     createdAt: createdAt(),
   },
   (table) => [
     uniqueIndex("accounts_provider_account_uidx").on(table.providerId, table.accountId),
     index("accounts_owner_id_idx").on(table.ownerId),
+    check(
+      "accounts_password_argon2id",
+      sql`${table.passwordHash} IS NULL OR ${table.passwordHash} LIKE '$argon2id$v=19$m=%'`,
+    ),
   ],
 );
 
@@ -104,13 +109,20 @@ export const sessions = flaw.table(
   {
     id: uuidv7("id"),
     ownerId: ownerId(),
-    tokenHash: text("token_hash").notNull(),
+    tokenHash: bytea("token_hash").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    lastActivityAt: timestamp("last_activity_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
+    absoluteExpiresAt: timestamp("absolute_expires_at", { withTimezone: true, mode: "date" }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true, mode: "date" }),
+    browser: text("browser").notNull().default("inconnu"),
+    os: text("os").notNull().default("inconnu"),
+    remember: boolean("remember").notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [
     uniqueIndex("sessions_token_hash_uidx").on(table.tokenHash),
     index("sessions_owner_id_idx").on(table.ownerId),
+    check("sessions_token_hash_len", sql`octet_length(${table.tokenHash}) = 32`),
   ],
 );
 

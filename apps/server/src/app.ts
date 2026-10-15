@@ -7,9 +7,14 @@ import { Buffer } from "node:buffer";
 import { type Writable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import Fastify, { LogController, type FastifyInstance, type FastifyRequest } from "fastify";
+import { Client, Pool } from "pg";
 import { z } from "zod";
 
+import { registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
+import { assertPasswordMinLength } from "./auth/password.ts";
 import { holdSecrets, loadConfig, type AppConfig } from "./config/load.ts";
+import type { LoadedSecrets } from "./config/secrets.ts";
+import { assertAppRole } from "./db/migrate.ts";
 import { resolvedClientIp } from "./platform/healthz.ts";
 import { sendProblem, type ProblemStatus } from "./platform/problem.ts";
 import { writeSecurityLog } from "./platform/security-log.ts";
@@ -17,9 +22,24 @@ import { documentTitleSchema, SERVER_ASSIGNED_KEYS } from "./platform/validation
 
 const healthQuerySchema = z.object({}).strict();
 
-export type BuildOptions = {
-  logStream?: Writable;
-};
+export type BuildOptions = AuthRuntime;
+
+const declared = new WeakMap<FastifyInstance, Array<{ method: string; url: string }>>();
+
+function trackRoutes(app: FastifyInstance): void {
+  const list: Array<{ method: string; url: string }> = [];
+  declared.set(app, list);
+  app.addHook("onRoute", (route) => {
+    const methods = Array.isArray(route.method) ? route.method : [route.method];
+    for (const method of methods) {
+      list.push({ method, url: route.url });
+    }
+  });
+}
+
+export function declaredRoutes(app: FastifyInstance): ReadonlyArray<{ method: string; url: string }> {
+  return declared.get(app) ?? [];
+}
 
 function headerValue(value: string | string[] | undefined): string | undefined {
   if (Array.isArray(value)) {
@@ -50,6 +70,7 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
   if (config.NODE_ENV === "production" && (config.logLevel === "debug" || config.logLevel === "trace")) {
     throw new Error("refus de démarrer : journal de débogage interdit");
   }
+  assertPasswordMinLength(config.PASSWORD_MIN_LENGTH);
   const stream = options.logStream ?? process.stdout;
   const app = Fastify({
     bodyLimit: config.bodyLimit,
@@ -76,6 +97,9 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
       },
     },
   });
+
+  trackRoutes(app);
+  registerAuth(app, config, { ...options, logStream: stream });
 
   app.addHook("onRequest", async (request, reply) => {
     const length = Number(headerValue(request.headers["content-length"]));
@@ -137,13 +161,90 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
     if (!healthQuerySchema.safeParse(request.query).success) {
       return sendProblem(reply, 400);
     }
-    return {
-      status: "ok" as const,
-      clientIp: clientIp(request, config.TRUSTED_PROXY_CIDR),
-    };
+    return { status: "ok" as const };
   });
 
   return app;
+}
+
+export function createAppPool(config: AppConfig, password: string): Pool {
+  return new Pool({
+    host: config.DATABASE_HOST,
+    port: 5432,
+    database: config.DATABASE_NAME,
+    user: config.DATABASE_USER,
+    password,
+    max: 10,
+    connectionTimeoutMillis: 3000,
+  });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function connectAppPool(config: AppConfig, password: string): Promise<Pool> {
+  const deadline = Date.now() + 45_000;
+  let last = "base injoignable";
+  while (Date.now() < deadline) {
+    const pool = createAppPool(config, password);
+    try {
+      const client = await pool.connect();
+      await client.query("SELECT 1");
+      client.release();
+      return pool;
+    } catch (error) {
+      last = error instanceof Error ? error.message : "echec";
+      await pool.end().catch(() => undefined);
+      await delay(1000);
+    }
+  }
+  throw new Error(`refus de démarrer : ${last}`);
+}
+
+export async function notifyStartupRefusal(config: AppConfig, stream: Writable, message: string): Promise<void> {
+  writeSecurityLog(stream, { type: "server_error", result: "echec", ip: null, userAgent: null });
+  if (config.ALERT_WEBHOOK_URL !== "") {
+    await fetch(config.ALERT_WEBHOOK_URL, {
+      method: "POST",
+      headers: { "content-type": "text/plain; charset=utf-8" },
+      body: message,
+    }).catch(() => undefined);
+  }
+}
+
+export async function assertAppPool(pool: Pool, alert: (message: string) => Promise<void>): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await assertAppRole(client as unknown as Client);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "refus de démarrer : rôle applicatif non conforme";
+    await alert(message.startsWith("refus de démarrer") ? message : "refus de démarrer : rôle applicatif non conforme");
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function start(config: AppConfig, secrets: LoadedSecrets): Promise<void> {
+  const pool = await connectAppPool(config, secrets.databasePassword);
+  try {
+    await assertAppPool(pool, async (message) => {
+      await notifyStartupRefusal(config, process.stderr, message);
+      console.error(message);
+    });
+  } catch (error) {
+    await pool.end().catch(() => undefined);
+    throw error;
+  }
+  const app = buildApp(config, { pool, secrets });
+  try {
+    await whenAuthReady(app);
+    await app.listen({ host: "0.0.0.0", port: config.PORT });
+  } catch {
+    await pool.end().catch(() => undefined);
+    throw new Error("refus de démarrer : écoute impossible");
+  }
 }
 
 function isDirectRun(): boolean {
@@ -161,9 +262,9 @@ if (isDirectRun()) {
     process.exit(1);
   }
   holdSecrets(loaded.secrets);
-  const app = buildApp(loaded.config);
-  app.listen({ host: "0.0.0.0", port: loaded.config.PORT }).catch(() => {
-    console.error("refus de démarrer : écoute impossible");
+  start(loaded.config, loaded.secrets).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : "echec";
+    console.error(message.startsWith("refus de démarrer") ? message : "refus de démarrer");
     process.exit(1);
   });
 }

@@ -29,6 +29,13 @@
       "when": 1760700000000,
       "tag": "0003_dek_fk_no_action",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1760800000000,
+      "tag": "0004_auth",
+      "breakpoints": true
     }
   ]
 }

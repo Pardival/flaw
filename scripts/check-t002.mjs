@@ -256,7 +256,7 @@ async function integration() {
       (stdout) => {
         try {
           const body = JSON.parse(stdout);
-          return body.status === "ok" && typeof body.clientIp === "string";
+          return body.status === "ok" && !Object.hasOwn(body, "clientIp");
         } catch {
           return false;
         }
@@ -312,7 +312,7 @@ async function integration() {
     assert("G1 monde", world, "journal sans refus de mode");
     run("chmod", ["440", secret]);
   } finally {
-    run("docker", ["rm", "-f", forger]);
+    run("docker", ["rm", "-fv", forger]);
     if (started) {
       compose(["down", "-v", "--remove-orphans"], { stdio: "inherit" });
     }

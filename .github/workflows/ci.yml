@@ -43,24 +43,16 @@ jobs:
       - name: gawk pour la parité SEC-SECRET-07
         run: sudo apt-get update && sudo apt-get install -y gawk
 
+      # Q-012 — seuil par fichier (ci/db-tests.json), pas une somme ni la dernière valeur.
       - name: Vitest et tests node:test
         run: |
           set -euo pipefail
           set +e
-          pnpm test
-          code=$?
+          pnpm test | tee "$RUNNER_TEMP/test.log"
+          status=${PIPESTATUS[0]}
           set -e
-          if [ -f /tmp/flaw-db-tests-count.txt ]; then
-            count="$(tr -d '[:space:]' < /tmp/flaw-db-tests-count.txt)"
-          else
-            count=0
-          fi
-          echo "tests DB exécutés: ${count}"
-          if [ "${count}" -lt 1 ]; then
-            echo "DB absente en CI : aucun test Postgres exécuté"
-            exit 1
-          fi
-          exit "${code}"
+          node scripts/check-db-tests.mjs "$RUNNER_TEMP/test.log"
+          exit "${status}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.
       # oasdiff signale une rupture entre main et la tête. Les ajouts compatibles passent.
@@ -73,7 +65,8 @@ jobs:
           tar -xzf /tmp/oasdiff.tar.gz -C "$HOME/.local/bin" oasdiff
           git fetch --depth=1 origin main
           git show FETCH_HEAD:openapi.json > /tmp/openapi.base.json
-          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR /tmp/openapi.base.json openapi.json
+          # Q-013 — la seule rupture acceptée est le retrait de clientIp sur healthz (ci/oasdiff-err-ignore.txt).
+          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR --err-ignore ci/oasdiff-err-ignore.txt /tmp/openapi.base.json openapi.json
 
       - name: Licences
         run: pnpm licenses:check
@@ -85,6 +78,11 @@ jobs:
     name: build image, postgres, healthz
     runs-on: ubuntu-24.04
     timeout-minutes: 40
+    env:
+      COMPOSE_PROJECT_NAME: flaw-ci-${{ github.run_id }}
+      FLAW_DOMAIN: localhost
+      ACME_EMAIL: ci@example.com
+      FLAW_IMAGE: flaw-app:ci
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -92,56 +90,24 @@ jobs:
       - name: Build de l'image serveur
         run: docker build -f apps/server/Dockerfile -t flaw-app:ci .
 
-      - name: Compose Postgres et healthz
+      - name: healthz HTTPS via Caddy
+        working-directory: infra
         run: |
           set -euo pipefail
-          cd infra
           sudo sh creer-secrets.sh
-          umask 077
-          cat > .env << 'EOF'
-          FLAW_DOMAIN=localhost
-          ACME_EMAIL=ci@example.com
-          FLAW_IMAGE=flaw-app:ci
-          EDGE_SUBNET=172.31.250.0/24
-          CADDY_IP=172.31.250.10
-          POSTGRES_DB=flaw
-          LOG_LEVEL=info
-          EOF
-          chmod 600 .env
-          cleanup() {
-            sudo docker compose down -v --remove-orphans || true
-          }
-          trap cleanup EXIT
-          # --pull never garde l'image locale flaw-app:ci. Postgres, lui, n'est
-          # pas dans le cache du runner : on le tire par le digest du compose.
-          sudo docker pull postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
-          if ! sudo docker compose up -d --pull never app; then
-            sudo docker compose logs --no-color db migrate app || true
-            echo "healthz non atteint"
+          docker compose up -d --wait
+          body="$(curl -fsS --retry 12 --retry-delay 2 --retry-all-errors -k --resolve localhost:443:127.0.0.1 https://localhost/api/v1/healthz)"
+          printf '%s\n' "$body"
+          printf '%s\n' "$body" | grep -q '"status":"ok"'
+          if printf '%s\n' "$body" | grep -q '"version"'; then
+            echo "healthz divulgue une version"
             exit 1
           fi
-          ok=0
-          for _ in $(seq 1 40); do
-            cid="$(sudo docker compose ps -q app || true)"
-            health="absent"
-            if [ -n "${cid}" ]; then
-              health="$(sudo docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${cid}")"
-            fi
-            echo "app health: ${health}"
-            if [ "${health}" = "healthy" ]; then
-              ok=1
-              break
-            fi
-            sleep 3
-          done
-          sudo docker compose ps -a
-          if [ "${ok}" != 1 ]; then
-            sudo docker compose logs --no-color db migrate app || true
-            echo "healthz non atteint"
-            exit 1
-          fi
-          sudo docker compose exec -T app node -e 'fetch("http://127.0.0.1:3000/api/v1/healthz").then(async (r) => { const t = await r.text(); console.log(t); if (!r.ok || !t.includes("\"status\":\"ok\"")) process.exit(1); }).catch((e) => { console.error(e); process.exit(1); })'
-          echo "healthz: ok"
+
+      - name: Nettoyage compose
+        if: always()
+        working-directory: infra
+        run: docker compose down -v
 
   gitleaks:
     name: gitleaks
@@ -162,8 +128,11 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C "$HOME/.local/bin" gitleaks
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # Historique complet de cette branche (fetch-depth: 0). -m inclut le diff
+      # des commits de fusion, sinon git log -p les omet. Les autres branches
+      # présentes après le fetch ne font pas partie du contrôle SEC-SECRET-02.
       - name: gitleaks
-        run: gitleaks detect --source . --redact --no-banner --report-format json --report-path "$RUNNER_TEMP/gitleaks.json"
+        run: gitleaks detect --source . --log-opts="-m HEAD" --redact --no-banner --report-format json --report-path "$RUNNER_TEMP/gitleaks.json"
 
       - name: Preuve allowlist gitleaks
         run: |
@@ -329,6 +298,7 @@ jobs:
               --config .github/semgrep/sec-web-07.yml \
               --config .github/semgrep/sec-db-03.yml \
               --config .github/semgrep/sec-db-03-complement.yml \
+              --config .github/semgrep/auth-tables.yml \
               --error \
               --metrics=off \
               --exclude 'fixtures/**' \
@@ -466,6 +436,36 @@ jobs:
               raise SystemExit(1)
           print("SEC-DB-03 complément : bad1…bad4 signalés, ok1…ok4 non signalés.")
           PY
+
+      - name: Preuve auth-tables
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/apps/server/src/auth" "$tmp/apps/server/src/other"
+          printf '%s\n' 'export async function bad(): Promise<void> { await db.query("SELECT 1 FROM flaw.users"); }' > "$tmp/apps/server/src/other/bad.ts"
+          printf '%s\n' 'export async function ok(): Promise<void> { await db.query("SELECT 1 FROM flaw.users"); }' > "$tmp/apps/server/src/auth/ok.ts"
+          bad="$(docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/other/bad.ts 2>&1 || true)"
+          printf '%s\n' "$bad"
+          if ! printf '%s\n' "$bad" | grep -q 'auth-tables-only-auth-module'; then
+            echo "auth-tables : une requête hors auth/ aurait dû être signalée."
+            exit 1
+          fi
+          docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/auth/ok.ts
+          echo "auth-tables : requête hors auth/ signalée, module auth/ autorisé."
 
   codeql:
     name: codeql
