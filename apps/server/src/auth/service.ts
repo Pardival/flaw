@@ -203,7 +203,7 @@ export function openAuth(deps: AuthDeps) {
       os: device.os,
       remember: input.remember,
     });
-    await insertAudit(deps.pool, account.user_id, "login_success", "succes");
+    await insertAudit(deps.pool, account.user_id, "login_success", "ok");
     emit({
       type: "login_success",
       result: "succes",
@@ -276,7 +276,7 @@ export function openAuth(deps: AuthDeps) {
   async function signOut(sessionId: string, userId: string, ip: string, userAgent: string | undefined): Promise<void> {
     const now = deps.now();
     await revokeSession(deps.pool, sessionId, now);
-    await insertAudit(deps.pool, userId, "session_revoked", "succes");
+    await insertAudit(deps.pool, userId, "session_revoked", "ok");
     emit({ type: "session_revoked", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
   }
 
@@ -306,7 +306,7 @@ export function openAuth(deps: AuthDeps) {
     await setPassword(deps.pool, userId, hashed);
     await deleteVerification(deps.pool, tempHmac(key, userId));
     await revokeOtherSessions(deps.pool, userId, sessionId, now);
-    await insertAudit(deps.pool, userId, "password_changed", "succes");
+    await insertAudit(deps.pool, userId, "password_changed", "ok");
     emit({ type: "password_changed", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
     emit({ type: "session_revoked", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
     return "ok";
@@ -323,7 +323,7 @@ export function openAuth(deps: AuthDeps) {
     await deleteVerification(deps.pool, tempHmac(key, userId));
     const marker = createHash("sha256").update(randomBytes(32)).digest("hex");
     await insertVerification(deps.pool, tempHmac(key, userId), marker, new Date(at.getTime() + TEMP_TTL_MS));
-    await insertAudit(deps.pool, userId, "password_reset_used", "succes");
+    await insertAudit(deps.pool, userId, "password_reset_used", "ok");
     return assessed.password;
   }
 

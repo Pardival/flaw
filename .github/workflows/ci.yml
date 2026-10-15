@@ -79,7 +79,7 @@ jobs:
         run: node scripts/check-audit.mjs
 
   image:
-    name: build image
+    name: build image, postgres, healthz
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -154,7 +154,7 @@ jobs:
           tmp="$(mktemp -d)"
           cp .gitleaks.toml "$tmp/.gitleaks.toml"
           python3 - "$tmp" << 'PY'
-          import json, pathlib, secrets, string, subprocess, sys
+          import json, math, pathlib, secrets, string, subprocess, sys
           tmp = pathlib.Path(sys.argv[1])
           marker = "MARQUEUR" + "CONNEXION9f3a"
           hex_value = "0123456789abcde" + "f0123456789abcdef"
@@ -195,8 +195,22 @@ jobs:
               print(err)
               print("allowlist : un marqueur hors .test.ts aurait dû être signalé.")
               raise SystemExit(1)
-          alphabet = string.ascii_uppercase + string.digits
-          access = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+          # gitleaks 8.30 : aws-access-token = AKIA + 16 caractères [A-Z2-7], entropie >= 3.
+          alphabet = string.ascii_uppercase + "234567"
+          def shannon(value):
+              counts = {}
+              for char in value:
+                  counts[char] = counts.get(char, 0) + 1
+              total = len(value)
+              return -sum((count / total) * math.log2(count / total) for count in counts.values())
+          access = ""
+          for _ in range(100):
+              candidate = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+              if shannon(candidate) >= 3:
+                  access = candidate
+                  break
+          if access == "":
+              raise SystemExit("clef AWS de test introuvable")
           secret = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
           leak = tmp / "leak.test.ts"
           leak.write_text(
@@ -228,7 +242,30 @@ jobs:
           git init -q "$tmp"
           git -C "$tmp" config user.email "ci@example.com"
           git -C "$tmp" config user.name "ci"
-          python3 -c 'import pathlib,secrets,string,sys; root=pathlib.Path(sys.argv[1]); alphabet=string.ascii_uppercase+string.digits; access="AKIA"+"".join(secrets.choice(alphabet) for _ in range(16)); secret="".join(secrets.choice(string.ascii_letters+string.digits) for _ in range(40)); (root/"leak.env").write_text("aws_access_key_id=%s\naws_secret_access_key=%s\n" % (access, secret), encoding="utf-8")' "$tmp"
+          python3 - "$tmp" << 'PY'
+          import math, pathlib, secrets, string, sys
+          root = pathlib.Path(sys.argv[1])
+          alphabet = string.ascii_uppercase + "234567"
+          def shannon(value):
+              counts = {}
+              for char in value:
+                  counts[char] = counts.get(char, 0) + 1
+              total = len(value)
+              return -sum((count / total) * math.log2(count / total) for count in counts.values())
+          access = ""
+          for _ in range(100):
+              candidate = "AKIA" + "".join(secrets.choice(alphabet) for _ in range(16))
+              if shannon(candidate) >= 3:
+                  access = candidate
+                  break
+          if access == "":
+              raise SystemExit("clef AWS de test introuvable")
+          secret = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(40))
+          (root / "leak.env").write_text(
+              "aws_access_key_id=%s\naws_secret_access_key=%s\n" % (access, secret),
+              encoding="utf-8",
+          )
+          PY
           git -C "$tmp" add leak.env
           git -C "$tmp" commit -q -m "commit de test SEC-SECRET-02"
           if gitleaks detect --source "$tmp" --redact --no-banner; then

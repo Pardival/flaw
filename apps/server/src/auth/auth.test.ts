@@ -233,9 +233,9 @@ describe("politique et fichiers (hors base)", () => {
     expect(serializeSessionCookie("jeton", 90)).toContain("Max-Age=90");
   });
 
-  it("documente la conversion key_id sans l'exécuter et ne réécrit pas 0000 (0002)", () => {
+  it("documente la conversion key_id des contenus et ne réécrit pas 0000 (0002, 0004)", () => {
     const init = readFileSync(join(root, "apps/server/drizzle/0000_init.sql"), "utf8");
-    const authSql = readFileSync(join(root, "apps/server/drizzle/0001_auth.sql"), "utf8");
+    const authSql = readFileSync(join(root, "apps/server/drizzle/0004_auth.sql"), "utf8");
     const dek = readFileSync(join(root, "apps/server/drizzle/0002_dek_audit.sql"), "utf8");
     expect(init).toContain("token_hash text NOT NULL");
     expect(authSql).toContain("password_hash");
@@ -243,9 +243,11 @@ describe("politique et fichiers (hors base)", () => {
     expect(authSql.toLowerCase()).not.toContain("country");
     expect(authSql.toLowerCase()).not.toContain("latitude");
     expect(dek).toContain("USING key_id::uuid");
-    expect(dek.toLowerCase()).toContain("sans objet");
-    expect(dek.toLowerCase()).toContain("kek");
-    expect(executableSql(dek)).not.toContain("alter column key_id type uuid");
+    expect(dek.toLowerCase()).toContain("rien n'est déployé");
+    expect(dek.toLowerCase()).toContain("kek-2026-10");
+    const executable = executableSql(dek);
+    expect(executable).toContain("alter table flaw.documents alter column key_id type uuid using key_id::uuid");
+    expect(executable).not.toContain("alter table flaw.user_keys alter column key_id type uuid");
     const dockerfile = readFileSync(join(root, "apps/server/Dockerfile"), "utf8");
     expect(dockerfile).toContain("/usr/local/bin/flaw-admin");
   });
@@ -363,13 +365,19 @@ describe("authentification sur PostgreSQL", () => {
     const id = crypto.randomUUID();
     const client = await pool.connect();
     try {
+      const dekId = crypto.randomUUID();
       await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version)
+         VALUES ($1, $2, $3, $4, 'kek-2026-10', 1)`,
+        [dekId, ownerId, Buffer.from([1]), Buffer.from([2])],
+      );
       await client.query("SELECT set_config('app.user_id', $1, true)", [ownerId]);
       await client.query(
         `INSERT INTO flaw.documents (
            id, owner_id, mode, format, font, projection_ct, projection_nonce, key_id, enc_version
-         ) VALUES ($1, $2, 'prose', 'plain', 'serif', $3, $4, 'kek-2026-10', 1)`,
-        [id, ownerId, Buffer.from([1]), Buffer.from([2])],
+         ) VALUES ($1, $2, 'prose', 'plain', 'serif', $3, $4, $5, 1)`,
+        [id, ownerId, Buffer.from([1]), Buffer.from([2]), dekId],
       );
       await client.query("COMMIT");
     } catch (error) {
@@ -1105,7 +1113,7 @@ describe("authentification sur PostgreSQL", () => {
     const userB = await seedUser(emailB, PASSWORD);
     const documentA = await seedDocument(userA);
     const documentB = await seedDocument(userB);
-    await pool.query("INSERT INTO flaw.audit_events (owner_id, event_type, result) VALUES ($1, 'read', 'succes')", [
+    await pool.query("INSERT INTO flaw.audit_events (owner_id, event_type, result) VALUES ($1, 'read', 'ok')", [
       userB,
     ]);
     const app = buildApp(config(), appOptions());
