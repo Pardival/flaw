@@ -43,8 +43,21 @@ jobs:
       - name: gawk pour la parité SEC-SECRET-07
         run: sudo apt-get update && sudo apt-get install -y gawk
 
+      # Q-012 — le compteur DB_TESTS_EXECUTED est vérifié, pas seulement le code de sortie.
       - name: Vitest et tests node:test
-        run: pnpm test
+        run: |
+          set -euo pipefail
+          set +e
+          pnpm test | tee "$RUNNER_TEMP/test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          count="$(grep -oE 'DB_TESTS_EXECUTED=[0-9]+' "$RUNNER_TEMP/test.log" | tail -1 | cut -d= -f2 || true)"
+          if [ -z "${count}" ] || [ "${count}" -lt 12 ]; then
+            echo "DB_TESTS_EXECUTED insuffisant: ${count:-absent}"
+            exit 1
+          fi
+          echo "DB_TESTS_EXECUTED=${count}"
+          exit "${status}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.
       # oasdiff signale une rupture entre main et la tête. Les ajouts compatibles passent.
@@ -68,13 +81,37 @@ jobs:
   image:
     name: build image
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
+    env:
+      COMPOSE_PROJECT_NAME: flaw-ci-${{ github.run_id }}
+      FLAW_DOMAIN: localhost
+      ACME_EMAIL: ci@example.com
+      FLAW_IMAGE: flaw-app:ci
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build de l'image serveur
         run: docker build -f apps/server/Dockerfile -t flaw-app:ci .
+
+      - name: healthz HTTPS via Caddy
+        working-directory: infra
+        run: |
+          set -euo pipefail
+          sudo sh creer-secrets.sh
+          docker compose up -d --wait
+          body="$(curl -fsS --retry 12 --retry-delay 2 --retry-all-errors -k --resolve localhost:443:127.0.0.1 https://localhost/api/v1/healthz)"
+          printf '%s\n' "$body"
+          printf '%s\n' "$body" | grep -q '"status":"ok"'
+          if printf '%s\n' "$body" | grep -q '"version"'; then
+            echo "healthz divulgue une version"
+            exit 1
+          fi
+
+      - name: Nettoyage compose
+        if: always()
+        working-directory: infra
+        run: docker compose down -v
 
   gitleaks:
     name: gitleaks
@@ -225,6 +262,7 @@ jobs:
               --config .github/semgrep/sec-web-07.yml \
               --config .github/semgrep/sec-db-03.yml \
               --config .github/semgrep/sec-db-03-complement.yml \
+              --config .github/semgrep/auth-tables.yml \
               --error \
               --metrics=off \
               --exclude 'fixtures/**' \
@@ -362,6 +400,36 @@ jobs:
               raise SystemExit(1)
           print("SEC-DB-03 complément : bad1…bad4 signalés, ok1…ok4 non signalés.")
           PY
+
+      - name: Preuve auth-tables
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          mkdir -p "$tmp/apps/server/src/auth" "$tmp/apps/server/src/other"
+          printf '%s\n' 'export async function bad(): Promise<void> { await db.query("SELECT 1 FROM flaw.users"); }' > "$tmp/apps/server/src/other/bad.ts"
+          printf '%s\n' 'export async function ok(): Promise<void> { await db.query("SELECT 1 FROM flaw.users"); }' > "$tmp/apps/server/src/auth/ok.ts"
+          bad="$(docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/other/bad.ts 2>&1 || true)"
+          printf '%s\n' "$bad"
+          if ! printf '%s\n' "$bad" | grep -q 'auth-tables-only-auth-module'; then
+            echo "auth-tables : une requête hors auth/ aurait dû être signalée."
+            exit 1
+          fi
+          docker run --rm \
+            -v "$tmp:/work" \
+            -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
+            -w /work \
+            -e SEMGREP_SEND_METRICS=off \
+            -e SEMGREP_ENABLE_VERSION_CHECK=0 \
+            "$SEMGREP_IMAGE" \
+            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/auth/ok.ts
+          echo "auth-tables : requête hors auth/ signalée, module auth/ autorisé."
 
   codeql:
     name: codeql

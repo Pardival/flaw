@@ -27,6 +27,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
     FLAW_KEK_ID: "kek-2026-10",
     RECOVERY_PEPPER_ID: "pep-2026-10",
     RECOVERY_PEPPER_OLD_IDS: "",
+    HMAC_PEPPER_ID: "pep-hmac-2026-10",
     ALLOW_SIGNUP: "false",
     allowSignup: false,
     SESSION_IDLE_DAYS: 30,

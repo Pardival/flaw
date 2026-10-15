@@ -1,0 +1,15 @@
+-- 0002_dek_audit.sql — documentation de la conversion key_id text → uuid.
+--
+-- Conversion envisagée, NON EXÉCUTÉE (ne pas réécrire 0000_init.sql) :
+--   ALTER TABLE flaw.auth_factors ALTER COLUMN key_id TYPE uuid USING key_id::uuid;
+--   ALTER TABLE flaw.user_keys ALTER COLUMN key_id TYPE uuid USING key_id::uuid;
+--   ALTER TABLE flaw.documents ALTER COLUMN key_id TYPE uuid USING key_id::uuid;
+--   ALTER TABLE flaw.document_states ALTER COLUMN key_id TYPE uuid USING key_id::uuid;
+--   ALTER TABLE flaw.document_updates ALTER COLUMN key_id TYPE uuid USING key_id::uuid;
+--   ALTER TABLE flaw.document_versions ALTER COLUMN key_id TYPE uuid USING key_id::uuid;
+--
+-- Sans objet pour les données en v1 : rien n'est déployé.
+-- Elle échouerait sur une base contenant des key_id de KEK (FLAW_KEK_ID,
+-- par exemple kek-2026-10), qui ne sont pas des uuid.
+-- Le type reste text, comme décidé en T-005.
+COMMENT ON COLUMN flaw.documents.key_id IS 'Texte (identifiant de KEK, ex. kek-2026-10). Conversion text vers uuid via USING key_id::uuid non appliquee : sans objet en v1 (rien n''est deploye) et elle echouerait si des key_id de KEK sont presents.';
