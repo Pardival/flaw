@@ -35,7 +35,7 @@ RUN chmod 555 /usr/local/bin/flaw-admin \
   && chmod 444 /app/infra/droits-flaw.sql /app/infra/assert-app-role.sql \
   && chmod -R a-w /app \
   && chmod -R a+rX /app \
-  && node --input-type=module -e "import('pg').then(() => import('drizzle-orm')).then(() => import('@flaw/crypto')).then(async (crypto) => { if (typeof crypto.wrapDek !== 'function') process.exit(1); const { createRequire } = await import('node:module'); const argon2 = createRequire(import.meta.url)('@node-rs/argon2'); const password = 'construction-argon2id'; const hashed = await argon2.hash(password, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 }); if (!hashed.startsWith('\$argon2id\$') || !(await argon2.verify(hashed, password)) || (await argon2.verify(hashed, 'autre-mot'))) process.exit(1); }).catch((error) => { console.error(error); process.exit(1); })"
+  && node --input-type=module -e "import('pg').then(() => import('drizzle-orm')).then(() => import('@flaw/crypto')).then(async (crypto) => { if (typeof crypto.wrapDek !== 'function') process.exit(1); const { createRequire } = await import('node:module'); const argon2 = createRequire(import.meta.url)('@node-rs/argon2'); const material = 'construction-argon2id'; const hashed = await argon2.hash(material, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 }); if (!hashed.startsWith('\$argon2id\$') || !(await argon2.verify(hashed, material)) || (await argon2.verify(hashed, 'autre-mot'))) process.exit(1); }).catch((error) => { console.error(error); process.exit(1); })"
 
 USER 10001:10001
 ENV NODE_ENV=production

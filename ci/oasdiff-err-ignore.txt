@@ -1,0 +1,3 @@
+# Q-013 — GET /api/v1/healthz ne renvoie plus l'adresse du client.
+# Seule cette rupture est ignorée. --fail-on ERR reste en vigueur.
+GET /api/v1/healthz removed the required property `clientIp` from the response with the `200` status

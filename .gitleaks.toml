@@ -16,3 +16,10 @@ regexes = [
   '''^ab1562faea9f47af3ae1c3d6d030e3af230255dff3df583ced6fbbcbf9d606a9$''',
   '''^202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f$''',
 ]
+
+[[allowlists]]
+description = "Phrase de contrôle argon2id au build du Dockerfile, pas un secret"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^apps/server/Dockerfile$''']
+regexes = ['''construction-argon2id''']
