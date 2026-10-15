@@ -132,8 +132,10 @@ jobs:
           tar -xzf /tmp/gitleaks.tar.gz -C "$HOME/.local/bin" gitleaks
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
+      # Historique complet de cette branche (fetch-depth: 0). Les autres branches
+      # présentes après le fetch ne font pas partie du contrôle SEC-SECRET-02.
       - name: gitleaks
-        run: gitleaks detect --source . --redact --no-banner --report-format json --report-path "$RUNNER_TEMP/gitleaks.json"
+        run: gitleaks detect --source . --log-opts="HEAD" --redact --no-banner --report-format json --report-path "$RUNNER_TEMP/gitleaks.json"
 
       - name: Preuve allowlist gitleaks
         run: |
