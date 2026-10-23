@@ -1,0 +1,105 @@
+# T-047 — publication GHCR, distincte de ci.yml.
+# Déclenchée seulement par un push de tag v*. Aucune exécution manuelle.
+# Le job de publication est lié à l'environment GitHub « publication » :
+# relecteur requis et tags protégés v* (réglages du dépôt, hors de ce fichier).
+# SEC-SUPPLY-01 : pnpm install --frozen-lockfile, et le même drapeau dans
+# apps/server/Dockerfile. SEC-SUPPLY-03 : scripts/check-audit.mjs.
+# SEC-SECRET-02 : gitleaks sur l'historique du tag. Actions épinglées par SHA.
+# Jeton : GITHUB_TOKEN pour ghcr.io. Aucun secret en clair, aucun jeton personnel.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  controle:
+    name: lockfile, audit, gitleaks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - name: Node.js 24.21.0
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+
+      - name: Installation déterministe
+        run: pnpm install --frozen-lockfile
+
+      - name: Audit des dépendances
+        run: node scripts/check-audit.mjs
+
+      - name: Installer gitleaks 8.30.1
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL -o /tmp/gitleaks.tar.gz https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  /tmp/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/gitleaks.tar.gz -C "$HOME/.local/bin" gitleaks
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      # Historique joignable depuis le tag (-m : commits de fusion inclus).
+      - name: gitleaks
+        run: gitleaks detect --source . --log-opts="-m HEAD" --redact --no-banner
+
+  publication:
+    name: publier l'image GHCR
+    needs: controle
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    environment: publication
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Publier et afficher l'empreinte FLAW_IMAGE
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+        run: |
+          set -euo pipefail
+          owner="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | tr '[:upper:]' '[:lower:]')"
+          case "$owner" in
+            ''|*[!a-z0-9-]*) echo "propriétaire GHCR refusé"; exit 1 ;;
+          esac
+          case "$GITHUB_REF_NAME" in
+            v*) ;;
+            *) echo "tag hors motif v*"; exit 1 ;;
+          esac
+          case "$GITHUB_REF_NAME" in
+            *[!A-Za-z0-9_.-]*) echo "tag d'image refusé"; exit 1 ;;
+          esac
+          image="ghcr.io/${owner}/flaw:${GITHUB_REF_NAME}"
+          docker build -f apps/server/Dockerfile -t "$image" .
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "$image" | tee "$RUNNER_TEMP/push.log"
+          name="ghcr.io/${owner}/flaw"
+          digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$image" 2>/dev/null | awk -F@ -v img="$name" '$1 == img { print $2; exit }' || true)"
+          if ! printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'; then
+            digest="$(awk 'match($0, /sha256:[0-9a-f]{64}/) { print substr($0, RSTART, RLENGTH); found=1 } END { if (!found) exit 1 }' "$RUNNER_TEMP/push.log")"
+          fi
+          printf '%s\n' "$digest" | grep -Eq '^sha256:[0-9a-f]{64}$'
+          line="FLAW_IMAGE=${image}@${digest}"
+          printf '%s\n' "$line"
+          printf '%s\n' "$line" >> "$GITHUB_STEP_SUMMARY"
