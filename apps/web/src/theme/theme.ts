@@ -1,9 +1,9 @@
-/** Thème clair / sombre : prefers-color-scheme, bascule manuelle persistée. */
+/** Thème clair / sombre. Sans attribut data-theme, le CSS suit prefers-color-scheme. */
 
 export const THEME_STORAGE_KEY = "flaw.theme";
 
-export type ThemeChoice = "system" | "light" | "dark";
-export type ResolvedTheme = "light" | "dark";
+export type ThemeChoice = "auto" | "clair" | "sombre";
+export type ResolvedTheme = "clair" | "sombre";
 
 export type ThemeStorage = {
   getItem(key: string): string | null;
@@ -18,16 +18,16 @@ export type ThemeRoot = {
 
 export function readChoice(storage: ThemeStorage | null): ThemeChoice {
   if (storage === null) {
-    return "system";
+    return "auto";
   }
   try {
     const value = storage.getItem(THEME_STORAGE_KEY);
-    if (value === "light" || value === "dark") {
+    if (value === "clair" || value === "sombre") {
       return value;
     }
-    return "system";
+    return "auto";
   } catch {
-    return "system";
+    return "auto";
   }
 }
 
@@ -36,19 +36,19 @@ export function writeChoice(storage: ThemeStorage, choice: ResolvedTheme): void 
 }
 
 export function resolveTheme(choice: ThemeChoice, prefersDark: boolean): ResolvedTheme {
-  if (choice === "light" || choice === "dark") {
+  if (choice === "clair" || choice === "sombre") {
     return choice;
   }
-  return prefersDark ? "dark" : "light";
+  return prefersDark ? "sombre" : "clair";
 }
 
 export function toggleTheme(choice: ThemeChoice, prefersDark: boolean): ResolvedTheme {
-  return resolveTheme(choice, prefersDark) === "dark" ? "light" : "dark";
+  return resolveTheme(choice, prefersDark) === "sombre" ? "clair" : "sombre";
 }
 
 export function applyThemeChoice(root: ThemeRoot, choice: ThemeChoice, prefersDark: boolean): ResolvedTheme {
   const resolved = resolveTheme(choice, prefersDark);
-  if (choice === "system") {
+  if (choice === "auto") {
     delete root.dataset.theme;
   } else {
     root.dataset.theme = resolved;

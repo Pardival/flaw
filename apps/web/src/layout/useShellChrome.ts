@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 
-import { tokens } from "../theme/tokens.ts";
 import {
   KEYBOARD_CLEARANCE_PX,
+  POINTER_WAKE_PX,
   chromeStaysHidden,
   isTypingKey,
   keyboardClosed,
@@ -64,7 +64,7 @@ export function useShellChrome(mode: PageMode, pageFocused: boolean): boolean {
       const dy = event.clientY - lastY;
       lastX = event.clientX;
       lastY = event.clientY;
-      if (pointerWakesChrome(dx, dy, tokens.target.pointerWakePx)) {
+      if (pointerWakesChrome(dx, dy, POINTER_WAKE_PX)) {
         show();
       }
     }

@@ -28,33 +28,35 @@ function memory(): ThemeStorage & { dump: Map<string, string> } {
 
 describe("thème", () => {
   it("suit prefers-color-scheme tant qu'aucun choix n'est enregistré", () => {
-    expect(readChoice(null)).toBe("system");
-    expect(readChoice(memory())).toBe("system");
-    expect(resolveTheme("system", false)).toBe("light");
-    expect(resolveTheme("system", true)).toBe("dark");
+    expect(readChoice(null)).toBe("auto");
+    expect(readChoice(memory())).toBe("auto");
+    expect(resolveTheme("auto", false)).toBe("clair");
+    expect(resolveTheme("auto", true)).toBe("sombre");
     const root = { dataset: {} as { theme?: string } };
-    expect(applyThemeChoice(root, "system", true)).toBe("dark");
+    expect(applyThemeChoice(root, "auto", true)).toBe("sombre");
     expect(root.dataset.theme).toBeUndefined();
   });
 
-  it("persiste la bascule manuelle et ignore le schéma système ensuite", () => {
+  it("persiste clair ou sombre et pose l'attribut, y compris en clair explicite", () => {
     const storage = memory();
-    writeChoice(storage, "dark");
-    expect(storage.dump.get(THEME_STORAGE_KEY)).toBe("dark");
-    expect(readChoice(storage)).toBe("dark");
-    expect(resolveTheme("dark", false)).toBe("dark");
-    expect(toggleTheme("dark", true)).toBe("light");
-    expect(toggleTheme("system", true)).toBe("light");
-    expect(toggleTheme("system", false)).toBe("dark");
+    writeChoice(storage, "sombre");
+    expect(storage.dump.get(THEME_STORAGE_KEY)).toBe("sombre");
+    expect(readChoice(storage)).toBe("sombre");
+    expect(resolveTheme("sombre", false)).toBe("sombre");
+    expect(toggleTheme("sombre", true)).toBe("clair");
+    expect(toggleTheme("auto", true)).toBe("clair");
+    expect(toggleTheme("auto", false)).toBe("sombre");
     const root = { dataset: {} as { theme?: string } };
-    expect(applyThemeChoice(root, "light", true)).toBe("light");
-    expect(root.dataset.theme).toBe("light");
+    expect(applyThemeChoice(root, "clair", true)).toBe("clair");
+    expect(root.dataset.theme).toBe("clair");
+    expect(applyThemeChoice(root, "sombre", false)).toBe("sombre");
+    expect(root.dataset.theme).toBe("sombre");
   });
 
-  it("revient au système si la valeur stockée est inconnue ou illisible", () => {
+  it("revient au mode automatique si la valeur stockée est inconnue ou illisible", () => {
     const storage = memory();
     storage.dump.set(THEME_STORAGE_KEY, "bleu");
-    expect(readChoice(storage)).toBe("system");
+    expect(readChoice(storage)).toBe("auto");
     const broken: ThemeStorage = {
       getItem() {
         throw new Error("stockage refusé");
@@ -63,7 +65,7 @@ describe("thème", () => {
         throw new Error("stockage refusé");
       },
     };
-    expect(readChoice(broken)).toBe("system");
+    expect(readChoice(broken)).toBe("auto");
   });
 
   it("nomme la bascule en français dans le catalogue, pas dans le composant", () => {

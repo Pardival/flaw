@@ -23,3 +23,5 @@ docs
 **/*.test.tsx
 **/*.spec.ts
 .pre-commit-config.yaml
+# Les licences OFL accompagnent les woff2 ; **/*.md ne doit pas les écarter.
+!assets/fonts/*.md

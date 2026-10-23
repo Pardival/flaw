@@ -1,71 +1,204 @@
-/* Jetons D-105 / D-101. Clair par défaut. Le sombre suit prefers-color-scheme
-   tant qu'aucune bascule manuelle n'a posé data-theme. */
+/* ==========================================================================
+   Flaw — Design tokens v2 (source : design-tokens.json, même contenu)
+   Thème : <html data-theme="clair|sombre"> ; sans attribut = automatique
+   (suit prefers-color-scheme). Contrastes vérifiés : outils/contraste.py
+   ========================================================================== */
 
 :root {
-  --color-paper: #f7f3ea;
-  --color-desk: #e7e0d4;
-  --color-ink: #1a1714;
-  --color-ink-muted: #5a5148;
-  --color-accent: #1b4f86;
-  --color-focus-exit: rgb(26 23 20 / 22%);
-  --font-roman: "EB Garamond", "Palatino Linotype", Palatino, serif;
-  --font-script: "Courier Prime", "Courier New", Courier, monospace;
-  --font-ui: Inter, system-ui, sans-serif;
-  --font-size-roman: 11.5pt;
-  --leading-roman: 1.42;
-  --font-size-script: 12pt;
-  --font-size-ui-min: 12px;
-  --font-size-ui: 15px;
-  --font-size-phone-body: 19px;
-  --scale-novel: 1.3;
-  --scale-screenplay: 1.1;
-  --scale-document: 1.22;
-  --scale-blank: 1.12;
-  --duration-ui-hide: 420ms;
-  --duration-ui: 160ms;
-  --duration-toast: 4000ms;
-  --duration-focus-reminder: 2000ms;
-  --target-min: 44px;
-  --pointer-wake: 6px;
-  --margin-script-top: 1in;
-  --margin-script-right: 1in;
-  --margin-script-bottom: 1in;
-  --margin-script-left: 1.5in;
-  color-scheme: light;
-  background: var(--color-desk);
-  color: var(--color-ink);
-  font-family: var(--font-ui);
+  /* ---------- Couleurs — thème clair (fond papier chaud) ---------- */
+  --couleur-bureau: #ECE7DF;        /* fond de l'app autour de la page */
+  --couleur-papier: #FBF8F1;        /* la page */
+  --couleur-surface: #FFFDF8;       /* menus, panneaux, boîtes de dialogue */
+  --couleur-surface-survol: #F3EEE5;
+  --couleur-encre: #26231F;         /* texte principal — 14,7:1 sur papier */
+  --couleur-encre-2: #5C564C;       /* texte secondaire — 6,9:1 */
+  --couleur-encre-3: #6B6358;       /* folios, métadonnées, placeholders — 5,6:1 (4,8:1 sur bureau) */
+  --couleur-trait: #DCD5C8;         /* filets décoratifs (non porteurs d'info) */
+  --couleur-trait-fort: #8E8473;    /* bordures de champs, contrôles — 3,5:1 */
+  --couleur-accent: #2F5873;        /* bleu encre : curseur, focus, action principale — 7,2:1 */
+  --couleur-sur-accent: #FFFFFF;    /* texte sur bouton accent — 7,6:1 */
+  --couleur-accent-doux: rgba(47, 88, 115, 0.10);
+  --couleur-selection: rgba(47, 88, 115, 0.20);
+  --couleur-succes: #3B6848;        /* synchronisé — 6,1:1 */
+  --couleur-alerte: #85570F;        /* hors ligne — 5,9:1 */
+  --couleur-danger: #A0302A;        /* suppression — 6,7:1 */
+  --couleur-voile: rgba(38, 35, 31, 0.32);   /* fond derrière une boîte de dialogue */
+  /* v2 : surlignages (le texte reste à l'encre ; contrastes sur papier entre parenthèses) */
+  --couleur-recherche: rgba(201, 150, 40, 0.28);          /* occurrences — 11,7:1 */
+  --couleur-recherche-courante: rgba(201, 150, 40, 0.55); /* occurrence active, + contour accent — 9,1:1 */
+  --couleur-ajout: rgba(59, 104, 72, 0.16);               /* historique : passage ajouté — 11,8:1 */
+  --couleur-retrait: rgba(160, 48, 42, 0.14);             /* historique : passage retiré (barré) — 11,8:1 */
+  --ombre-page: 0 1px 2px rgba(60, 45, 25, 0.06), 0 8px 28px rgba(60, 45, 25, 0.08);
+  --ombre-flottante: 0 2px 6px rgba(40, 30, 20, 0.08), 0 12px 32px rgba(40, 30, 20, 0.14);
+
+  /* ---------- Typographie — interface ---------- */
+  /* « Flaw Espace Fine » : repli limité à U+202F, voir plus bas. */
+  --police-interface: "Flaw Espace Fine", "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --taille-ui-xs: 12px;
+  --taille-ui-s: 13px;
+  --taille-ui-m: 15px;
+  --taille-ui-l: 17px;   /* minimum des champs sur téléphone (évite le zoom auto iOS ≥ 16px) */
+  --taille-ui-xl: 22px;
+  --taille-ui-xxl: 30px;
+  --interligne-ui: 1.45;
+
+  /* ---------- Typographie — polices par usage (cahier 5.5) ---------- */
+  /* « Flaw Espace Fine » (polices/polices.css) ne sert qu’au caractère U+202F (unicode-range) : aucun woff2 de la famille ne le contient. Voir polices-specifications.md § 4. */
+  --police-roman: "Flaw Espace Fine", "EB Garamond", "Libre Baskerville", "Crimson Pro", Georgia, serif;
+  --police-essai: "Flaw Espace Fine", "Source Serif 4", "Literata", "Lora", Georgia, serif;
+  --police-script: "Flaw Espace Fine", "Courier Prime", "Courier New", Courier, monospace; /* imposée */
+  --police-document: "Flaw Espace Fine", "Inter", "Source Sans 3", "IBM Plex Sans", system-ui, sans-serif;
+  --police-page-blanche: var(--police-essai); /* Source Serif 4 par défaut : validé (cahier v0.5, 5.6) */
+
+  /* ---------- Typographie française F20 (design v2.1, final pour la v1) ----------
+     Espace insérée automatiquement à la frappe, par mode. Fine = U+202F, insécable = U+00A0.
+     Signe        | roman | document | page blanche | script
+     avant ;      | fine  | fine     | fine         | insécable
+     avant :      | insécable (tous les modes)
+     avant !      | fine  | fine     | fine         | insécable
+     avant ?      | fine  | fine     | fine         | insécable
+     après «      | insécable (tous les modes)
+     avant »      | insécable (tous les modes)
+     Valeurs utilisables en CSS (content) ou lues par l'éditeur ; même table dans design-tokens.json (typographie-francaise). */
+  --f20-roman-point-virgule: "\202F";  --f20-roman-deux-points: "\00A0";  --f20-roman-exclamation: "\202F";  --f20-roman-interrogation: "\202F";  --f20-roman-guillemet-ouvrant: "\00A0";  --f20-roman-guillemet-fermant: "\00A0";
+  --f20-document-point-virgule: "\202F";  --f20-document-deux-points: "\00A0";  --f20-document-exclamation: "\202F";  --f20-document-interrogation: "\202F";  --f20-document-guillemet-ouvrant: "\00A0";  --f20-document-guillemet-fermant: "\00A0";
+  --f20-page-blanche-point-virgule: "\202F";  --f20-page-blanche-deux-points: "\00A0";  --f20-page-blanche-exclamation: "\202F";  --f20-page-blanche-interrogation: "\202F";  --f20-page-blanche-guillemet-ouvrant: "\00A0";  --f20-page-blanche-guillemet-fermant: "\00A0";
+  --f20-script-point-virgule: "\00A0";  --f20-script-deux-points: "\00A0";  --f20-script-exclamation: "\00A0";  --f20-script-interrogation: "\00A0";  --f20-script-guillemet-ouvrant: "\00A0";  --f20-script-guillemet-fermant: "\00A0"; /* chasse fixe Courier Prime */
+
+  /* Corps de texte par mode (taille imprimée ; à l'écran × --echelle-page) */
+  --roman-taille: 11.5pt;  --roman-interligne: 1.42;  --roman-alinea: 1.4em;
+  --roman-titre-chapitre: 20pt;  --roman-entete: 8.5pt;  --roman-folio: 9pt;
+  --script-taille: 12pt;   --script-interligne: 1;    /* 6 lignes / pouce, ≈ 55 lignes / page */
+  --document-taille: 10.5pt; --document-interligne: 1.55;
+  --document-h1: 20pt; --document-h2: 15pt; --document-h3: 12pt; --document-titre-graisse: 600;
+  --page-blanche-taille: 12pt; --page-blanche-interligne: 1.5;
+
+  /* ---------- Formats de page (cahier 5.4) — largeur × hauteur ---------- */
+  --format-13x20-l: 13cm;    --format-13x20-h: 20cm;     /* ratio 0,650 — défaut roman */
+  --format-poche-l: 11cm;    --format-poche-h: 17.8cm;   /* ratio 0,618 */
+  --format-15x23-l: 15cm;    --format-15x23-h: 23cm;     /* ratio 0,652 */
+  --format-a5-l: 14.8cm;     --format-a5-h: 21cm;        /* ratio 0,705 */
+  --format-a4-l: 21cm;       --format-a4-h: 29.7cm;      /* ratio 0,707 — défaut document, page blanche */
+  --format-letter-l: 21.59cm; --format-letter-h: 27.94cm; /* 8,5 × 11 in, ratio 0,773 — défaut script */
+
+  /* Marges : haut / bas / intérieur (petit fond) / extérieur (grand fond).
+     À l'écran (page simple), gauche = droite = moyenne (int + ext) / 2. */
+  --marges-13x20: 2cm 2.4cm 2cm 1.6cm;
+  --marges-poche: 1.6cm 2cm 1.7cm 1.3cm;
+  --marges-15x23: 2.2cm 2.6cm 2.2cm 1.8cm;
+  --marges-a5: 2cm 2.4cm 2cm 1.7cm;
+  --marges-a4: 2.5cm 2.5cm 2.5cm 2.5cm;
+  --marges-letter: 2.54cm 2.54cm 2.54cm 2.54cm;
+  /* Script (US Letter et A4) : haut 1 in, bas 1 in, gauche 1,5 in, droite 1 in */
+  --marges-script: 2.54cm 2.54cm 3.81cm 2.54cm;
+
+  /* Retraits scénario, mesurés depuis la marge gauche (standard US) */
+  --script-scene-retrait: 0;      --script-scene-largeur: 15.24cm;    /* 6 in */
+  --script-action-retrait: 0;     --script-action-largeur: 15.24cm;
+  --script-personnage-retrait: 5.59cm;  /* 2,2 in */
+  --script-parenthese-retrait: 4.06cm;  --script-parenthese-largeur: 5.08cm; /* 1,6 in / 2 in */
+  --script-dialogue-retrait: 2.54cm;    --script-dialogue-largeur: 8.89cm;   /* 1 in / 3,5 in */
+  /* Transition : alignée à droite (fin de ligne = marge droite) */
+
+  /* Échelle d'affichage de la page à l'écran (ordinateur). Vise un corps ≈ 18–20 px.
+     Sur téléphone (< 600 px), la page passe en « mise en page fluide » (voir README). */
+  --echelle-roman: 1.3;
+  --echelle-script: 1.1;
+  --echelle-document: 1.22;
+  --echelle-page-blanche: 1.12;
+  /* Tablette (600 à 1023 px, ex. 820 × 1180) : vraies proportions (cahier 5.6). Échelle = min(échelle du mode,
+     (largeur de l'écran − 2 × --marge-bureau-tablette) / largeur de la page). Ex. 820 px : roman 1,3 ; A4 0,93 ; Letter 0,91. */
+  --marge-bureau-tablette: 40px;
+
+  /* ---------- Points de rupture (à reprendre en @media, les variables n'y sont pas utilisables) ---------- */
+  --rupture-tablette: 600px;    /* < 600 px : téléphone, page fluide avec sauts de page marqués */
+  --rupture-ordinateur: 1024px; /* ≥ 1024 px : ordinateur ; entre les deux : tablette, vraies proportions */
+
+  /* ---------- Espacements (base 4 px) ---------- */
+  --espace-1: 4px;  --espace-2: 8px;  --espace-3: 12px; --espace-4: 16px;
+  --espace-5: 24px; --espace-6: 32px; --espace-7: 48px; --espace-8: 64px; --espace-9: 96px;
+
+  /* ---------- Rayons ---------- */
+  --rayon-s: 4px;   /* petits contrôles, puces */
+  --rayon-m: 8px;   /* boutons, champs */
+  --rayon-l: 14px;  /* menus, panneaux, boîtes de dialogue */
+  --rayon-plein: 999px;
+  --rayon-page: 2px; /* coin de la page : quasi droit, comme le papier */
+
+  /* ---------- Cibles tactiles ---------- */
+  --cible-min: 44px;
+
+  /* ---------- Animations (apparition / disparition de l'UI) ---------- */
+  --duree-ui-disparition: 420ms;   /* l'UI s'efface dès la 1re frappe */
+  --delai-ui-disparition: 0ms;
+  --duree-ui-apparition: 160ms;    /* au mouvement de souris (seuil 6 px) ou tap hors page */
+  --duree-menu-selection: 120ms;   /* menu flottant à la sélection */
+  --duree-focus-ligne: 220ms;      /* mode focus : la ligne pleine glisse vers le haut et s'efface */
+  --duree-focus-entree: 360ms;     /* passage page → zone d'une ligne */
+  --duree-theme: 240ms;            /* fondu clair ↔ sombre */
+  --document-liste-retrait: 1.5em;   /* listes à puces et numérotées (cahier v0.6) : retrait par niveau, 2 niveaux maximum */
+  --duree-rappel-focus: 2000ms;    /* « Échap pour sortir », une seule fois au tout premier usage (cahier 5.6) */
+  --duree-toast: 4000ms;           /* « Placé dans la corbeille · Annuler », « Chapitre inséré · Annuler » */
+  --courbe-sortie: cubic-bezier(0.4, 0, 1, 1);
+  --courbe-entree: cubic-bezier(0, 0, 0.2, 1);
+  --courbe-standard: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---------- Hauteurs fixes ---------- */
+  --hauteur-barre-haut: 56px;   /* barre de l'éditeur révélée (ordinateur) */
+  --hauteur-barre-haut-mobile: 52px;
+  --hauteur-barre-elements-script: 48px; /* téléphone, au-dessus du clavier (cahier 5.6), aussi en mode focus */
+  --largeur-panneau: 400px;     /* panneau de réglages (ordinateur) */
 }
 
-:root[data-theme="dark"] {
-  --color-paper: #1a1714;
-  --color-desk: #0e0c0a;
-  --color-ink: #f3ede4;
-  --color-ink-muted: #d5c8b8;
-  --color-accent: #a9c7e8;
-  --color-focus-exit: rgb(243 237 228 / 22%);
-  color-scheme: dark;
-  background: var(--color-desk);
-  color: var(--color-ink);
+/* ---------- Thème sombre ---------- */
+:root[data-theme="sombre"] {
+  --couleur-bureau: #121110;
+  --couleur-papier: #1C1A17;
+  --couleur-surface: #26231F;
+  --couleur-surface-survol: #2F2B26;
+  --couleur-encre: #E8E3D9;       /* 13,6:1 sur papier */
+  --couleur-encre-2: #B3AC9F;     /* 7,7:1 */
+  --couleur-encre-3: #948C80;     /* 5,2:1 (4,7:1 sur surface) */
+  --couleur-trait: #36322C;
+  --couleur-trait-fort: #7A7266;  /* 3,7:1 */
+  --couleur-accent: #97B9D4;      /* 8,4:1 */
+  --couleur-sur-accent: #121110;  /* 9,2:1 */
+  --couleur-accent-doux: rgba(151, 185, 212, 0.12);
+  --couleur-selection: rgba(151, 185, 212, 0.26);
+  --couleur-succes: #8FC29B;
+  --couleur-alerte: #DDB167;
+  --couleur-danger: #EC9084;
+  --couleur-voile: rgba(0, 0, 0, 0.55);
+  --couleur-recherche: rgba(221, 177, 103, 0.22);          /* 8,6:1 */
+  --couleur-recherche-courante: rgba(221, 177, 103, 0.45); /* 4,8:1 */
+  --couleur-ajout: rgba(143, 194, 155, 0.16);              /* 9,9:1 */
+  --couleur-retrait: rgba(236, 144, 132, 0.16);            /* 10,2:1 */
+  --ombre-page: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 30px rgba(0, 0, 0, 0.35);
+  --ombre-flottante: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 14px 36px rgba(0, 0, 0, 0.5);
 }
 
+/* ---------- Thème automatique : suit le système ---------- */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-paper: #1a1714;
-    --color-desk: #0e0c0a;
-    --color-ink: #f3ede4;
-    --color-ink-muted: #d5c8b8;
-    --color-accent: #a9c7e8;
-    --color-focus-exit: rgb(243 237 228 / 22%);
-    color-scheme: dark;
-    background: var(--color-desk);
-    color: var(--color-ink);
+  :root:not([data-theme]) {
+    --couleur-bureau: #121110; --couleur-papier: #1C1A17; --couleur-surface: #26231F;
+    --couleur-surface-survol: #2F2B26; --couleur-encre: #E8E3D9; --couleur-encre-2: #B3AC9F;
+    --couleur-encre-3: #948C80; --couleur-trait: #36322C; --couleur-trait-fort: #7A7266;
+    --couleur-accent: #97B9D4; --couleur-sur-accent: #121110;
+    --couleur-accent-doux: rgba(151, 185, 212, 0.12); --couleur-selection: rgba(151, 185, 212, 0.26);
+    --couleur-succes: #8FC29B; --couleur-alerte: #DDB167; --couleur-danger: #EC9084;
+    --couleur-voile: rgba(0, 0, 0, 0.55);
+    --couleur-recherche: rgba(221, 177, 103, 0.22); --couleur-recherche-courante: rgba(221, 177, 103, 0.45);
+    --couleur-ajout: rgba(143, 194, 155, 0.16); --couleur-retrait: rgba(236, 144, 132, 0.16);
+    --ombre-page: 0 0 0 1px rgba(255, 255, 255, 0.03), 0 10px 30px rgba(0, 0, 0, 0.35);
+    --ombre-flottante: 0 0 0 1px rgba(255, 255, 255, 0.06), 0 14px 36px rgba(0, 0, 0, 0.5);
   }
 }
 
+/* ---------- Mouvement réduit ---------- */
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --duration-ui-hide: 0ms;
-    --duration-ui: 0ms;
+    --duree-ui-disparition: 0ms; --duree-ui-apparition: 0ms; --duree-menu-selection: 0ms;
+    --duree-focus-ligne: 0ms; --duree-focus-entree: 0ms; --duree-theme: 0ms;
+    /* --duree-rappel-focus reste à 2000 ms : c'est une durée d'affichage, pas une animation */
   }
 }

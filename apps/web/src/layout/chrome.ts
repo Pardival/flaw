@@ -6,6 +6,9 @@ export type PageMode = (typeof PAGE_MODES)[number];
 
 export const KEYBOARD_CLEARANCE_PX = 24;
 
+/** Mouvement de pointeur au-delà duquel le chrome réapparaît (design v2, 6 px). */
+export const POINTER_WAKE_PX = 6;
+
 export function chromeStaysHidden(mode: PageMode, pageFocused: boolean): boolean {
   return mode === "blank" && pageFocused;
 }
