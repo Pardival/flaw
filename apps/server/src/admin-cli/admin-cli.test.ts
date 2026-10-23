@@ -24,16 +24,16 @@ import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.ts";
+import { DEVICE_COOKIE, SESSION_COOKIE } from "../auth/cookie.ts";
+import { problem } from "../platform/problem.ts";
 import type { AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
 import {
-  AUTH_REQUIRED,
   ENROLL_REFUSED,
   FORGOT_MESSAGE,
-  INVALID_LOGIN,
   MFA_REQUIRED,
   RESTRICTED,
   TOO_MANY,
@@ -124,6 +124,8 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
     HMAC_PEPPER_ID: "pep-hmac-2026-10",
     ALLOW_SIGNUP: "false",
     allowSignup: false,
+    FLAW_AUTH_BEARER_ENABLED: "false",
+    bearerEnabled: false,
     SESSION_IDLE_DAYS: 30,
     SESSION_MAX_DAYS: 90,
     SESSION_REVALIDATE_SECONDS: 30,
@@ -143,7 +145,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
 function setCookie(headers: Record<string, unknown>): string {
   const raw = headers["set-cookie"];
   const list = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
-  const session = list.find((item) => item.startsWith("__Secure-flaw.session_token="));
+  const session = list.find((item) => item.startsWith(`${SESSION_COOKIE}=`));
   const value = session ?? list[0];
   if (value === undefined || value.length === 0) {
     throw new Error("set-cookie absent");
@@ -154,7 +156,7 @@ function setCookie(headers: Record<string, unknown>): string {
 function deviceSetCookie(headers: Record<string, unknown>): string {
   const raw = headers["set-cookie"];
   const list = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
-  const device = list.find((item) => item.startsWith("__Secure-flaw.device="));
+  const device = list.find((item) => item.startsWith(`${DEVICE_COOKIE}=`));
   if (device === undefined) {
     throw new Error("cookie appareil absent");
   }
@@ -663,19 +665,23 @@ describe("flaw-admin et session restreinte", () => {
         expect(anonymous.json()).toEqual({ status: "ok" });
       } else {
         expect(anonymous.statusCode, `${op.method} ${op.path}`).toBe(401);
-        expect(anonymous.json()).toEqual({ message: AUTH_REQUIRED });
+        expect(anonymous.headers["content-type"]).toContain("application/problem+json");
+        expect(anonymous.json()).toEqual(problem(401));
+        expect(anonymous.headers["cache-control"]).toBe("no-store");
       }
       const restricted = await authed(session.app, method, url, session.cookie);
       if (isPublic) {
         expect(restricted.statusCode).toBe(200);
       } else {
         expect(restricted.statusCode, `${op.method} ${op.path}`).toBe(403);
-        expect(restricted.json()).toEqual({ message: RESTRICTED });
+        expect(restricted.headers["content-type"]).toContain("application/problem+json");
+        expect(restricted.json()).toEqual(problem(403, RESTRICTED));
       }
     }
     const denied = await enroll(session.app, session.cookie);
     expect(denied.statusCode).toBe(403);
-    expect(denied.json()).toEqual({ message: ENROLL_REFUSED });
+    expect(denied.headers["content-type"]).toContain("application/problem+json");
+    expect(denied.json()).toEqual(problem(403, ENROLL_REFUSED));
     const changing = await session.app.inject({
       method: "POST",
       url: "/api/auth/change-password",
@@ -822,6 +828,18 @@ describe("flaw-admin et session restreinte", () => {
     const confirmed = await verify(ready.app, ready.cookie, totpAt(secret, now()));
     expect(confirmed.statusCode).toBe(200);
     const cookie = cookiePair(setCookie(confirmed.headers));
+    const me = await ready.app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie } });
+    expect(me.statusCode).toBe(200);
+    expect(me.headers["cache-control"]).toBe("no-store");
+    expect(me.json()).toEqual({
+      id: ready.userId,
+      email,
+      role: "user",
+      locale: "fr",
+      timeZone: "UTC",
+      mfaEnrolled: true,
+      passwordMustChange: false,
+    });
     const devices = await ready.app.inject({
       method: "GET",
       url: "/api/auth/sessions",
@@ -841,11 +859,14 @@ describe("flaw-admin et session restreinte", () => {
       payload: "{}",
     });
     const deviceHeader = deviceSetCookie(confirmed.headers);
+    expect(deviceHeader.startsWith(`${DEVICE_COOKIE}=`)).toBe(true);
     expect(deviceHeader).toContain("HttpOnly");
     expect(deviceHeader).toContain("Secure");
     expect(deviceHeader).toContain("SameSite=Strict");
+    expect(deviceHeader).toContain("Path=/");
+    expect(deviceHeader).not.toMatch(/;\s*Domain=/i);
     const devicePair = cookiePair(deviceHeader);
-    const deviceToken = devicePair.slice("__Secure-flaw.device=".length);
+    const deviceToken = devicePair.slice(`${DEVICE_COOKIE}=`.length);
     const stored = await pool.query<{ identifier: string; value_hash: string }>(
       "SELECT identifier, value_hash FROM flaw.verifications WHERE value_hash = $1",
       [ready.userId],
@@ -858,26 +879,28 @@ describe("flaw-admin et session restreinte", () => {
     expect(stored.rows.some((row) => row.identifier === sha256(deviceToken))).toBe(true);
 
     expect((await sign(ready.app, email, NEW_PASSWORD, { ua: CHROME })).statusCode).toBe(401);
-    expect((await sign(ready.app, email, NEW_PASSWORD, { ua: CHROME })).json()).toEqual({ message: MFA_REQUIRED });
+    expect((await sign(ready.app, email, NEW_PASSWORD, { ua: CHROME })).json()).toEqual(problem(401, MFA_REQUIRED));
     const trusted = await sign(ready.app, email, NEW_PASSWORD, { ua: CHROME, cookie: devicePair });
     expect(trusted.statusCode).toBe(200);
     const otherUa = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, cookie: devicePair });
     expect(otherUa.statusCode).toBe(200);
     const required = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX });
     expect(required.statusCode).toBe(401);
-    expect(required.json()).toEqual({ message: MFA_REQUIRED });
+    expect(required.headers["content-type"]).toContain("application/problem+json");
+    expect(required.json()).toEqual(problem(401, MFA_REQUIRED));
     await deleteVerificationsByValue(pool, ready.userId);
     const revokedTrust = await sign(ready.app, email, NEW_PASSWORD, { ua: CHROME, cookie: devicePair });
     expect(revokedTrust.statusCode).toBe(401);
-    expect(revokedTrust.json()).toEqual({ message: MFA_REQUIRED });
+    expect(revokedTrust.headers["content-type"]).toContain("application/problem+json");
+    expect(revokedTrust.json()).toEqual(problem(401, MFA_REQUIRED));
     const replay = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, totp: totpAt(secret, now()) });
     expect(replay.statusCode).toBe(401);
-    expect(replay.json()).toEqual({ message: INVALID_LOGIN });
+    expect(replay.json()).toEqual(problem(401));
     const next = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, totp: totpAt(secret, now(), 1) });
     expect(next.statusCode).toBe(200);
     const wrong = await sign(ready.app, email, "pas-le-bon-mot-de-passe", { ua: FIREFOX, totp: totpAt(secret, now(), 1) });
     expect(wrong.statusCode).toBe(401);
-    expect(wrong.json()).toEqual({ message: INVALID_LOGIN });
+    expect(wrong.json()).toEqual(problem(401));
   });
 
   dbTest("aucune route publique ne désactive le MFA (AC-064, négatif)", async () => {
@@ -1267,14 +1290,15 @@ describe("flaw-admin et session restreinte", () => {
       limited = await verify(ready.app, ready.cookie, "000000");
     }
     expect(limited.statusCode).toBe(429);
-    expect(limited.json()).toEqual({ message: TOO_MANY });
+    expect(limited.headers["content-type"]).toContain("application/problem+json");
+    expect(limited.json()).toEqual(problem(429, TOO_MANY));
     expect(limited.headers["retry-after"]).toBeDefined();
     const late = await verify(ready.app, ready.cookie, totpAt(secret, now()));
     expect(late.statusCode).toBe(429);
-    expect(late.json()).toEqual({ message: TOO_MANY });
+    expect(late.json()).toEqual(problem(429, TOO_MANY));
     const signed = await sign(ready.app, email, NEW_PASSWORD);
     expect(signed.statusCode).toBe(429);
-    expect(signed.json()).toEqual({ message: TOO_MANY });
+    expect(signed.json()).toEqual(problem(429, TOO_MANY));
   }, 120_000);
 
   dbTest("le même pas TOTP envoyé en parallèle n'est accepté qu'une fois (Q-015)", async () => {
@@ -1322,7 +1346,7 @@ describe("flaw-admin et session restreinte", () => {
     const withDevice = await sign(app, email, NEW_PASSWORD, { ua: CHROME, cookie: devicePair });
     for (const response of [plain, withCode, withDevice]) {
       expect(response.statusCode).toBe(401);
-      expect(response.json()).toEqual({ message: INVALID_LOGIN });
+      expect(response.json()).toEqual(problem(401));
       expect(JSON.stringify(response.json())).not.toMatch(/revoked|révoqu|dek/i);
     }
     expect(log).toContain("admin.dek_revoked");

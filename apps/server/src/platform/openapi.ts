@@ -1,11 +1,32 @@
 /**
  * OpenAPI 3.1 produit depuis les schémas Zod (A-015).
+ * GET /me reprend l'opération de l'architecte (api-contract-full), hors 403 mfa_required.
  * Le document commité est openapi.json ; la CI le compare avec oasdiff.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { z } from "zod";
 
-import { PROBLEM_CODES } from "./problem.ts";
+import { SESSION_COOKIE } from "../auth/cookie.ts";
 import { documentTitleSchema } from "./validation.ts";
+
+type Json = Record<string, unknown>;
+
+function readArchitectContract(): Json {
+  const path = fileURLToPath(new URL("../../openapi/api-contract-0.4.18-derive-t052.json", import.meta.url));
+  return JSON.parse(readFileSync(path, "utf8")) as Json;
+}
+
+function getMeOperation(contract: Json): Json {
+  const paths = contract.paths as Json;
+  const me = paths["/me"] as Json;
+  const operation = structuredClone(me.get) as Json;
+  const responses = structuredClone(operation.responses) as Json;
+  delete responses["403"];
+  operation.responses = responses;
+  return operation;
+}
 
 export const healthResponseSchema = z
   .object({
@@ -16,8 +37,12 @@ export const healthResponseSchema = z
 export const meResponseSchema = z
   .object({
     id: z.uuid(),
+    email: z.email(),
     role: z.enum(["user", "admin"]),
-    identifier: z.string(),
+    locale: z.string().min(1),
+    timeZone: z.string().min(1),
+    mfaEnrolled: z.boolean(),
+    passwordMustChange: z.boolean(),
   })
   .strict();
 
@@ -27,18 +52,21 @@ export const documentListSchema = z
   })
   .strict();
 
-export const messageSchema = z
-  .object({
-    message: z.string(),
-  })
-  .strict();
-
 export const problemSchema = z
   .object({
     type: z.literal("about:blank"),
     status: z.union([z.literal(400), z.literal(404), z.literal(413), z.literal(500)]),
     title: z.string(),
-    code: z.enum(PROBLEM_CODES),
+    code: z.enum(["invalid_request", "not_found", "payload_too_large", "internal_error"]),
+  })
+  .strict();
+
+export const unauthorizedProblemSchema = z
+  .object({
+    type: z.literal("about:blank"),
+    status: z.literal(401),
+    title: z.literal("Authentification requise"),
+    code: z.literal("unauthorized"),
   })
   .strict();
 
@@ -67,21 +95,41 @@ const problemResponse = {
   description: "Erreur générique (RFC 9457)",
   content: {
     "application/problem+json": {
+      schema: { $ref: "#/components/schemas/ServiceProblem" },
+    },
+  },
+};
+
+const unauthorizedResponse = {
+  description: "Authentification requise",
+  content: {
+    "application/problem+json": {
+      schema: { $ref: "#/components/schemas/UnauthorizedBody" },
+    },
+  },
+};
+
+/** Cookie ou Bearer : chaque objet du tableau est une alternative (contrat : sessionCookie). */
+const sessionSecurity = [{ sessionCookie: [] }, { bearerAuth: [] }];
+
+const forbiddenResponse = {
+  description: "Accès refusé",
+  content: {
+    "application/problem+json": {
       schema: { $ref: "#/components/schemas/Problem" },
     },
   },
 };
 
-const messageResponse = {
-  description: "Message",
-  content: {
-    "application/json": {
-      schema: { $ref: "#/components/schemas/Message" },
-    },
-  },
-};
-
 export function buildOpenApiDocument(): Record<string, unknown> {
+  const contract = readArchitectContract();
+  const components = contract.components as Json;
+  const schemes = structuredClone(components.securitySchemes) as Json;
+  const sessionCookie = schemes.sessionCookie as Json;
+  sessionCookie.name = SESSION_COOKIE;
+  const headers = components.headers as Json;
+  const responses = components.responses as Json;
+  const schemas = components.schemas as Json;
   return {
     openapi: "3.1.0",
     info: {
@@ -110,26 +158,13 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         },
       },
       "/api/v1/me": {
-        get: {
-          operationId: "getMe",
-          summary: "Profil de l'utilisateur connecté",
-          responses: {
-            "200": {
-              description: "Profil",
-              content: {
-                "application/json": {
-                  schema: jsonSchema(meResponseSchema),
-                },
-              },
-            },
-            "401": messageResponse,
-          },
-        },
+        get: getMeOperation(contract),
       },
       "/api/v1/documents": {
         get: {
           operationId: "listDocuments",
           summary: "Documents du compte connecté",
+          security: sessionSecurity,
           responses: {
             "200": {
               description: "Documents",
@@ -139,7 +174,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
                 },
               },
             },
-            "401": messageResponse,
+            "401": unauthorizedResponse,
           },
         },
       },
@@ -147,6 +182,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         delete: {
           operationId: "deleteDocument",
           summary: "Supprime un document du compte connecté",
+          security: sessionSecurity,
           parameters: [
             {
               name: "id",
@@ -157,18 +193,30 @@ export function buildOpenApiDocument(): Record<string, unknown> {
           ],
           responses: {
             "204": { description: "Supprimé" },
-            "401": messageResponse,
-            "403": messageResponse,
+            "401": unauthorizedResponse,
+            "403": forbiddenResponse,
             "404": problemResponse,
           },
         },
       },
     },
     components: {
+      securitySchemes: {
+        sessionCookie: schemes.sessionCookie,
+        bearerAuth: schemes.bearerAuth,
+      },
+      headers: {
+        CacheControlNoStore: headers.CacheControlNoStore,
+      },
+      responses: {
+        Unauthorized: responses.Unauthorized,
+      },
       schemas: {
-        Problem: jsonSchema(problemSchema),
+        User: schemas.User,
+        Problem: schemas.Problem,
+        ServiceProblem: jsonSchema(problemSchema),
+        UnauthorizedBody: jsonSchema(unauthorizedProblemSchema),
         DocumentTitle: jsonSchema(documentTitleSchema),
-        Message: jsonSchema(messageSchema),
       },
     },
   };

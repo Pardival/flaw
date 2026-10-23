@@ -981,12 +981,29 @@ export function openAuth(deps: AuthDeps) {
     revokeSessions,
     enroll,
     verifyMfa,
-    async profile(userId: string): Promise<{ id: string; role: string; identifier: string } | null> {
+    async profile(userId: string): Promise<{
+      id: string;
+      email: string;
+      role: "user" | "admin";
+      locale: "fr";
+      timeZone: "UTC";
+      mfaEnrolled: boolean;
+      passwordMustChange: boolean;
+    } | null> {
       const account = await findAccountByUser(deps.pool, userId);
-      if (account === null) {
+      if (account === null || (account.role !== "user" && account.role !== "admin")) {
         return null;
       }
-      return { id: account.user_id, role: account.role, identifier: account.identifier };
+      const now = deps.now();
+      return {
+        id: account.user_id,
+        email: account.identifier,
+        role: account.role,
+        locale: "fr",
+        timeZone: "UTC",
+        mfaEnrolled: await totpIsConfirmed(userId, now),
+        passwordMustChange: await provisionalActive(userId, now),
+      };
     },
     async devices(userId: string, currentSessionId: string) {
       const rows = await listDevices(deps.pool, userId, deps.now());

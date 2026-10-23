@@ -3,7 +3,7 @@ rules:
     languages: [typescript, javascript]
     severity: ERROR
     message: >-
-      Seul apps/server/src/auth/** importe ou interroge users, accounts et sessions.
+      Seul apps/server/src/auth/** importe ou interroge users, accounts, sessions et verifications.
     metadata:
       category: security
       cwe: "CWE-284"
@@ -15,4 +15,4 @@ rules:
         - "**/*.test.ts"
         - "**/drizzle/**"
     patterns:
-      - pattern-regex: (?i)(?:flaw\.(?:users|accounts|sessions)\b|(?:insert\s+into|update|delete\s+from|from)\s+(?:flaw\.)?(?:users|accounts|sessions)\b|(?:import|export)\s+(?:type\s+)?\{[^}\n]*\b(?:users|accounts|sessions)\b[^}\n]*\}\s+from\s+['\"][^'\"]*schema)
+      - pattern-regex: (?i)(?:flaw\.(?:users|accounts|sessions|verifications)\b|(?:insert\s+into|update|delete\s+from|from)\s+(?:flaw\.)?(?:users|accounts|sessions|verifications)\b|(?:import|export)\s+(?:type\s+)?\{[^}\n]*\b(?:users|accounts|sessions|verifications)\b[^}\n]*\}\s+from\s+['\"][^'\"]*schema)

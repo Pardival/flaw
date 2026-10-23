@@ -4,8 +4,8 @@ import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-import { AUTH_REQUIRED } from "../auth/html.ts";
 import { buildApp, type BuildOptions } from "../app.ts";
+import { problem } from "./problem.ts";
 import type { AppConfig } from "../config/load.ts";
 import { omitServerAssigned, parseStrict } from "./validation.ts";
 import { z } from "zod";
@@ -31,6 +31,8 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
     HMAC_PEPPER_ID: "pep-hmac-2026-10",
     ALLOW_SIGNUP: "false",
     allowSignup: false,
+    FLAW_AUTH_BEARER_ENABLED: "false",
+    bearerEnabled: false,
     SESSION_IDLE_DAYS: 30,
     SESSION_MAX_DAYS: 90,
     SESSION_REVALIDATE_SECONDS: 30,
@@ -85,7 +87,9 @@ describe("API-023 santé", () => {
     const { app } = appWithLogs();
     const response = await app.inject({ method: "GET", url: "/api/v1/inexistante" });
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toEqual({ message: AUTH_REQUIRED });
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.json()).toEqual(problem(401));
+    expect(response.headers["cache-control"]).toBe("no-store");
     const posted = await app.inject({
       method: "POST",
       url: "/api/v1/inexistante",
@@ -105,7 +109,8 @@ describe("API-023 santé", () => {
       payload: "",
     });
     expect(removed.statusCode).toBe(401);
-    expect(removed.json()).toEqual({ message: AUTH_REQUIRED });
+    expect(removed.headers["content-type"]).toContain("application/problem+json");
+    expect(removed.json()).toEqual(problem(401));
     const posted = await app.inject({
       method: "POST",
       url: "/api/auth/sign-in",

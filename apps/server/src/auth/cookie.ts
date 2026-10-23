@@ -1,14 +1,15 @@
 /**
- * Cookie __Secure-flaw.session_token : HttpOnly, Secure, SameSite=Lax, Path=/, sans Domain.
- * Cookie __Secure-flaw.device : secret aléatoire, HttpOnly, Secure, SameSite=Strict, 90 jours.
+ * Cookie __Host-flaw_session : HttpOnly, Secure, SameSite=Lax, Path=/, sans Domain.
+ * Le préfixe __Host- interdit l'attribut Domain.
+ * Cookie __Host-flaw_device : secret aléatoire, HttpOnly, Secure, SameSite=Strict, Path=/, sans Domain, 90 jours.
  * Seul le hachage SHA-256 du secret d'appareil est conservé.
  */
 import { createHash, randomBytes } from "node:crypto";
 
 import { hashDeviceSecret, issueDeviceSecret } from "./device.ts";
 
-export const SESSION_COOKIE = "__Secure-flaw.session_token";
-export const DEVICE_COOKIE = "__Secure-flaw.device";
+export const SESSION_COOKIE = "__Host-flaw_session";
+export const DEVICE_COOKIE = "__Host-flaw_device";
 export const DEVICE_MAX_AGE = 90 * 24 * 60 * 60;
 
 export function newSessionToken(): { token: string; hash: Buffer } {

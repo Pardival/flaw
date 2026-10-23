@@ -213,8 +213,15 @@ describe("configuration", () => {
       expect(loaded.config.bodyLimit).toBe(10 * 1024 * 1024);
       expect(loaded.config.PASSWORD_MIN_LENGTH).toBe(15);
       expect(loaded.config.allowSignup).toBe(false);
+      expect(loaded.config.FLAW_AUTH_BEARER_ENABLED).toBe("false");
+      expect(loaded.config.bearerEnabled).toBe(false);
       expect(loaded.config.logLevel).toBe("info");
       expect(JSON.stringify(loaded.config)).not.toContain(HEX);
+    }
+    const enabled = loadConfig({ ...env, NODE_ENV: "production", LOG_LEVEL: "info", FLAW_AUTH_BEARER_ENABLED: "true" });
+    expect(enabled.ok).toBe(true);
+    if (enabled.ok) {
+      expect(enabled.config.bearerEnabled).toBe(true);
     }
   });
 });

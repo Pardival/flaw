@@ -55,7 +55,9 @@ jobs:
           exit "${status}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.
-      # oasdiff signale une rupture entre main et la tête. Les ajouts compatibles passent.
+      # Référence : contrat architecte dérivé (api-contract-full). GET /me seulement :
+      # le reste du fichier décrit des routes non livrées. 403 mfa_required = T-009.
+      # Aucun fichier d'exceptions.
       - name: oasdiff
         run: |
           set -euo pipefail
@@ -63,10 +65,24 @@ jobs:
           curl -fsSL -o /tmp/oasdiff.tar.gz https://github.com/oasdiff/oasdiff/releases/download/v1.33.0/oasdiff_1.33.0_linux_amd64.tar.gz
           echo "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247  /tmp/oasdiff.tar.gz" | sha256sum -c -
           tar -xzf /tmp/oasdiff.tar.gz -C "$HOME/.local/bin" oasdiff
-          git fetch --depth=1 origin main
-          # Contrat d'API courant du dépôt (openapi.json sur main). Aucune exception.
-          git show FETCH_HEAD:openapi.json > /tmp/openapi.base.json
-          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR /tmp/openapi.base.json openapi.json
+          if [ -e ci/oasdiff-err-ignore.txt ]; then
+            echo "oasdiff : fichier d'exceptions interdit"
+            exit 1
+          fi
+          node --input-type=module << 'EOF'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const base = JSON.parse(readFileSync("apps/server/openapi/api-contract-0.4.18-derive-t052.json", "utf8"));
+          const rev = JSON.parse(readFileSync("openapi.json", "utf8"));
+          const slice = (operation, components) => ({
+            openapi: "3.1.0",
+            info: { title: "getMe", version: "0" },
+            paths: { "/api/v1/me": { get: operation } },
+            components,
+          });
+          writeFileSync("/tmp/oas-base-me.json", JSON.stringify(slice(base.paths["/me"].get, base.components)));
+          writeFileSync("/tmp/oas-rev-me.json", JSON.stringify(slice(rev.paths["/api/v1/me"].get, rev.components)));
+          EOF
+          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR /tmp/oas-base-me.json /tmp/oas-rev-me.json
 
       - name: Licences
         run: pnpm licenses:check
@@ -443,7 +459,9 @@ jobs:
           tmp="$(mktemp -d)"
           mkdir -p "$tmp/apps/server/src/auth" "$tmp/apps/server/src/other"
           printf '%s\n' 'export async function bad(): Promise<void> { await db.query("SELECT 1 FROM flaw.users"); }' > "$tmp/apps/server/src/other/bad.ts"
+          printf '%s\n' 'export async function badVerifications(): Promise<void> { await db.query("DELETE FROM flaw.verifications WHERE identifier = $1"); }' > "$tmp/apps/server/src/other/verifications.ts"
           printf '%s\n' 'export async function ok(): Promise<void> { await db.query("SELECT 1 FROM flaw.users"); }' > "$tmp/apps/server/src/auth/ok.ts"
+          printf '%s\n' 'export async function okVerifications(): Promise<void> { await db.query("SELECT 1 FROM flaw.verifications"); }' > "$tmp/apps/server/src/auth/verifications.ts"
           bad="$(docker run --rm \
             -v "$tmp:/work" \
             -v "${GITHUB_WORKSPACE}/.github/semgrep:/rules:ro" \
@@ -451,10 +469,14 @@ jobs:
             -e SEMGREP_SEND_METRICS=off \
             -e SEMGREP_ENABLE_VERSION_CHECK=0 \
             "$SEMGREP_IMAGE" \
-            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/other/bad.ts 2>&1 || true)"
+            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/other/bad.ts /work/apps/server/src/other/verifications.ts 2>&1 || true)"
           printf '%s\n' "$bad"
           if ! printf '%s\n' "$bad" | grep -q 'auth-tables-only-auth-module'; then
             echo "auth-tables : une requête hors auth/ aurait dû être signalée."
+            exit 1
+          fi
+          if [ "$(printf '%s\n' "$bad" | grep -c 'auth-tables-only-auth-module')" -lt 2 ]; then
+            echo "auth-tables : verifications hors auth/ aurait dû être signalée."
             exit 1
           fi
           docker run --rm \
@@ -464,7 +486,7 @@ jobs:
             -e SEMGREP_SEND_METRICS=off \
             -e SEMGREP_ENABLE_VERSION_CHECK=0 \
             "$SEMGREP_IMAGE" \
-            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/auth/ok.ts
+            semgrep scan --config /rules/auth-tables.yml --error --metrics=off /work/apps/server/src/auth/ok.ts /work/apps/server/src/auth/verifications.ts
           echo "auth-tables : requête hors auth/ signalée, module auth/ autorisé."
 
   codeql:
