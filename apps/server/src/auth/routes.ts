@@ -267,6 +267,12 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     const token = cookie ?? bearer;
     const session = await auth.resolve(token);
     if (session === null) {
+      if (token !== undefined && request.method === "POST" && pattern === "/api/auth/mfa/verify") {
+        const blocked = await auth.mfaVerifyBlocked(token);
+        if (blocked !== null) {
+          return sendMessage(reply, 429, TOO_MANY, blocked.retryAfter);
+        }
+      }
       return sendMessage(reply, 401, AUTH_REQUIRED);
     }
     if (session.restricted && !restrictedAllows(request.method, pattern ?? "")) {

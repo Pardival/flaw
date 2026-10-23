@@ -998,6 +998,22 @@ export function openAuth(deps: AuthDeps) {
         current: row.id === currentSessionId,
       }));
     },
+    async mfaVerifyBlocked(token: string): Promise<{ retryAfter: number } | null> {
+      const row = await findSession(deps.pool, hashSessionToken(token));
+      if (row === null) {
+        return null;
+      }
+      const account = await findAccountByUser(deps.pool, row.owner_id);
+      if (account === null) {
+        return null;
+      }
+      const now = deps.now();
+      const lockedUntil = await activeLock(deps.pool, bucketHmac(key, `acct-lock|${account.identifier}`), now);
+      if (lockedUntil === null) {
+        return null;
+      }
+      return { retryAfter: retrySeconds(lockedUntil, now) };
+    },
     listDocuments: (userId: string) => listDocuments(deps.pool, userId),
     deleteDocument: (userId: string, documentId: string) => deleteDocument(deps.pool, userId, documentId),
     argon: deps.argon,
