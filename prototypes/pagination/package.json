@@ -1,0 +1,26 @@
+{
+  "name": "@flaw/pagination-prototype",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Prototype isolé de pagination longue (T-016). Hors workspace pnpm.",
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "scripts": {
+    "build": "node check/build.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "check": "pnpm build && node --test check/pagination.check.mjs && node check/licenses.mjs",
+    "bench": "pnpm build && node check/run-browser.mjs"
+  },
+  "dependencies": {
+    "@flaw/schema": "file:../../packages/schema",
+    "parse5": "8.0.1",
+    "prosemirror-model": "1.25.12",
+    "prosemirror-state": "1.4.4",
+    "prosemirror-transform": "1.12.2",
+    "prosemirror-view": "1.42.6"
+  },
+  "devDependencies": {
+    "esbuild-wasm": "0.25.12",
+    "typescript": "6.0.3"
+  }
+}
