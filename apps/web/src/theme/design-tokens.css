@@ -1,0 +1,71 @@
+/* Jetons D-105 / D-101. Clair par défaut. Le sombre suit prefers-color-scheme
+   tant qu'aucune bascule manuelle n'a posé data-theme. */
+
+:root {
+  --color-paper: #f7f3ea;
+  --color-desk: #e7e0d4;
+  --color-ink: #1a1714;
+  --color-ink-muted: #5a5148;
+  --color-accent: #1b4f86;
+  --color-focus-exit: rgb(26 23 20 / 22%);
+  --font-roman: "EB Garamond", "Palatino Linotype", Palatino, serif;
+  --font-script: "Courier Prime", "Courier New", Courier, monospace;
+  --font-ui: Inter, system-ui, sans-serif;
+  --font-size-roman: 11.5pt;
+  --leading-roman: 1.42;
+  --font-size-script: 12pt;
+  --font-size-ui-min: 12px;
+  --font-size-ui: 15px;
+  --font-size-phone-body: 19px;
+  --scale-novel: 1.3;
+  --scale-screenplay: 1.1;
+  --scale-document: 1.22;
+  --scale-blank: 1.12;
+  --duration-ui-hide: 420ms;
+  --duration-ui: 160ms;
+  --duration-toast: 4000ms;
+  --duration-focus-reminder: 2000ms;
+  --target-min: 44px;
+  --pointer-wake: 6px;
+  --margin-script-top: 1in;
+  --margin-script-right: 1in;
+  --margin-script-bottom: 1in;
+  --margin-script-left: 1.5in;
+  color-scheme: light;
+  background: var(--color-desk);
+  color: var(--color-ink);
+  font-family: var(--font-ui);
+}
+
+:root[data-theme="dark"] {
+  --color-paper: #1a1714;
+  --color-desk: #0e0c0a;
+  --color-ink: #f3ede4;
+  --color-ink-muted: #d5c8b8;
+  --color-accent: #a9c7e8;
+  --color-focus-exit: rgb(243 237 228 / 22%);
+  color-scheme: dark;
+  background: var(--color-desk);
+  color: var(--color-ink);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper: #1a1714;
+    --color-desk: #0e0c0a;
+    --color-ink: #f3ede4;
+    --color-ink-muted: #d5c8b8;
+    --color-accent: #a9c7e8;
+    --color-focus-exit: rgb(243 237 228 / 22%);
+    color-scheme: dark;
+    background: var(--color-desk);
+    color: var(--color-ink);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-ui-hide: 0ms;
+    --duration-ui: 0ms;
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "color": {
+    "light": {
+      "paper": "#f7f3ea",
+      "desk": "#e7e0d4",
+      "ink": "#1a1714",
+      "inkMuted": "#5a5148",
+      "accent": "#1b4f86",
+      "focusExit": "rgb(26 23 20 / 22%)"
+    },
+    "dark": {
+      "paper": "#1a1714",
+      "desk": "#0e0c0a",
+      "ink": "#f3ede4",
+      "inkMuted": "#d5c8b8",
+      "accent": "#a9c7e8",
+      "focusExit": "rgb(243 237 228 / 22%)"
+    }
+  },
+  "font": {
+    "roman": "EB Garamond",
+    "script": "Courier Prime",
+    "ui": "Inter",
+    "romanSizePt": 11.5,
+    "romanLineHeight": 1.42,
+    "scriptSizePt": 12,
+    "uiMinPx": 12,
+    "uiMaxPx": 15,
+    "phoneBodyPx": 19
+  },
+  "scale": {
+    "novel": 1.3,
+    "screenplay": 1.1,
+    "document": 1.22,
+    "blank": 1.12
+  },
+  "breakpoint": {
+    "tabletPx": 600,
+    "desktopPx": 1024
+  },
+  "duration": {
+    "uiHideMs": 420,
+    "uiMs": 160,
+    "toastMs": 4000,
+    "focusReminderMs": 2000
+  },
+  "target": {
+    "minPx": 44,
+    "pointerWakePx": 6
+  },
+  "page": {
+    "screenplayMarginsIn": {
+      "top": 1,
+      "right": 1,
+      "bottom": 1,
+      "left": 1.5
+    },
+    "formats": {
+      "novel_13x20": { "widthMm": 130, "heightMm": 200 },
+      "pocket_11x17_8": { "widthMm": 110, "heightMm": 178 },
+      "trade_15x23": { "widthMm": 150, "heightMm": 230 },
+      "a5": { "widthMm": 148, "heightMm": 210 },
+      "a4": { "widthMm": 210, "heightMm": 297 },
+      "us_letter": { "widthMm": 215.9, "heightMm": 279.4 }
+    }
+  }
+}
