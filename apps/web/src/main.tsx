@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 
 import { App } from "./App.tsx";
 import { applyThemeChoice, browserPrefersDark, browserStorage, readChoice } from "./theme/theme.ts";
+import "../../../assets/fonts/polices.css";
 import "./theme/design-tokens.css";
 import "./layout/layout.css";
 

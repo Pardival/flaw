@@ -17,7 +17,7 @@ export function ThemeToggle() {
   const [prefersDark, setPrefersDark] = useState(browserPrefersDark);
   const resolved = resolveTheme(choice, prefersDark);
   const next = toggleTheme(choice, prefersDark);
-  const label = next === "dark" ? messages.themeToDark : messages.themeToLight;
+  const label = next === "sombre" ? messages.themeToDark : messages.themeToLight;
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") {
@@ -27,8 +27,8 @@ export function ThemeToggle() {
     function onChange(): void {
       setPrefersDark(media.matches);
       const stored = readChoice(browserStorage());
-      if (stored === "system") {
-        applyThemeChoice(document.documentElement, "system", media.matches);
+      if (stored === "auto") {
+        applyThemeChoice(document.documentElement, "auto", media.matches);
       }
     }
     media.addEventListener("change", onChange);
@@ -54,7 +54,7 @@ export function ThemeToggle() {
   }
 
   return (
-    <button type="button" className="theme-toggle" onClick={onClick} aria-pressed={resolved === "dark"}>
+    <button type="button" className="theme-toggle" onClick={onClick} aria-pressed={resolved === "sombre"}>
       {label}
     </button>
   );

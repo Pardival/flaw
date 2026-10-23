@@ -1,67 +1,916 @@
 {
-  "color": {
-    "light": {
-      "paper": "#f7f3ea",
-      "desk": "#e7e0d4",
-      "ink": "#1a1714",
-      "inkMuted": "#5a5148",
-      "accent": "#1b4f86",
-      "focusExit": "rgb(26 23 20 / 22%)"
+  "$description": "Flaw — design tokens v2. Miroir exact de design-tokens.css. Format inspiré du W3C Design Tokens ($type/$value).",
+  "couleur": {
+    "clair": {
+      "bureau": {
+        "$type": "color",
+        "$value": "#ECE7DF",
+        "$description": "Fond autour de la page"
+      },
+      "papier": {
+        "$type": "color",
+        "$value": "#FBF8F1",
+        "$description": "La page"
+      },
+      "surface": {
+        "$type": "color",
+        "$value": "#FFFDF8",
+        "$description": "Menus, panneaux, dialogues"
+      },
+      "surface-survol": {
+        "$type": "color",
+        "$value": "#F3EEE5"
+      },
+      "encre": {
+        "$type": "color",
+        "$value": "#26231F",
+        "$description": "14,75:1 sur papier"
+      },
+      "encre-2": {
+        "$type": "color",
+        "$value": "#5C564C",
+        "$description": "6,85:1 sur papier"
+      },
+      "encre-3": {
+        "$type": "color",
+        "$value": "#6B6358",
+        "$description": "5,58:1 sur papier, 4,81:1 sur bureau"
+      },
+      "trait": {
+        "$type": "color",
+        "$value": "#DCD5C8",
+        "$description": "Filets décoratifs uniquement"
+      },
+      "trait-fort": {
+        "$type": "color",
+        "$value": "#8E8473",
+        "$description": "Bordures de contrôles, 3,47:1"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#2F5873",
+        "$description": "Bleu encre, 7,16:1"
+      },
+      "sur-accent": {
+        "$type": "color",
+        "$value": "#FFFFFF",
+        "$description": "7,60:1 sur accent"
+      },
+      "accent-doux": {
+        "$type": "color",
+        "$value": "rgba(47,88,115,0.10)"
+      },
+      "selection": {
+        "$type": "color",
+        "$value": "rgba(47,88,115,0.20)"
+      },
+      "succes": {
+        "$type": "color",
+        "$value": "#3B6848",
+        "$description": "6,07:1"
+      },
+      "alerte": {
+        "$type": "color",
+        "$value": "#85570F",
+        "$description": "5,88:1"
+      },
+      "danger": {
+        "$type": "color",
+        "$value": "#A0302A",
+        "$description": "6,71:1"
+      },
+      "voile": {
+        "$type": "color",
+        "$value": "rgba(38,35,31,0.32)"
+      },
+      "recherche": {
+        "$type": "color",
+        "$value": "rgba(201,150,40,0.28)",
+        "$description": "Occurrences de recherche, encre 11,65:1"
+      },
+      "recherche-courante": {
+        "$type": "color",
+        "$value": "rgba(201,150,40,0.55)",
+        "$description": "Occurrence active + contour accent, 9,09:1"
+      },
+      "ajout": {
+        "$type": "color",
+        "$value": "rgba(59,104,72,0.16)",
+        "$description": "Historique : ajouté, 11,76:1"
+      },
+      "retrait": {
+        "$type": "color",
+        "$value": "rgba(160,48,42,0.14)",
+        "$description": "Historique : retiré (barré), 11,79:1"
+      }
     },
-    "dark": {
-      "paper": "#1a1714",
-      "desk": "#0e0c0a",
-      "ink": "#f3ede4",
-      "inkMuted": "#d5c8b8",
-      "accent": "#a9c7e8",
-      "focusExit": "rgb(243 237 228 / 22%)"
+    "sombre": {
+      "bureau": {
+        "$type": "color",
+        "$value": "#121110"
+      },
+      "papier": {
+        "$type": "color",
+        "$value": "#1C1A17"
+      },
+      "surface": {
+        "$type": "color",
+        "$value": "#26231F"
+      },
+      "surface-survol": {
+        "$type": "color",
+        "$value": "#2F2B26"
+      },
+      "encre": {
+        "$type": "color",
+        "$value": "#E8E3D9",
+        "$description": "13,58:1 sur papier"
+      },
+      "encre-2": {
+        "$type": "color",
+        "$value": "#B3AC9F",
+        "$description": "7,70:1"
+      },
+      "encre-3": {
+        "$type": "color",
+        "$value": "#948C80",
+        "$description": "5,23:1 sur papier, 4,71:1 sur surface"
+      },
+      "trait": {
+        "$type": "color",
+        "$value": "#36322C"
+      },
+      "trait-fort": {
+        "$type": "color",
+        "$value": "#7A7266",
+        "$description": "3,66:1"
+      },
+      "accent": {
+        "$type": "color",
+        "$value": "#97B9D4",
+        "$description": "8,44:1"
+      },
+      "sur-accent": {
+        "$type": "color",
+        "$value": "#121110",
+        "$description": "9,17:1"
+      },
+      "accent-doux": {
+        "$type": "color",
+        "$value": "rgba(151,185,212,0.12)"
+      },
+      "selection": {
+        "$type": "color",
+        "$value": "rgba(151,185,212,0.26)"
+      },
+      "succes": {
+        "$type": "color",
+        "$value": "#8FC29B",
+        "$description": "8,56:1"
+      },
+      "alerte": {
+        "$type": "color",
+        "$value": "#DDB167",
+        "$description": "8,73:1"
+      },
+      "danger": {
+        "$type": "color",
+        "$value": "#EC9084",
+        "$description": "7,35:1"
+      },
+      "voile": {
+        "$type": "color",
+        "$value": "rgba(0,0,0,0.55)"
+      },
+      "recherche": {
+        "$type": "color",
+        "$value": "rgba(221,177,103,0.22)",
+        "$description": "8,56:1"
+      },
+      "recherche-courante": {
+        "$type": "color",
+        "$value": "rgba(221,177,103,0.45)",
+        "$description": "4,84:1"
+      },
+      "ajout": {
+        "$type": "color",
+        "$value": "rgba(143,194,155,0.16)",
+        "$description": "9,88:1"
+      },
+      "retrait": {
+        "$type": "color",
+        "$value": "rgba(236,144,132,0.16)",
+        "$description": "10,23:1"
+      }
+    },
+    "automatique": {
+      "$description": "Pas de valeurs propres : applique clair ou sombre selon prefers-color-scheme, et bascule en direct quand le système change."
     }
   },
-  "font": {
-    "roman": "EB Garamond",
-    "script": "Courier Prime",
-    "ui": "Inter",
-    "romanSizePt": 11.5,
-    "romanLineHeight": 1.42,
-    "scriptSizePt": 12,
-    "uiMinPx": 12,
-    "uiMaxPx": 15,
-    "phoneBodyPx": 19
-  },
-  "scale": {
-    "novel": 1.3,
-    "screenplay": 1.1,
-    "document": 1.22,
-    "blank": 1.12
-  },
-  "breakpoint": {
-    "tabletPx": 600,
-    "desktopPx": 1024
-  },
-  "duration": {
-    "uiHideMs": 420,
-    "uiMs": 160,
-    "toastMs": 4000,
-    "focusReminderMs": 2000
-  },
-  "target": {
-    "minPx": 44,
-    "pointerWakePx": 6
-  },
-  "page": {
-    "screenplayMarginsIn": {
-      "top": 1,
-      "right": 1,
-      "bottom": 1,
-      "left": 1.5
+  "typographie": {
+    "interface": {
+      "famille": {
+        "$type": "fontFamily",
+        "$value": [
+          "Inter",
+          "system-ui",
+          "sans-serif"
+        ]
+      },
+      "tailles": {
+        "xs": {
+          "$type": "dimension",
+          "$value": "12px"
+        },
+        "s": {
+          "$type": "dimension",
+          "$value": "13px"
+        },
+        "m": {
+          "$type": "dimension",
+          "$value": "15px"
+        },
+        "l": {
+          "$type": "dimension",
+          "$value": "17px",
+          "$description": "Minimum des champs sur téléphone"
+        },
+        "xl": {
+          "$type": "dimension",
+          "$value": "22px"
+        },
+        "xxl": {
+          "$type": "dimension",
+          "$value": "30px"
+        }
+      },
+      "interligne": {
+        "$type": "number",
+        "$value": 1.45
+      }
     },
-    "formats": {
-      "novel_13x20": { "widthMm": 130, "heightMm": 200 },
-      "pocket_11x17_8": { "widthMm": 110, "heightMm": 178 },
-      "trade_15x23": { "widthMm": 150, "heightMm": 230 },
-      "a5": { "widthMm": 148, "heightMm": 210 },
-      "a4": { "widthMm": 210, "heightMm": 297 },
-      "us_letter": { "widthMm": 215.9, "heightMm": 279.4 }
+    "repli-espace-fine": {
+      "famille": {
+        "$type": "fontFamily",
+        "$value": "Flaw Espace Fine"
+      },
+      "fichier": "polices/SourceSerif4-Regular.ttf.woff2",
+      "unicode-range": "U+202F",
+      "largeur": {
+        "$type": "dimension",
+        "$value": "0.125em"
+      },
+      "$description": "Police de repli limitée à U+202F, en tête de chaque pile (aucun woff2 de la famille ne contient U+202F). Source Serif 4 Regular d'Adobe 4.005, non modifiée. PDF : covers dans Typst. Voir polices-specifications.md § 4-5."
+    },
+    "typographie-francaise": {
+      "$description": "F20, design v2.1 (final pour la v1) : caractère d'espace à insérer automatiquement, par mode et par signe. U+202F = espace fine insécable, U+00A0 = espace insécable normale. Position : « avant » = entre le mot et le signe (ou entre le mot et ») ; « après » = entre « et le mot. Au changement de mode, les espaces posées par F20 sont converties selon cette table.",
+      "signes": {
+        "point-virgule": {
+          "signe": ";",
+          "position": "avant"
+        },
+        "deux-points": {
+          "signe": ":",
+          "position": "avant"
+        },
+        "exclamation": {
+          "signe": "!",
+          "position": "avant"
+        },
+        "interrogation": {
+          "signe": "?",
+          "position": "avant"
+        },
+        "guillemet-ouvrant": {
+          "signe": "«",
+          "position": "après"
+        },
+        "guillemet-fermant": {
+          "signe": "»",
+          "position": "avant"
+        }
+      },
+      "roman": {
+        "point-virgule": "U+202F",
+        "deux-points": "U+00A0",
+        "exclamation": "U+202F",
+        "interrogation": "U+202F",
+        "guillemet-ouvrant": "U+00A0",
+        "guillemet-fermant": "U+00A0"
+      },
+      "document": {
+        "point-virgule": "U+202F",
+        "deux-points": "U+00A0",
+        "exclamation": "U+202F",
+        "interrogation": "U+202F",
+        "guillemet-ouvrant": "U+00A0",
+        "guillemet-fermant": "U+00A0"
+      },
+      "page-blanche": {
+        "point-virgule": "U+202F",
+        "deux-points": "U+00A0",
+        "exclamation": "U+202F",
+        "interrogation": "U+202F",
+        "guillemet-ouvrant": "U+00A0",
+        "guillemet-fermant": "U+00A0"
+      },
+      "script": {
+        "$description": "Courier Prime, chasse fixe : insécable normale partout pour garder les colonnes alignées",
+        "point-virgule": "U+00A0",
+        "deux-points": "U+00A0",
+        "exclamation": "U+00A0",
+        "interrogation": "U+00A0",
+        "guillemet-ouvrant": "U+00A0",
+        "guillemet-fermant": "U+00A0"
+      },
+      "interface": {
+        "$description": "Textes de l'interface (Inter) : même règle que roman, document et page blanche",
+        "point-virgule": "U+202F",
+        "deux-points": "U+00A0",
+        "exclamation": "U+202F",
+        "interrogation": "U+202F",
+        "guillemet-ouvrant": "U+00A0",
+        "guillemet-fermant": "U+00A0"
+      }
+    },
+    "polices-par-usage": {
+      "roman": {
+        "defaut": "EB Garamond",
+        "alternatives": [
+          "Libre Baskerville",
+          "Crimson Pro",
+          "Source Serif 4",
+          "Literata",
+          "Lora"
+        ]
+      },
+      "essai": {
+        "$description": "Pas de mode essai : ces polices sont proposées comme alternatives dans tous les modes sauf script (décision validée, cahier v0.3)",
+        "polices": [
+          "Source Serif 4",
+          "Literata",
+          "Lora"
+        ]
+      },
+      "script": {
+        "defaut": "Courier Prime",
+        "alternatives": [],
+        "$description": "Imposée : sélecteur désactivé en mode script"
+      },
+      "document": {
+        "defaut": "Inter",
+        "alternatives": [
+          "Source Sans 3",
+          "IBM Plex Sans",
+          "Source Serif 4",
+          "Literata",
+          "Lora"
+        ]
+      },
+      "page-blanche": {
+        "defaut": "Source Serif 4",
+        "alternatives": [
+          "Literata",
+          "Lora",
+          "EB Garamond",
+          "Libre Baskerville",
+          "Crimson Pro",
+          "Inter",
+          "Source Sans 3",
+          "IBM Plex Sans"
+        ],
+        "$description": "Défaut validé (cahier v0.5, 5.6)"
+      }
+    },
+    "modes": {
+      "roman": {
+        "taille": {
+          "$type": "dimension",
+          "$value": "11.5pt"
+        },
+        "interligne": 1.42,
+        "alinea": {
+          "$type": "dimension",
+          "$value": "1.4em"
+        },
+        "justification": "justifié + césure (lang=fr)",
+        "titre-chapitre": {
+          "$type": "dimension",
+          "$value": "20pt"
+        },
+        "entete": {
+          "$type": "dimension",
+          "$value": "8.5pt",
+          "$description": "Petites capitales, interlettrage 0.08em"
+        },
+        "folio": {
+          "$type": "dimension",
+          "$value": "9pt"
+        }
+      },
+      "script": {
+        "taille": {
+          "$type": "dimension",
+          "$value": "12pt"
+        },
+        "interligne": 1,
+        "lignes-par-page": 55,
+        "elements": {
+          "scene": {
+            "retrait": {
+              "$type": "dimension",
+              "$value": "0cm"
+            },
+            "largeur": {
+              "$type": "dimension",
+              "$value": "15.24cm"
+            },
+            "style": "MAJUSCULES, gras, 1 ligne vide avant"
+          },
+          "action": {
+            "retrait": {
+              "$type": "dimension",
+              "$value": "0cm"
+            },
+            "largeur": {
+              "$type": "dimension",
+              "$value": "15.24cm"
+            },
+            "style": "normal, 1 ligne vide avant"
+          },
+          "personnage": {
+            "retrait": {
+              "$type": "dimension",
+              "$value": "5.59cm"
+            },
+            "style": "MAJUSCULES, 1 ligne vide avant"
+          },
+          "parenthese": {
+            "retrait": {
+              "$type": "dimension",
+              "$value": "4.06cm"
+            },
+            "largeur": {
+              "$type": "dimension",
+              "$value": "5.08cm"
+            },
+            "style": "entre parenthèses"
+          },
+          "dialogue": {
+            "retrait": {
+              "$type": "dimension",
+              "$value": "2.54cm"
+            },
+            "largeur": {
+              "$type": "dimension",
+              "$value": "8.89cm"
+            }
+          },
+          "transition": {
+            "alignement": "droite",
+            "style": "MAJUSCULES, 1 ligne vide avant"
+          }
+        },
+        "$description": "Retraits mesurés depuis la marge gauche (standard US)"
+      },
+      "document": {
+        "taille": {
+          "$type": "dimension",
+          "$value": "10.5pt"
+        },
+        "interligne": 1.55,
+        "h1": {
+          "$type": "dimension",
+          "$value": "20pt"
+        },
+        "h2": {
+          "$type": "dimension",
+          "$value": "15pt"
+        },
+        "h3": {
+          "$type": "dimension",
+          "$value": "12pt"
+        },
+        "graisse-titres": 600,
+        "espace-paragraphe": {
+          "$type": "dimension",
+          "$value": "0.6em"
+        },
+        "liste-retrait": {
+          "$type": "dimension",
+          "$value": "1.5em",
+          "$description": "Listes à puces et numérotées (cahier v0.6) : retrait par niveau, 2 niveaux au plus"
+        }
+      },
+      "page-blanche": {
+        "taille": {
+          "$type": "dimension",
+          "$value": "12pt"
+        },
+        "interligne": 1.5
+      }
+    }
+  },
+  "formats": {
+    "13x20": {
+      "largeur": {
+        "$type": "dimension",
+        "$value": "13cm"
+      },
+      "hauteur": {
+        "$type": "dimension",
+        "$value": "20cm"
+      },
+      "ratio": {
+        "$type": "number",
+        "$value": 0.65
+      },
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "2cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2.4cm"
+        },
+        "interieur": {
+          "$type": "dimension",
+          "$value": "2cm"
+        },
+        "exterieur": {
+          "$type": "dimension",
+          "$value": "1.6cm"
+        }
+      },
+      "$description": "Roman broché, défaut roman"
+    },
+    "poche": {
+      "largeur": {
+        "$type": "dimension",
+        "$value": "11cm"
+      },
+      "hauteur": {
+        "$type": "dimension",
+        "$value": "17.8cm"
+      },
+      "ratio": {
+        "$type": "number",
+        "$value": 0.618
+      },
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "1.6cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2cm"
+        },
+        "interieur": {
+          "$type": "dimension",
+          "$value": "1.7cm"
+        },
+        "exterieur": {
+          "$type": "dimension",
+          "$value": "1.3cm"
+        }
+      },
+      "$description": "Poche"
+    },
+    "15x23": {
+      "largeur": {
+        "$type": "dimension",
+        "$value": "15cm"
+      },
+      "hauteur": {
+        "$type": "dimension",
+        "$value": "23cm"
+      },
+      "ratio": {
+        "$type": "number",
+        "$value": 0.652
+      },
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "2.2cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2.6cm"
+        },
+        "interieur": {
+          "$type": "dimension",
+          "$value": "2.2cm"
+        },
+        "exterieur": {
+          "$type": "dimension",
+          "$value": "1.8cm"
+        }
+      },
+      "$description": "Grand format"
+    },
+    "a5": {
+      "largeur": {
+        "$type": "dimension",
+        "$value": "14.8cm"
+      },
+      "hauteur": {
+        "$type": "dimension",
+        "$value": "21cm"
+      },
+      "ratio": {
+        "$type": "number",
+        "$value": 0.705
+      },
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "2cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2.4cm"
+        },
+        "interieur": {
+          "$type": "dimension",
+          "$value": "2cm"
+        },
+        "exterieur": {
+          "$type": "dimension",
+          "$value": "1.7cm"
+        }
+      },
+      "$description": "A5"
+    },
+    "a4": {
+      "largeur": {
+        "$type": "dimension",
+        "$value": "21cm"
+      },
+      "hauteur": {
+        "$type": "dimension",
+        "$value": "29.7cm"
+      },
+      "ratio": {
+        "$type": "number",
+        "$value": 0.707
+      },
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "2.5cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2.5cm"
+        },
+        "interieur": {
+          "$type": "dimension",
+          "$value": "2.5cm"
+        },
+        "exterieur": {
+          "$type": "dimension",
+          "$value": "2.5cm"
+        }
+      },
+      "$description": "Défaut document et page blanche"
+    },
+    "us-letter": {
+      "largeur": {
+        "$type": "dimension",
+        "$value": "21.59cm"
+      },
+      "hauteur": {
+        "$type": "dimension",
+        "$value": "27.94cm"
+      },
+      "ratio": {
+        "$type": "number",
+        "$value": 0.773
+      },
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        },
+        "interieur": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        },
+        "exterieur": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        }
+      },
+      "$description": "8,5 × 11 in"
+    },
+    "script": {
+      "$description": "Marges scénario, US Letter (défaut) et A4",
+      "marges": {
+        "haut": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        },
+        "bas": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        },
+        "gauche": {
+          "$type": "dimension",
+          "$value": "3.81cm"
+        },
+        "droite": {
+          "$type": "dimension",
+          "$value": "2.54cm"
+        }
+      }
+    },
+    "disponibilite": {
+      "roman": [
+        "13x20",
+        "poche",
+        "15x23",
+        "a5"
+      ],
+      "script": [
+        "us-letter",
+        "a4"
+      ],
+      "document": [
+        "a4",
+        "us-letter"
+      ],
+      "page-blanche": [
+        "a4",
+        "13x20",
+        "poche",
+        "15x23",
+        "a5",
+        "us-letter"
+      ]
+    },
+    "echelle-ecran": {
+      "$description": "Facteur d'affichage de la page sur ordinateur (corps ≈ 18–20 px). Tablette : min(échelle, (largeur écran − 80 px) / largeur page). Téléphone < 600 px : page fluide avec sauts de page marqués (cahier 5.6).",
+      "roman": 1.3,
+      "script": 1.1,
+      "document": 1.22,
+      "page-blanche": 1.12,
+      "marge-bureau-tablette": "40px"
+    }
+  },
+  "espacement": {
+    "1": {
+      "$type": "dimension",
+      "$value": "4px"
+    },
+    "2": {
+      "$type": "dimension",
+      "$value": "8px"
+    },
+    "3": {
+      "$type": "dimension",
+      "$value": "12px"
+    },
+    "4": {
+      "$type": "dimension",
+      "$value": "16px"
+    },
+    "5": {
+      "$type": "dimension",
+      "$value": "24px"
+    },
+    "6": {
+      "$type": "dimension",
+      "$value": "32px"
+    },
+    "7": {
+      "$type": "dimension",
+      "$value": "48px"
+    },
+    "8": {
+      "$type": "dimension",
+      "$value": "64px"
+    },
+    "9": {
+      "$type": "dimension",
+      "$value": "96px"
+    }
+  },
+  "rayon": {
+    "s": {
+      "$type": "dimension",
+      "$value": "4px"
+    },
+    "m": {
+      "$type": "dimension",
+      "$value": "8px"
+    },
+    "l": {
+      "$type": "dimension",
+      "$value": "14px"
+    },
+    "plein": {
+      "$type": "dimension",
+      "$value": "999px"
+    },
+    "page": {
+      "$type": "dimension",
+      "$value": "2px"
+    }
+  },
+  "ombre": {
+    "clair": {
+      "page": "0 1px 2px rgba(60,45,25,.06), 0 8px 28px rgba(60,45,25,.08)",
+      "flottante": "0 2px 6px rgba(40,30,20,.08), 0 12px 32px rgba(40,30,20,.14)"
+    },
+    "sombre": {
+      "page": "0 0 0 1px rgba(255,255,255,.03), 0 10px 30px rgba(0,0,0,.35)",
+      "flottante": "0 0 0 1px rgba(255,255,255,.06), 0 14px 36px rgba(0,0,0,.5)"
+    }
+  },
+  "points-de-rupture": {
+    "tablette": {
+      "$type": "dimension",
+      "$value": "600px",
+      "$description": "< 600 px : téléphone (page fluide)"
+    },
+    "ordinateur": {
+      "$type": "dimension",
+      "$value": "1024px",
+      "$description": "600–1023 px : tablette (vraies proportions)"
+    }
+  },
+  "animation": {
+    "ui-disparition": {
+      "$type": "duration",
+      "$value": "420ms",
+      "$description": "Dès la 1re frappe, délai 0"
+    },
+    "ui-apparition": {
+      "$type": "duration",
+      "$value": "160ms",
+      "$description": "Mouvement de souris > 6 px ou tap hors de la page"
+    },
+    "menu-selection": {
+      "$type": "duration",
+      "$value": "120ms"
+    },
+    "focus-ligne": {
+      "$type": "duration",
+      "$value": "220ms",
+      "$description": "La ligne pleine glisse vers le haut et s'efface"
+    },
+    "focus-entree": {
+      "$type": "duration",
+      "$value": "360ms"
+    },
+    "theme": {
+      "$type": "duration",
+      "$value": "240ms"
+    },
+    "rappel-focus": {
+      "$type": "duration",
+      "$value": "2000ms",
+      "$description": "Une seule fois, au tout premier usage du focus"
+    },
+    "toast": {
+      "$type": "duration",
+      "$value": "4000ms"
+    },
+    "courbes": {
+      "sortie": "cubic-bezier(0.4,0,1,1)",
+      "entree": "cubic-bezier(0,0,0.2,1)",
+      "standard": "cubic-bezier(0.2,0,0,1)"
+    },
+    "mouvement-reduit": "Toutes les durées à 0 ms (prefers-reduced-motion)"
+  },
+  "dimensions": {
+    "cible-tactile-min": {
+      "$type": "dimension",
+      "$value": "44px"
+    },
+    "barre-haut": {
+      "$type": "dimension",
+      "$value": "56px"
+    },
+    "barre-haut-mobile": {
+      "$type": "dimension",
+      "$value": "52px"
+    },
+    "barre-elements-script": {
+      "$type": "dimension",
+      "$value": "48px",
+      "$description": "Téléphone, au-dessus du clavier, aussi en focus"
+    },
+    "panneau-reglages": {
+      "$type": "dimension",
+      "$value": "400px"
     }
   }
 }

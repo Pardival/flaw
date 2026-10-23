@@ -5,8 +5,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { messages } from "../theme/messages.fr.ts";
-import { tokens } from "../theme/tokens.ts";
 import {
+  POINTER_WAKE_PX,
   chromeStaysHidden,
   isTypingKey,
   keyboardClosed,
@@ -15,7 +15,7 @@ import {
   scrolledUp,
   shouldHideChromeOnKey,
 } from "./chrome.ts";
-import { pageRatio } from "./formats.ts";
+import { pageFormats, pageRatio } from "./formats.ts";
 import { Shell } from "./Shell.tsx";
 
 function html(node: ReactNode): string {
@@ -25,20 +25,21 @@ function html(node: ReactNode): string {
 describe("mise en page", () => {
   it("pose la page fluide sous 600 px et les proportions à partir de 600 et 1024 px", () => {
     const css = readFileSync(new URL("./layout.css", import.meta.url), "utf8");
-    expect(tokens.breakpoint.tabletPx).toBe(600);
-    expect(tokens.breakpoint.desktopPx).toBe(1024);
     expect(css).toContain("max-width: 599.98px");
     expect(css).toContain("min-width: 600px");
     expect(css).toContain("min-width: 1024px");
-    expect(css).toContain("var(--font-size-phone-body)");
-    expect(css).toContain("var(--target-min)");
-    expect(css).toContain("var(--margin-script-left)");
+    expect(css).toContain("var(--taille-ui-l)");
+    expect(css).toContain("var(--cible-min)");
+    expect(css).toContain("padding-left: 3.81cm");
+    expect(css).toContain("var(--duree-theme)");
+    expect(css).toContain("var(--police-roman)");
+    expect(css).not.toContain("line-height: normal");
     expect(css).toContain("scroll-margin-bottom");
     expect(css).toContain("scroll-padding-bottom");
     expect(css).toContain("prefers-reduced-motion: reduce");
     expect(pageRatio("novel_13x20")).toBeCloseTo(130 / 200);
     expect(pageRatio("us_letter")).toBeCloseTo(215.9 / 279.4);
-    for (const [name, size] of Object.entries(tokens.page.formats)) {
+    for (const [name, size] of Object.entries(pageFormats())) {
       expect(css).toContain(`[data-format="${name}"] { --page-ratio: ${size.widthMm} / ${size.heightMm}; }`);
     }
   });
@@ -53,8 +54,8 @@ describe("mise en page", () => {
     expect(shouldHideChromeOnKey(true, false, false)).toBe(true);
     expect(shouldHideChromeOnKey(true, true, false)).toBe(false);
     expect(shouldHideChromeOnKey(false, false, true)).toBe(true);
-    expect(pointerWakesChrome(3, 4, tokens.target.pointerWakePx)).toBe(false);
-    expect(pointerWakesChrome(7, 0, tokens.target.pointerWakePx)).toBe(true);
+    expect(pointerWakesChrome(3, 4, POINTER_WAKE_PX)).toBe(false);
+    expect(pointerWakesChrome(7, 0, POINTER_WAKE_PX)).toBe(true);
     expect(pointerWakesChrome(6, 0, 6)).toBe(false);
     expect(keyboardClosed(400, 720)).toBe(true);
     expect(keyboardClosed(720, 400)).toBe(false);

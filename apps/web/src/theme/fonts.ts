@@ -3,9 +3,9 @@
 import { tokens } from "./tokens.ts";
 
 export const FONT_FAMILIES = {
-  roman: tokens.font.roman,
-  script: tokens.font.script,
-  ui: tokens.font.ui,
+  roman: tokens.typographie["polices-par-usage"].roman.defaut,
+  script: tokens.typographie["polices-par-usage"].script.defaut,
+  ui: tokens.typographie["polices-par-usage"].document.defaut,
 } as const;
 
 const THIRD_PARTY_HOSTS = [

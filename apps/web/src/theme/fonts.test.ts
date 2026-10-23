@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -53,6 +54,28 @@ describe("polices auto-hébergées", () => {
     }
     expect(isThirdPartyFontReference("https://fonts.googleapis.com/css2?family=Inter")).toBe(true);
     expect(isThirdPartyFontReference("@fontsource/inter")).toBe(true);
+  });
+
+  it("vérifie les empreintes et le romain 700 distinct", () => {
+    execFileSync("sha256sum", ["-c", "SHA256SUMS"], { cwd: fontRoot, stdio: "pipe" });
+    const sums = readFileSync(join(fontRoot, "SHA256SUMS"), "utf8");
+    const css = readFileSync(join(fontRoot, "polices.css"), "utf8");
+    const hash = (name: string) => {
+      const line = sums.split("\n").find((entry) => entry.endsWith(`  ${name}`));
+      if (line === undefined) {
+        throw new Error(`empreinte absente : ${name}`);
+      }
+      return line.slice(0, 64);
+    };
+    expect(hash("EBGaramond-normal-700.woff2")).not.toBe(hash("EBGaramond-normal-400.woff2"));
+    expect(hash("EBGaramond-normal-700-ext.woff2")).not.toBe(hash("EBGaramond-normal-400-ext.woff2"));
+    expect(hash("EBGaramond-normal-400.woff2")).toBe(hash("EBGaramond-normal-600.woff2"));
+    expect(css).toContain("src: url(EBGaramond-normal-700.woff2) format('woff2');");
+    expect(css).toContain("src: url(EBGaramond-normal-700-ext.woff2) format('woff2');");
+    expect(css).toContain("font-weight: 700;");
+    expect(css).not.toContain("font-weight: 400 800");
+    expect(css).toContain("unicode-range: U+202F;");
+    expect(readFileSync(join(fontRoot, "OFL-SourceSerif4.md"), "utf8")).toContain("SIL OPEN FONT LICENSE");
   });
 
   it("n'accepte un fichier de police que sous assets/fonts", () => {
