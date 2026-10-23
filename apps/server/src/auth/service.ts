@@ -19,7 +19,7 @@ import type { SecurityEvent } from "../platform/security-log.ts";
 import { hashSessionToken, newSessionToken } from "./cookie.ts";
 import { deviceLabel, deviceSecretMatches, hashDeviceSecret, issueDeviceSecret, summarizeDevice } from "./device.ts";
 import { bucketHmac, hmacKey, ipHmac, subjectHmac, tempHmac } from "./hmac.ts";
-import { encodeBase32, matchTotp, recoveryCode, recoveryCodeHmac } from "./mfa.ts";
+import { encodeBase32, matchTotp, normalizeRecoveryCode, recoveryCode, recoveryCodeHmac } from "./mfa.ts";
 import { RESTRICTED_TTL_MS } from "./restricted-session.ts";
 import {
   ARGON_TARGET,
@@ -104,6 +104,8 @@ export type AuthDeps = {
   kekId?: string;
   recoveryPepper?: Uint8Array;
   recoveryPepperId?: string;
+  /** Poivres par pepper_id (courant et anciens). La consommation choisit par l'id stocké. */
+  recoveryPeppers?: ReadonlyMap<string, Uint8Array>;
 };
 
 export type SignInResult =
@@ -576,16 +578,45 @@ export function openAuth(deps: AuthDeps) {
     }
   }
 
+  function peppersById(): ReadonlyMap<string, Uint8Array> {
+    if (deps.recoveryPeppers !== undefined) {
+      return deps.recoveryPeppers;
+    }
+    const fallback = new Map<string, Uint8Array>();
+    if (deps.recoveryPepper !== undefined && deps.recoveryPepperId !== undefined) {
+      fallback.set(deps.recoveryPepperId, deps.recoveryPepper);
+    }
+    return fallback;
+  }
+
+  async function unusedRecoveryPepperIds(userId: string): Promise<string[]> {
+    const result = await deps.pool.query<{ pepper_id: string }>(
+      `SELECT DISTINCT pepper_id
+       FROM flaw.recovery_codes
+       WHERE user_id = $1 AND used_at IS NULL
+       ORDER BY pepper_id`,
+      [userId],
+    );
+    return result.rows.map((row) => row.pepper_id);
+  }
+
   async function consumeRecovery(userId: string, code: string, now: Date): Promise<boolean> {
-    if (deps.recoveryPepper === undefined || deps.recoveryPepperId === undefined) {
+    const peppers = peppersById();
+    if (peppers.size === 0 || normalizeRecoveryCode(code) === null) {
       return false;
     }
-    const mac = recoveryCodeHmac(deps.recoveryPepper, deps.recoveryPepperId, userId, code);
-    if (mac === null) {
-      return false;
-    }
-    if (await consumeRecoveryCode(deps.pool, userId, mac, now)) {
-      return true;
+    for (const pepperId of await unusedRecoveryPepperIds(userId)) {
+      const pepper = peppers.get(pepperId);
+      if (pepper === undefined) {
+        continue;
+      }
+      const mac = recoveryCodeHmac(pepper, pepperId, userId, code);
+      if (mac === null) {
+        return false;
+      }
+      if (await consumeRecoveryCode(deps.pool, userId, mac, now)) {
+        return true;
+      }
     }
     return false;
   }

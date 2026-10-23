@@ -26,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.ts";
 import { DEVICE_COOKIE, SESSION_COOKIE } from "../auth/cookie.ts";
-import { problem } from "../platform/problem.ts";
+import { mfaRequiredProblem, problem } from "../platform/problem.ts";
 import type { AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
@@ -712,7 +712,12 @@ describe("flaw-admin et session restreinte", () => {
       } else {
         expect(restricted.statusCode, `${op.method} ${op.path}`).toBe(403);
         expect(restricted.headers["content-type"]).toContain("application/problem+json");
-        expect(restricted.json()).toEqual(problem(403, RESTRICTED));
+        if (op.method === "GET" && op.path === "/api/v1/me") {
+          expect(restricted.json()).toEqual(mfaRequiredProblem());
+          expect(restricted.json()).not.toEqual(problem(403, RESTRICTED));
+        } else {
+          expect(restricted.json()).toEqual(problem(403, RESTRICTED));
+        }
       }
     }
     const denied = await enroll(session.app, session.cookie);

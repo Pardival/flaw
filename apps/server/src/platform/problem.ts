@@ -58,3 +58,34 @@ export function sendProblem(reply: ProblemReply, status: ProblemStatus, detail?:
     .header("cache-control", "no-store")
     .send(problem(status, detail));
 }
+
+/** Corps 403 de GET /me : schéma MfaRequired (type …/mfa_required, code mfa_required). */
+export type MfaRequiredProblem = {
+  type: "https://flaw.example.com/problems/mfa_required";
+  status: 403;
+  title: "Second facteur requis";
+  code: "mfa_required";
+};
+
+export function mfaRequiredProblem(): MfaRequiredProblem {
+  return {
+    type: "https://flaw.example.com/problems/mfa_required",
+    status: 403,
+    title: "Second facteur requis",
+    code: "mfa_required",
+  };
+}
+
+type MfaReply = {
+  code: (status: number) => MfaReply;
+  header: (name: string, value: string) => MfaReply;
+  send: (body: MfaRequiredProblem) => unknown;
+};
+
+export function sendMfaRequired(reply: MfaReply): unknown {
+  return reply
+    .code(403)
+    .header("content-type", "application/problem+json; charset=utf-8")
+    .header("cache-control", "no-store")
+    .send(mfaRequiredProblem());
+}

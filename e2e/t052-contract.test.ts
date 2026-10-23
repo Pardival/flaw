@@ -263,7 +263,7 @@ describe("T-052 contrat", () => {
       $ref: "#/components/headers/CacheControlNoStore",
     });
     expect(responses["401"]).toEqual({ $ref: "#/components/responses/Unauthorized" });
-    expect(responses["403"]).toBeUndefined();
+    expect(responses["403"]).toEqual({ $ref: "#/components/responses/MfaRequired" });
     expect(contract["x-source"]).toEqual({
       ref: "ARC-API",
       version: "0.4.0-draft",
@@ -271,13 +271,11 @@ describe("T-052 contrat", () => {
       arc_sum: "322da9f66ea0",
     });
     expect(contract["x-ecarts-connus"]).toEqual([
-      "403 mfa_required → T-009",
       "Bearer derrière drapeau désactivé par défaut (SEC-SESS-06 post-v1)",
     ]);
     expect(contract["x-bearer"]).toBe("FLAW_AUTH_BEARER_ENABLED, défaut false");
     expect(JSON.stringify(contract.paths["/healthz"])).not.toContain("clientIp");
     const expected = structuredClone(contract.paths["/me"].get);
-    delete expected.responses["403"];
     expect(me).toEqual(expected);
     expect(contract.paths["/me"].get.responses["403"]).toBeDefined();
     const components = document.components as {

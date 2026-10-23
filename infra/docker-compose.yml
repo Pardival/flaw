@@ -119,7 +119,24 @@ services:
     image: ${FLAW_IMAGE:?FLAW_IMAGE manquant}
     user: "10001:10001"
     environment: *app-env
-    secrets: [app_db_password, better_auth_secret, flaw_kek, recovery_pepper, hmac_pepper]
+    # Anciens poivres : un slot RECOVERY_OLD_PEPPER_N par id de
+    # RECOVERY_PEPPER_OLD_IDS. Vide → le fichier courant est remonté sous un
+    # nom que l'application n'ouvre pas. Renseigné → /run/secrets/recovery_pepper_<id>,
+    # uniquement sur app (ni migrate, ni db).
+    secrets:
+      - app_db_password
+      - better_auth_secret
+      - flaw_kek
+      - recovery_pepper
+      - hmac_pepper
+      - source: old_recovery_pepper_1
+        target: ${RECOVERY_OLD_PEPPER_1:+recovery_pepper_}${RECOVERY_OLD_PEPPER_1:-old_pepper_slot_1}
+      - source: old_recovery_pepper_2
+        target: ${RECOVERY_OLD_PEPPER_2:+recovery_pepper_}${RECOVERY_OLD_PEPPER_2:-old_pepper_slot_2}
+      - source: old_recovery_pepper_3
+        target: ${RECOVERY_OLD_PEPPER_3:+recovery_pepper_}${RECOVERY_OLD_PEPPER_3:-old_pepper_slot_3}
+      - source: old_recovery_pepper_4
+        target: ${RECOVERY_OLD_PEPPER_4:+recovery_pepper_}${RECOVERY_OLD_PEPPER_4:-old_pepper_slot_4}
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777
@@ -190,6 +207,14 @@ secrets:
     file: ./secrets/recovery_pepper
   hmac_pepper:
     file: ./secrets/hmac_pepper
+  old_recovery_pepper_1:
+    file: ./secrets/${RECOVERY_OLD_PEPPER_1:+recovery_pepper_}${RECOVERY_OLD_PEPPER_1:-recovery_pepper}
+  old_recovery_pepper_2:
+    file: ./secrets/${RECOVERY_OLD_PEPPER_2:+recovery_pepper_}${RECOVERY_OLD_PEPPER_2:-recovery_pepper}
+  old_recovery_pepper_3:
+    file: ./secrets/${RECOVERY_OLD_PEPPER_3:+recovery_pepper_}${RECOVERY_OLD_PEPPER_3:-recovery_pepper}
+  old_recovery_pepper_4:
+    file: ./secrets/${RECOVERY_OLD_PEPPER_4:+recovery_pepper_}${RECOVERY_OLD_PEPPER_4:-recovery_pepper}
 
 networks:
   edge:

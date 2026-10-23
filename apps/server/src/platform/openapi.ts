@@ -1,6 +1,6 @@
 /**
  * OpenAPI 3.1 produit depuis les schémas Zod (A-015).
- * GET /me reprend l'opération de l'architecte (api-contract-full), hors 403 mfa_required.
+ * GET /me reprend l'opération de l'architecte, y compris le 403 mfa_required.
  * Le document commité est openapi.json ; la CI le compare avec oasdiff.
  */
 import { readFileSync } from "node:fs";
@@ -21,11 +21,7 @@ function readArchitectContract(): Json {
 function getMeOperation(contract: Json): Json {
   const paths = contract.paths as Json;
   const me = paths["/me"] as Json;
-  const operation = structuredClone(me.get) as Json;
-  const responses = structuredClone(operation.responses) as Json;
-  delete responses["403"];
-  operation.responses = responses;
-  return operation;
+  return structuredClone(me.get) as Json;
 }
 
 export const healthResponseSchema = z
@@ -210,6 +206,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       },
       responses: {
         Unauthorized: responses.Unauthorized,
+        MfaRequired: responses.MfaRequired,
       },
       schemas: {
         User: schemas.User,

@@ -7,7 +7,6 @@
     "arc_sum": "322da9f66ea0"
   },
   "x-ecarts-connus": [
-    "403 mfa_required → T-009",
     "Bearer derrière drapeau désactivé par défaut (SEC-SESS-06 post-v1)"
   ],
   "x-bearer": "FLAW_AUTH_BEARER_ENABLED, défaut false",

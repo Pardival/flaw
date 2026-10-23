@@ -18,12 +18,14 @@ import { assertAppPool, buildApp, declaredRoutes, notifyStartupRefusal } from ".
 import { loadConfig, type AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
+import { decodeValidatedKey } from "../crypto/kek.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
-import { problem } from "../platform/problem.ts";
+import { mfaRequiredProblem, problem } from "../platform/problem.ts";
 import { checkRoles } from "../admin/check-roles.ts";
 import { DEVICE_COOKIE, hashSessionToken, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
 import { issueDeviceSecret, summarizeDevice } from "./device.ts";
 import { bucketHmac, hmacKey, subjectHmac, tempHmac } from "./hmac.ts";
+import { recoveryCode, recoveryCodeHmac } from "./mfa.ts";
 import {
   FORGOT_MESSAGE,
   LOGIN_HTML,
@@ -44,7 +46,7 @@ import {
 import * as passwordModule from "./password.ts";
 import { AUTH_ROUTES, isPublicRoute } from "./routes.ts";
 import { openAuth } from "./service.ts";
-import { insertLock, listAuditEvents, LOCK_STAGE_ANCHOR, purgeRateLimits } from "./store.ts";
+import { insertLock, insertRecoveryCode, listAuditEvents, LOCK_STAGE_ANCHOR, purgeRateLimits } from "./store.ts";
 
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -54,6 +56,32 @@ const ORIGIN = "https://flaw.test";
 const PASSWORD = "phrase-secrete-ok";
 const TRACKERS = ["google-analytics", "googletagmanager", "segment.io", "plausible.io", "doubleclick.net"];
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
+
+function mfaRequiredFromContract(): ReturnType<typeof mfaRequiredProblem> {
+  const contract = JSON.parse(
+    readFileSync(join(root, "apps/server/openapi/api-contract-0.4.18-derive-t052.json"), "utf8"),
+  ) as {
+    components: {
+      responses: {
+        MfaRequired: {
+          description: string;
+          content: { "application/problem+json": { schema: { $ref: string } } };
+        };
+      };
+      schemas: { Problem: { properties: { type: { format: string }; status: { type: string } } } };
+    };
+  };
+  const response = contract.components.responses.MfaRequired;
+  expect(response.content["application/problem+json"].schema.$ref).toBe("#/components/schemas/Problem");
+  expect(response.description).toContain("mfa_required");
+  expect(contract.components.schemas.Problem.properties.type.format).toBe("uri");
+  const body = mfaRequiredProblem();
+  expect(body.code).toBe("mfa_required");
+  expect(body.type.endsWith("/mfa_required")).toBe(true);
+  expect(body.status).toBe(403);
+  expect(problem(403, RESTRICTED)).not.toEqual(body);
+  return body;
+}
 const dbTestsLabel = basename(fileURLToPath(import.meta.url));
 const cliPath = fileURLToPath(new URL("../admin/cli.ts", import.meta.url));
 const container = `flaw-t007-auth-${process.pid}`;
@@ -1825,7 +1853,8 @@ describe("authentification sur PostgreSQL", () => {
     });
     expect(restricted.statusCode).toBe(403);
     expect(restricted.headers["content-type"]).toContain("application/problem+json");
-    expect(restricted.json()).toEqual(problem(403, RESTRICTED));
+    expect(restricted.json()).toEqual(mfaRequiredFromContract());
+    expect(restricted.json()).not.toEqual(problem(403, RESTRICTED));
     expect(restricted.headers["cache-control"]).toBe("no-store");
     const anonymous = await app.inject({ method: "GET", url: "/api/v1/me" });
     expect(anonymous.statusCode).toBe(401);
@@ -1833,6 +1862,96 @@ describe("authentification sur PostgreSQL", () => {
     expect(anonymous.json()).toEqual(problem(401));
     expect(anonymous.headers["cache-control"]).toBe("no-store");
     await app.close();
+  });
+
+  dbTest("GET /me répond 403 problem+json no-store tant que la MFA n'est pas validée (API-001)", async () => {
+    await wipeUsers();
+    const email = nextEmail();
+    const created = await floorAuth().createUser(email, nextIp());
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, created.password, nextIp());
+    expect(signed.statusCode).toBe(200);
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: cookiePair(setCookie(signed.headers)) },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.headers["content-type"]).toContain("application/problem+json");
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.json()).toEqual(mfaRequiredFromContract());
+    expect(response.json()).not.toEqual(problem(403, RESTRICTED));
+    const full = await sign(app, email, created.password, nextIp());
+    expect((await floorAuth().profile(created.userId))?.mfaEnrolled).toBe(false);
+    expect(full.statusCode).toBe(200);
+    await app.close();
+  });
+
+  dbTest("accepte une seule fois un code émis sous pep-A puis le refuse sans pep-A (f4)", async () => {
+    const email = nextEmail();
+    const userId = await seedUser(email, PASSWORD);
+    const pepperA = validKey();
+    const pepperABytes = decodeValidatedKey(pepperA);
+    if (pepperABytes === null) {
+      throw new Error("poivre A");
+    }
+    const kept = recoveryCode();
+    const dropped = recoveryCode();
+    const keptMac = recoveryCodeHmac(pepperABytes, "pep-A", userId, kept);
+    const droppedMac = recoveryCodeHmac(pepperABytes, "pep-A", userId, dropped);
+    if (keptMac === null || droppedMac === null) {
+      throw new Error("hmac");
+    }
+    await insertRecoveryCode(pool, userId, "pep-A", keptMac);
+    await insertRecoveryCode(pool, userId, "pep-A", droppedMac);
+    const secretsWithOld = {
+      ...secrets,
+      recoveryPepperOld: { "pep-A": pepperA },
+    };
+    const withOld = buildApp(
+      config({ RECOVERY_PEPPER_ID: "pep-B", RECOVERY_PEPPER_OLD_IDS: "pep-A" }),
+      { ...appOptions(), secrets: secretsWithOld },
+    );
+    const ip = nextIp();
+    const attempt = (app: ReturnType<typeof buildApp>, code: string) =>
+      app.inject({
+        method: "POST",
+        url: "/api/auth/sign-in",
+        remoteAddress: "172.31.250.10",
+        headers: {
+          "content-type": "application/json",
+          origin: ORIGIN,
+          "x-real-ip": ip,
+        },
+        payload: JSON.stringify({ identifier: email, password: PASSWORD, recoveryCode: code }),
+      });
+    const accepted = await attempt(withOld, kept);
+    expect(accepted.statusCode).toBe(200);
+    const replay = await attempt(withOld, kept);
+    expect(replay.statusCode).toBe(401);
+    expect(replay.statusCode).not.toBe(500);
+    expect(replay.headers["content-type"]).toContain("application/problem+json");
+    const used = await pool.query<{ used_at: Date | null }>(
+      "SELECT used_at FROM flaw.recovery_codes WHERE user_id = $1 AND code_hmac = $2",
+      [userId, keptMac],
+    );
+    expect(used.rows[0]?.used_at).not.toBeNull();
+    await withOld.close();
+
+    const withoutOld = buildApp(
+      config({ RECOVERY_PEPPER_ID: "pep-B", RECOVERY_PEPPER_OLD_IDS: "" }),
+      { ...appOptions(), secrets: secretsWithOld },
+    );
+    const refused = await attempt(withoutOld, dropped);
+    expect(refused.statusCode).toBe(401);
+    expect(refused.statusCode).not.toBe(500);
+    expect(refused.headers["content-type"]).toContain("application/problem+json");
+    const still = await pool.query<{ used_at: Date | null }>(
+      "SELECT used_at FROM flaw.recovery_codes WHERE user_id = $1 AND code_hmac = $2",
+      [userId, droppedMac],
+    );
+    expect(still.rows[0]?.used_at).toBeNull();
+    await withoutOld.close();
   });
 
   dbTest("un compte sans facteur ni marqueur d'enrôlement ne se connecte pas (R4)", async () => {
