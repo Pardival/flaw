@@ -258,6 +258,9 @@ export function openAuth(deps: AuthDeps) {
       if (pending !== null && now.getTime() >= pending.expires_at.getTime()) {
         return { kind: "invalid" };
       }
+      if (factor === null && pending === null) {
+        return { kind: "invalid" };
+      }
       await clearFailures(input.identifier);
       return issueSession(account.user_id, input, now, true);
     }

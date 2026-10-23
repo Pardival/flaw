@@ -1835,7 +1835,7 @@ describe("authentification sur PostgreSQL", () => {
     await app.close();
   });
 
-  dbTest("un compte sans facteur ni marqueur d'enrôlement reste restreint", async () => {
+  dbTest("un compte sans facteur ni marqueur d'enrôlement ne se connecte pas (R4)", async () => {
     const email = nextEmail();
     const passwordHash = await hashPassword(PASSWORD, ARGON_FLOOR);
     const inserted = await pool.query<{ id: string }>("INSERT INTO flaw.users (role) VALUES ('user') RETURNING id");
@@ -1849,14 +1849,15 @@ describe("authentification sur PostgreSQL", () => {
     );
     const app = buildApp(config(), appOptions());
     const signed = await sign(app, email, PASSWORD, nextIp());
-    expect(signed.statusCode).toBe(200);
-    const documents = await app.inject({
-      method: "GET",
-      url: "/api/v1/documents",
-      headers: { cookie: cookiePair(setCookie(signed.headers)) },
-    });
-    expect(documents.statusCode).toBe(403);
-    expect(documents.json()).toEqual(problem(403, RESTRICTED));
+    expect(signed.statusCode).toBe(401);
+    expect(signed.headers["content-type"]).toContain("application/problem+json");
+    expect(signed.json()).toEqual(problem(401));
+    expect(signed.headers["set-cookie"]).toBeUndefined();
+    const sessions = await pool.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.sessions WHERE owner_id = $1",
+      [id],
+    );
+    expect(sessions.rows[0]?.n).toBe(0);
     await app.close();
   });
 

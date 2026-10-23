@@ -9,7 +9,7 @@ WITH expected AS (
     ('verifications', false, false, true, true, true, true),
     ('auth_factors', false, false, true, true, true, true),
     ('recovery_codes', false, false, true, true, true, true),
-    ('user_keys', false, false, true, true, true, true),
+    ('user_keys', false, false, true, true, true, false),
     ('keks', false, false, true, true, true, false),
     ('user_preferences', false, false, true, true, true, true),
     ('daily_progress', false, false, true, true, true, true),
@@ -196,8 +196,11 @@ WHERE NOT EXISTS (
     AND c.relname = 'user_keys'
     AND NOT t.tgisinternal
     AND p.proname = 'user_keys_keep_revoked'
+    AND t.tgenabled = 'O'
+    AND (t.tgtype & 1) <> 0
     AND (t.tgtype & 4) <> 0
     AND (t.tgtype & 8) <> 0
     AND (t.tgtype & 16) <> 0
     AND (t.tgtype & 2) <> 0
+    AND pg_get_userbyid(p.proowner) = 'flaw_owner'
 );

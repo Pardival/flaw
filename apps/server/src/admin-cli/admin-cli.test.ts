@@ -1105,7 +1105,6 @@ describe("flaw-admin et session restreinte", () => {
     });
     await pool.query("DELETE FROM flaw.auth_factors WHERE owner_id = $1", [ready.userId]);
     await pool.query("DELETE FROM flaw.recovery_codes WHERE user_id = $1", [ready.userId]);
-    await pool.query("DELETE FROM flaw.user_keys WHERE owner_id = $1 AND status <> 'revoked'", [ready.userId]);
     expect((await floorAuth().enroll(ready.userId, true)).kind).toBe("forbidden");
     const freshKek = decodeValidatedKey(newMaterial);
     if (freshKek === null) {
@@ -1434,7 +1433,9 @@ describe("flaw-admin et session restreinte", () => {
       [dekId, created.userId, randomBytes(8), randomBytes(8), KEK_ID],
     );
     await pool.query("UPDATE flaw.user_keys SET status = 'revoked' WHERE id = $1", [dekId]);
-    await expect(pool.query("DELETE FROM flaw.user_keys WHERE id = $1", [dekId])).rejects.toThrow(/dek revoked/);
+    await expect(pool.query("DELETE FROM flaw.user_keys WHERE id = $1", [dekId])).rejects.toThrow(
+      /permission denied for table user_keys/,
+    );
     await expect(
       pool.query(
         `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
@@ -1444,6 +1445,61 @@ describe("flaw-admin et session restreinte", () => {
     ).rejects.toThrow(/dek revoked/);
     const row = await pool.query<{ status: string }>("SELECT status FROM flaw.user_keys WHERE id = $1", [dekId]);
     expect(row.rows[0]?.status).toBe("revoked");
+  });
+
+  dbTest("renommer l'id d'une DEK revoked puis la réinsérer est refusé (R1)", async () => {
+    const created = await floorAuth().createUser(nextEmail(), nextIp());
+    const dekId = randomUUID();
+    const renamed = randomUUID();
+    await pool.query(
+      `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+       VALUES ($1, $2, $3, $4, $5, 1, 'active')`,
+      [dekId, created.userId, randomBytes(8), randomBytes(8), KEK_ID],
+    );
+    await pool.query("UPDATE flaw.user_keys SET status = 'revoked' WHERE id = $1", [dekId]);
+    await expect(pool.query("UPDATE flaw.user_keys SET id = $2 WHERE id = $1", [dekId, renamed])).rejects.toThrow(
+      /dek revoked/,
+    );
+    await expect(
+      pool.query(
+        `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+         VALUES ($1, $2, $3, $4, $5, 1, 'active')`,
+        [dekId, created.userId, randomBytes(8), randomBytes(8), KEK_ID],
+      ),
+    ).rejects.toThrow(/dek revoked/);
+    const kept = await pool.query<{ id: string; status: string }>(
+      "SELECT id, status FROM flaw.user_keys WHERE owner_id = $1",
+      [created.userId],
+    );
+    expect(kept.rows).toEqual([{ id: dekId, status: "revoked" }]);
+  });
+
+  dbTest("déplacer le owner d'une DEK revoked puis effacer le compte jetable est refusé (R1)", async () => {
+    const created = await floorAuth().createUser(nextEmail(), nextIp());
+    const dekId = randomUUID();
+    await pool.query(
+      `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+       VALUES ($1, $2, $3, $4, $5, 1, 'active')`,
+      [dekId, created.userId, randomBytes(8), randomBytes(8), KEK_ID],
+    );
+    await pool.query("UPDATE flaw.user_keys SET status = 'revoked' WHERE id = $1", [dekId]);
+    const throwaway = await pool.query<{ id: string }>("INSERT INTO flaw.users (role) VALUES ('user') RETURNING id");
+    const otherId = throwaway.rows[0]?.id;
+    if (otherId === undefined) {
+      throw new Error("compte jetable absent");
+    }
+    await expect(
+      pool.query("UPDATE flaw.user_keys SET owner_id = $2 WHERE id = $1", [dekId, otherId]),
+    ).rejects.toThrow(/dek revoked/);
+    await pool.query("DELETE FROM flaw.users WHERE id = $1", [otherId]);
+    const kept = await pool.query<{ owner_id: string; status: string }>(
+      "SELECT owner_id, status FROM flaw.user_keys WHERE id = $1",
+      [dekId],
+    );
+    expect(kept.rows[0]).toEqual({ owner_id: created.userId, status: "revoked" });
+    await pool.query("DELETE FROM flaw.users WHERE id = $1", [created.userId]);
+    const gone = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM flaw.user_keys WHERE id = $1", [dekId]);
+    expect(gone.rows[0]?.n).toBe(0);
   });
 
   dbTest("un échec de commande écrit l'audit (f6)", async () => {

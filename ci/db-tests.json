@@ -3,6 +3,6 @@
   "files": {
     "auth.test.ts": 38,
     "rls.test.ts": 12,
-    "admin-cli.test.ts": 24
+    "admin-cli.test.ts": 26
   }
 }

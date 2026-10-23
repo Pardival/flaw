@@ -47,7 +47,7 @@ const GRANTS: Record<string, { sel: boolean; ins: boolean; upd: boolean; del: bo
   verifications: { sel: true, ins: true, upd: true, del: true },
   auth_factors: { sel: true, ins: true, upd: true, del: true },
   recovery_codes: { sel: true, ins: true, upd: true, del: true },
-  user_keys: { sel: true, ins: true, upd: true, del: true },
+  user_keys: { sel: true, ins: true, upd: true, del: false },
   user_preferences: { sel: true, ins: true, upd: true, del: true },
   daily_progress: { sel: true, ins: true, upd: true, del: true },
   rate_limits: { sel: true, ins: true, upd: true, del: true },
@@ -1170,7 +1170,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
     expect(left.rows[0]?.n).toBe(0);
   });
 
-  it("refuse de supprimer une DEK encore référencée et supprime le compte", async () => {
+  it("refuse à flaw_app le DELETE d'une DEK et la cascade du compte l'efface", async () => {
     const userId = crypto.randomUUID();
     const dekId = crypto.randomUUID();
     const documentId = crypto.randomUUID();
@@ -1193,7 +1193,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
       await app.query("DELETE FROM flaw.user_keys WHERE id = $1", [dekId]);
     } catch (error) {
       blocked = true;
-      expect(errorText(error)).toMatch(/23503/);
+      expect(errorText(error)).toMatch(/42501/);
     }
     expect(blocked).toBe(true);
     const stillKey = await admin.query<{ n: number }>(
