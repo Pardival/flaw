@@ -100,6 +100,12 @@ type SessionContext = {
 };
 
 const resolvers = new WeakMap<FastifyInstance, (token: string) => Promise<boolean>>();
+const bearerFlags = new WeakMap<FastifyInstance, boolean>();
+
+export function queryTokenPresent(request: FastifyRequest): boolean {
+  const query = request.query;
+  return query !== null && typeof query === "object" && Object.prototype.hasOwnProperty.call(query, "token");
+}
 
 const sessions = new WeakMap<FastifyRequest, SessionContext>();
 
@@ -108,8 +114,11 @@ export function sessionOf(request: FastifyRequest): SessionContext | undefined {
 }
 
 export async function anonymousRequest(app: FastifyInstance, request: FastifyRequest): Promise<boolean> {
+  if (queryTokenPresent(request)) {
+    return true;
+  }
   const cookie = readCookie(headerValue(request.headers.cookie), SESSION_COOKIE);
-  const bearer = readBearer(headerValue(request.headers.authorization));
+  const bearer = bearerFlags.get(app) === true ? readBearer(headerValue(request.headers.authorization)) : undefined;
   const token = cookie ?? bearer;
   if (token === undefined) {
     return true;
@@ -242,14 +251,18 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   );
 
   readiness.set(app, auth?.ready() ?? Promise.resolve());
+  bearerFlags.set(app, config.bearerEnabled);
   const extraPublic = runtime.extraPublicRoutes ?? [];
 
   app.addHook("preHandler", async (request, reply) => {
+    if (queryTokenPresent(request)) {
+      return sendUnauthorized(reply);
+    }
     const pattern = request.routeOptions.url;
     const key = `${request.method} ${pattern ?? ""}`;
     const mutating = request.method === "POST" || request.method === "PUT" || request.method === "PATCH" || request.method === "DELETE";
     const cookie = readCookie(headerValue(request.headers.cookie), SESSION_COOKIE);
-    const bearer = readBearer(headerValue(request.headers.authorization));
+    const bearer = config.bearerEnabled ? readBearer(headerValue(request.headers.authorization)) : undefined;
     const isPublic = pattern !== undefined && isPublicRoute(request.method, pattern, extraPublic);
     if (mutating && (cookie !== undefined || PUBLIC_MUTATING.has(key))) {
       if (!csrfOk(request, config)) {

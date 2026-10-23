@@ -17,6 +17,7 @@ export function secretsAreLoaded(): boolean {
 
 export type AppConfig = PublicEnv & {
   allowSignup: boolean;
+  bearerEnabled: boolean;
   bodyLimit: number;
   logLevel: PublicEnv["LOG_LEVEL"];
 };
@@ -45,6 +46,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): LoadResult {
     config: {
       ...parsed,
       allowSignup: parsed.ALLOW_SIGNUP === "true",
+      bearerEnabled: parsed.FLAW_AUTH_BEARER_ENABLED === "true",
       bodyLimit: parsed.MAX_DOCUMENT_SIZE_MB * 1024 * 1024,
       logLevel: parsed.LOG_LEVEL,
     },

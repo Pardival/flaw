@@ -37,6 +37,8 @@ function config(): AppConfig {
     HMAC_PEPPER_ID: "pep-hmac-2026-10",
     ALLOW_SIGNUP: "false",
     allowSignup: false,
+    FLAW_AUTH_BEARER_ENABLED: "false",
+    bearerEnabled: false,
     SESSION_IDLE_DAYS: 30,
     SESSION_MAX_DAYS: 90,
     SESSION_REVALIDATE_SECONDS: 30,
@@ -137,6 +139,33 @@ describe("T-052 contrat", () => {
     expect(routes).not.toContain(".send({ message })");
     expect(BAD_REQUEST).toBe("requête invalide");
     expect(MFA_REQUIRED).toBe("code d'authentification requis");
+    await app.close();
+  });
+
+  it("refuse le Bearer éteint et le paramètre token", async () => {
+    const app = buildApp(config());
+    const bearer = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { authorization: "Bearer jeton-opaque-assez-long-123456" },
+    });
+    expect(bearer.statusCode).toBe(401);
+    expect(bearer.headers["content-type"]).toContain("application/problem+json");
+    expect(bearer.json()).toEqual(problem(401));
+    expect(bearer.json()).not.toHaveProperty("message");
+
+    const health = await app.inject({ method: "GET", url: "/api/v1/healthz?token=fuite" });
+    expect(health.statusCode).toBe(401);
+    expect(health.headers["content-type"]).toContain("application/problem+json");
+    expect(health.json()).toEqual(problem(401));
+
+    const named = await app.inject({
+      method: "GET",
+      url: "/api/v1/me?token=fuite",
+      headers: { cookie: `${SESSION_COOKIE}=jeton-opaque` },
+    });
+    expect(named.statusCode).toBe(401);
+    expect(named.json()).toEqual(problem(401));
     await app.close();
   });
 
@@ -241,8 +270,11 @@ describe("T-052 contrat", () => {
       hash: "e782cb759b20",
       arc_sum: "322da9f66ea0",
     });
-    expect(contract["x-ecarts-connus"]).toEqual(["403 mfa_required → T-009"]);
-    expect(contract["x-bearer"]).toBe("implémenté");
+    expect(contract["x-ecarts-connus"]).toEqual([
+      "403 mfa_required → T-009",
+      "Bearer derrière drapeau désactivé par défaut (SEC-SESS-06 post-v1)",
+    ]);
+    expect(contract["x-bearer"]).toBe("FLAW_AUTH_BEARER_ENABLED, défaut false");
     expect(JSON.stringify(contract.paths["/healthz"])).not.toContain("clientIp");
     const expected = structuredClone(contract.paths["/me"].get);
     delete expected.responses["403"];

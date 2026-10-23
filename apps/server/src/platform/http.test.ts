@@ -31,6 +31,8 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
     HMAC_PEPPER_ID: "pep-hmac-2026-10",
     ALLOW_SIGNUP: "false",
     allowSignup: false,
+    FLAW_AUTH_BEARER_ENABLED: "false",
+    bearerEnabled: false,
     SESSION_IDLE_DAYS: 30,
     SESSION_MAX_DAYS: 90,
     SESSION_REVALIDATE_SECONDS: 30,

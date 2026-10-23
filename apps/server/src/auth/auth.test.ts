@@ -120,6 +120,8 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
     HMAC_PEPPER_ID: "pep-hmac-2026-10",
     ALLOW_SIGNUP: "false",
     allowSignup: false,
+    FLAW_AUTH_BEARER_ENABLED: "false",
+    bearerEnabled: false,
     SESSION_IDLE_DAYS: 30,
     SESSION_MAX_DAYS: 90,
     SESSION_REVALIDATE_SECONDS: 30,
@@ -1306,10 +1308,48 @@ describe("authentification sur PostgreSQL", () => {
     await app.close();
   });
 
+  dbTest("refuse le Bearer éteint et le paramètre token (SEC-SESS-06)", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp(), false);
+    const token = tokenOf(setCookie(signed.headers));
+    const cookie = cookiePair(setCookie(signed.headers));
+    const bearer = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(bearer.statusCode).toBe(401);
+    expect(bearer.headers["content-type"]).toContain("application/problem+json");
+    expect(bearer.json()).toEqual(problem(401));
+    const queried = await app.inject({
+      method: "GET",
+      url: "/api/v1/me?token=fuite",
+      headers: { cookie },
+    });
+    expect(queried.statusCode).toBe(401);
+    expect(queried.headers["content-type"]).toContain("application/problem+json");
+    expect(queried.json()).toEqual(problem(401));
+    const enabled = buildApp(config({ FLAW_AUTH_BEARER_ENABLED: "true", bearerEnabled: true }), appOptions());
+    const still = await enabled.inject({
+      method: "GET",
+      url: "/api/v1/me?token=fuite",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(still.statusCode).toBe(401);
+    expect(still.json()).toEqual(problem(401));
+    await enabled.close();
+    await app.close();
+  });
+
   dbTest("accepte le jeton Bearer et refuse un hachage bcrypt (SEC-SESS-02, SEC-AUTH-01)", async () => {
     const email = nextEmail();
     const userId = await seedUser(email, PASSWORD);
-    const app = buildApp(config(), appOptions());
+    const app = buildApp(
+      config({ FLAW_AUTH_BEARER_ENABLED: "true", bearerEnabled: true }),
+      appOptions(),
+    );
     const signed = await sign(app, email, PASSWORD, nextIp(), false);
     const token = tokenOf(setCookie(signed.headers));
     const me = await app.inject({
