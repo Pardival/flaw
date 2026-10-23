@@ -61,9 +61,14 @@ describe("session restreinte et OpenAPI", () => {
       "DELETE /api/v1/me/sessions",
       "DELETE /api/v1/me/sessions/{sessionId}",
       "GET /api/v1/documents",
+      "GET /api/v1/documents/{id}",
       "GET /api/v1/healthz",
       "GET /api/v1/me",
       "GET /api/v1/me/sessions",
+      "PATCH /api/v1/documents/{id}",
+      "POST /api/v1/documents/{id}/export",
+      "POST /api/v1/documents/{id}/sync",
+      "PUT /api/v1/documents/{id}",
     ]);
     for (const op of openApiOperations(openapi)) {
       const isPublic = op.method === "GET" && op.path === "/api/v1/healthz";

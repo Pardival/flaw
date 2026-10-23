@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
+import { documentFontSchema, documentRefSchema, syncBodySchema } from "../access/schema.ts";
 import { SESSION_COOKIE } from "../auth/cookie.ts";
 import { documentTitleSchema } from "./validation.ts";
 
@@ -129,6 +130,37 @@ const forbiddenResponse = {
   },
 };
 
+const documentIdParameter = {
+  name: "id",
+  in: "path" as const,
+  required: true,
+  schema: { type: "string", format: "uuid" },
+};
+
+function documentWrite(operationId: string, summary: string, body: z.ZodType, done: string) {
+  return {
+    operationId,
+    summary,
+    security: sessionSecurity,
+    parameters: [documentIdParameter],
+    requestBody: {
+      required: true,
+      content: {
+        "application/json": {
+          schema: jsonSchema(body),
+        },
+      },
+    },
+    responses: {
+      "204": { description: done },
+      "400": problemResponse,
+      "401": unauthorizedResponse,
+      "403": forbiddenResponse,
+      "404": problemResponse,
+    },
+  };
+}
+
 export function buildOpenApiDocument(): Record<string, unknown> {
   const contract = readArchitectContract();
   const architectPaths = contract.paths as Json;
@@ -197,18 +229,32 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         },
       },
       "/api/v1/documents/{id}": {
+        get: {
+          operationId: "getDocument",
+          summary: "Texte du compte connecté",
+          security: sessionSecurity,
+          parameters: [documentIdParameter],
+          responses: {
+            "200": {
+              description: "Texte",
+              content: {
+                "application/json": {
+                  schema: jsonSchema(documentRefSchema),
+                },
+              },
+            },
+            "401": unauthorizedResponse,
+            "403": forbiddenResponse,
+            "404": problemResponse,
+          },
+        },
+        put: documentWrite("putDocument", "Remplace la police d'un texte du compte connecté", documentFontSchema, "Mis à jour"),
+        patch: documentWrite("patchDocument", "Modifie la police d'un texte du compte connecté", documentFontSchema, "Mis à jour"),
         delete: {
           operationId: "deleteDocument",
           summary: "Supprime un document du compte connecté",
           security: sessionSecurity,
-          parameters: [
-            {
-              name: "id",
-              in: "path",
-              required: true,
-              schema: { type: "string", format: "uuid" },
-            },
-          ],
+          parameters: [documentIdParameter],
           responses: {
             "204": { description: "Supprimé" },
             "401": unauthorizedResponse,
@@ -216,6 +262,22 @@ export function buildOpenApiDocument(): Record<string, unknown> {
             "404": problemResponse,
           },
         },
+      },
+      "/api/v1/documents/{id}/sync": {
+        post: documentWrite(
+          "syncDocument",
+          "Autorise la synchronisation d'un texte du compte connecté",
+          syncBodySchema,
+          "Autorisé",
+        ),
+      },
+      "/api/v1/documents/{id}/export": {
+        post: documentWrite(
+          "exportDocument",
+          "Autorise l'export d'un texte du compte connecté",
+          syncBodySchema,
+          "Autorisé",
+        ),
       },
     },
     components: {
