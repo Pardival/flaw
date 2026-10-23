@@ -4,6 +4,8 @@
  */
 import type { Pool, PoolClient } from "pg";
 
+import { deleteOwnedDocument, listOwnedDocuments } from "../access/documents.ts";
+
 export type Sql = {
   query<T extends Record<string, unknown> = Record<string, unknown>>(
     text: string,
@@ -401,23 +403,12 @@ export async function deleteBuckets(sql: Sql, buckets: string[]): Promise<void> 
 }
 
 export async function listDocuments(pool: Pool, userId: string): Promise<string[]> {
-  return withOwner(pool, userId, async (sql) => {
-    const result = await sql.query<{ id: string }>(
-      "SELECT id FROM flaw.documents WHERE owner_id = $1 ORDER BY created_at",
-      [userId],
-    );
-    return result.rows.map((row) => row.id);
-  });
+  return listOwnedDocuments(pool, { userId, role: "user" });
 }
 
 export async function deleteDocument(pool: Pool, userId: string, documentId: string): Promise<boolean> {
-  return withOwner(pool, userId, async (sql) => {
-    const result = await sql.query(
-      "DELETE FROM flaw.documents WHERE id = $1 AND owner_id = $2",
-      [documentId, userId],
-    );
-    return (result.rowCount ?? 0) > 0;
-  });
+  const removed = await deleteOwnedDocument(pool, { userId, role: "user" }, documentId);
+  return removed.ok;
 }
 
 export function absentUserId(): string {

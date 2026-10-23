@@ -3,6 +3,7 @@
   "files": {
     "auth.test.ts": 45,
     "rls.test.ts": 12,
-    "admin-cli.test.ts": 27
+    "admin-cli.test.ts": 27,
+    "idor.test.ts": 6
   }
 }

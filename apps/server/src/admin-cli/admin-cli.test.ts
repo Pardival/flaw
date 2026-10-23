@@ -364,16 +364,23 @@ describe("flaw-admin et session restreinte", () => {
     });
   }
 
-  async function authed(app: ReturnType<typeof buildApp>, method: "GET" | "DELETE", url: string, cookie?: string) {
+  async function authed(
+    app: ReturnType<typeof buildApp>,
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
+    url: string,
+    cookie?: string,
+  ) {
+    const mutating = method !== "GET";
     return app.inject({
       method,
       url,
       headers: {
         origin: ORIGIN,
         ...(cookie === undefined ? {} : { cookie }),
-        ...(method === "DELETE" ? { "content-type": "application/json" } : {}),
+        ...(mutating ? { "content-type": "application/json" } : {}),
       },
       ...(method === "DELETE" ? { payload: "" } : {}),
+      ...(method === "POST" || method === "PUT" || method === "PATCH" ? { payload: "{}" } : {}),
     });
   }
 
@@ -695,7 +702,10 @@ describe("flaw-admin et session restreinte", () => {
       const isPublic = op.method === "GET" && op.path === "/api/v1/healthz";
       expect(restrictedDecision(op.method, op.path, isPublic)).toBe(isPublic ? "public" : "deny");
       const url = op.path.replace(/\{[^}]+\}/g, "00000000-0000-4000-8000-000000000001");
-      const method = op.method === "DELETE" ? "DELETE" : "GET";
+      const method =
+        op.method === "DELETE" || op.method === "POST" || op.method === "PUT" || op.method === "PATCH"
+          ? op.method
+          : "GET";
       const anonymous = await authed(session.app, method, url);
       if (isPublic) {
         expect(anonymous.statusCode).toBe(200);

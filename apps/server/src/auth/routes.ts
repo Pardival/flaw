@@ -14,8 +14,10 @@ import { writeSecurityLog, type SecurityEvent } from "../platform/security-log.t
 import type { Writable } from "node:stream";
 import type { Pool } from "pg";
 
+import { registerContentRoutes } from "../access/rest.ts";
+import type { AccessActor } from "../access/can.ts";
 import { clearSessionCookie, DEVICE_COOKIE, readBearer, readCookie, serializeDeviceCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
-import { LOGIN_HTML, AUTH_REQUIRED, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
+import { LOGIN_HTML, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
 import { ARGON_TARGET, type ArgonParams } from "./password.ts";
 import { restrictedAllows } from "./restricted-session.ts";
 import { openAuth } from "./service.ts";
@@ -38,7 +40,12 @@ export const PROTECTED_ROUTES = [
   { method: "DELETE", url: "/api/v1/me/sessions/:sessionId", auth: true },
   { method: "GET", url: "/api/v1/me", auth: true },
   { method: "GET", url: "/api/v1/documents", auth: true },
+  { method: "GET", url: "/api/v1/documents/:id", auth: true },
+  { method: "PUT", url: "/api/v1/documents/:id", auth: true },
+  { method: "PATCH", url: "/api/v1/documents/:id", auth: true },
   { method: "DELETE", url: "/api/v1/documents/:id", auth: true },
+  { method: "POST", url: "/api/v1/documents/:id/sync", auth: true },
+  { method: "POST", url: "/api/v1/documents/:id/export", auth: true },
   { method: "POST", url: "/api/auth/mfa/enroll", auth: true },
   { method: "POST", url: "/api/auth/mfa/verify", auth: true },
 ] as const;
@@ -597,28 +604,22 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     return profile;
   });
 
-  app.get("/api/v1/documents", async (request, reply) => {
-    const current = sessionOf(request);
-    if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
-    }
-    const documents = await auth.listDocuments(current.userId);
-    return { documents: documents.map((id) => ({ id })) };
-  });
-
-  app.delete("/api/v1/documents/:id", async (request, reply) => {
-    const current = sessionOf(request);
-    if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
-    }
-    const params = z.object({ id: z.uuid() }).safeParse(request.params);
-    if (!params.success) {
-      return sendProblem(reply, 404);
-    }
-    const removed = await auth.deleteDocument(current.userId, params.data.id);
-    if (!removed) {
-      return sendProblem(reply, 404);
-    }
-    return reply.code(204).send();
+  registerContentRoutes(app, {
+    pool: () => runtime.pool,
+    actor: async (request): Promise<AccessActor | undefined> => {
+      const current = sessionOf(request);
+      if (current === undefined || runtime.pool === undefined) {
+        return undefined;
+      }
+      const result = await runtime.pool.query<{ role: string }>(
+        "SELECT role FROM flaw.users WHERE id = $1",
+        [current.userId],
+      );
+      const role = result.rows[0]?.role;
+      if (role !== "user" && role !== "admin") {
+        return undefined;
+      }
+      return { userId: current.userId, role };
+    },
   });
 }
