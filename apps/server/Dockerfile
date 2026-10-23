@@ -32,6 +32,9 @@ COPY --from=build /src/apps/server/openapi /app/apps/server/openapi
 # Le schéma est du TypeScript. Node refuse de le charger sous node_modules.
 COPY --from=build /src/packages/schema/package.json /app/packages/schema/package.json
 COPY --from=build /src/packages/schema/src /app/packages/schema/src
+# Repli HTTP : import relatif depuis apps/server/src/sync (packages/sync, sans dépendance npm).
+COPY --from=build /src/packages/sync/package.json /app/packages/sync/package.json
+COPY --from=build /src/packages/sync/src /app/packages/sync/src
 COPY infra/droits-flaw.sql infra/assert-app-role.sql /app/infra/
 COPY apps/server/bin/flaw-admin /usr/local/bin/flaw-admin
 RUN dep_nm="$(dirname "$(dirname "$(readlink -f /app/node_modules/@flaw/schema)")")" \

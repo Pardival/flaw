@@ -5,6 +5,7 @@
     "rls.test.ts": 12,
     "admin-cli.test.ts": 27,
     "idor.test.ts": 6,
-    "documents.test.ts": 8
+    "documents.test.ts": 8,
+    "sync.test.ts": 2
   }
 }
