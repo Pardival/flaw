@@ -708,7 +708,8 @@ describe("authentification sur PostgreSQL", () => {
     }
     const limited = await sign(app, email, PASSWORD, ip);
     expect(limited.statusCode).toBe(429);
-    expect(limited.json()).toEqual({ message: TOO_MANY });
+    expect(limited.headers["content-type"]).toContain("application/problem+json");
+    expect(limited.json()).toEqual(problem(429, TOO_MANY));
     expect(Number(limited.headers["retry-after"])).toBeGreaterThanOrEqual(60);
     clock.ms += 61_000;
     const accepted = await sign(app, email, PASSWORD, ip, true);
@@ -1004,7 +1005,8 @@ describe("authentification sur PostgreSQL", () => {
       },
     });
     expect(evil.statusCode).toBe(403);
-    expect(evil.json()).toEqual({ message: ORIGIN_REJECTED });
+    expect(evil.headers["content-type"]).toContain("application/problem+json");
+    expect(evil.json()).toEqual(problem(403, ORIGIN_REJECTED));
     const evilJson = await app.inject({
       method: "DELETE",
       url: `/api/v1/documents/${documentId}`,
@@ -1342,7 +1344,8 @@ describe("authentification sur PostgreSQL", () => {
       payload: JSON.stringify({ currentPassword: PASSWORD, newPassword: "a".repeat(14) }),
     });
     expect(short.statusCode).toBe(400);
-    expect(short.json()).toEqual({ message: PASSWORD_REJECTED });
+    expect(short.headers["content-type"]).toContain("application/problem+json");
+    expect(short.json()).toEqual(problem(400, PASSWORD_REJECTED));
     expect(short.body).not.toContain("a".repeat(14));
     const common = await app.inject({
       method: "POST",
@@ -1697,7 +1700,8 @@ describe("authentification sur PostgreSQL", () => {
       headers: { cookie: cookiePair(setCookie(signed.headers)) },
     });
     expect(restricted.statusCode).toBe(403);
-    expect(restricted.json()).toEqual({ message: RESTRICTED });
+    expect(restricted.headers["content-type"]).toContain("application/problem+json");
+    expect(restricted.json()).toEqual(problem(403, RESTRICTED));
     expect(restricted.headers["cache-control"]).toBe("no-store");
     const anonymous = await app.inject({ method: "GET", url: "/api/v1/me" });
     expect(anonymous.statusCode).toBe(401);

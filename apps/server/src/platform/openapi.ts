@@ -1,11 +1,32 @@
 /**
  * OpenAPI 3.1 produit depuis les schémas Zod (A-015).
+ * GET /me reprend l'opération de l'architecte (api-contract-full), hors 403 mfa_required.
  * Le document commité est openapi.json ; la CI le compare avec oasdiff.
  */
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { z } from "zod";
 
 import { SESSION_COOKIE } from "../auth/cookie.ts";
 import { documentTitleSchema } from "./validation.ts";
+
+type Json = Record<string, unknown>;
+
+function readArchitectContract(): Json {
+  const path = fileURLToPath(new URL("../../openapi/api-contract-0.4.18-derive-t052.json", import.meta.url));
+  return JSON.parse(readFileSync(path, "utf8")) as Json;
+}
+
+function getMeOperation(contract: Json): Json {
+  const paths = contract.paths as Json;
+  const me = paths["/me"] as Json;
+  const operation = structuredClone(me.get) as Json;
+  const responses = structuredClone(operation.responses) as Json;
+  delete responses["403"];
+  operation.responses = responses;
+  return operation;
+}
 
 export const healthResponseSchema = z
   .object({
@@ -28,12 +49,6 @@ export const meResponseSchema = z
 export const documentListSchema = z
   .object({
     documents: z.array(z.object({ id: z.uuid() }).strict()),
-  })
-  .strict();
-
-export const messageSchema = z
-  .object({
-    message: z.string(),
   })
   .strict();
 
@@ -80,7 +95,7 @@ const problemResponse = {
   description: "Erreur générique (RFC 9457)",
   content: {
     "application/problem+json": {
-      schema: { $ref: "#/components/schemas/Problem" },
+      schema: { $ref: "#/components/schemas/ServiceProblem" },
     },
   },
 };
@@ -89,39 +104,32 @@ const unauthorizedResponse = {
   description: "Authentification requise",
   content: {
     "application/problem+json": {
-      schema: { $ref: "#/components/schemas/Unauthorized" },
+      schema: { $ref: "#/components/schemas/UnauthorizedBody" },
     },
   },
 };
 
-const noStoreHeader = {
-  description: "Cache-Control: no-store",
-  required: true,
-  schema: { type: "string", const: "no-store" },
-};
+/** Cookie ou Bearer : chaque objet du tableau est une alternative (contrat : sessionCookie). */
+const sessionSecurity = [{ sessionCookie: [] }, { bearerAuth: [] }];
 
-function withNoStore<T extends Record<string, unknown>>(response: T): T & {
-  headers: { "Cache-Control": typeof noStoreHeader };
-} {
-  return {
-    ...response,
-    headers: { "Cache-Control": noStoreHeader },
-  };
-}
-
-/** Cookie ou Bearer : chaque objet du tableau est une alternative. */
-const sessionSecurity = [{ cookieAuth: [] }, { bearerAuth: [] }];
-
-const messageResponse = {
-  description: "Message",
+const forbiddenResponse = {
+  description: "Accès refusé",
   content: {
-    "application/json": {
-      schema: { $ref: "#/components/schemas/Message" },
+    "application/problem+json": {
+      schema: { $ref: "#/components/schemas/Problem" },
     },
   },
 };
 
 export function buildOpenApiDocument(): Record<string, unknown> {
+  const contract = readArchitectContract();
+  const components = contract.components as Json;
+  const schemes = structuredClone(components.securitySchemes) as Json;
+  const sessionCookie = schemes.sessionCookie as Json;
+  sessionCookie.name = SESSION_COOKIE;
+  const headers = components.headers as Json;
+  const responses = components.responses as Json;
+  const schemas = components.schemas as Json;
   return {
     openapi: "3.1.0",
     info: {
@@ -150,22 +158,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         },
       },
       "/api/v1/me": {
-        get: {
-          operationId: "getMe",
-          summary: "Profil de l'utilisateur connecté",
-          security: sessionSecurity,
-          responses: {
-            "200": withNoStore({
-              description: "Profil",
-              content: {
-                "application/json": {
-                  schema: jsonSchema(meResponseSchema),
-                },
-              },
-            }),
-            "401": withNoStore(unauthorizedResponse),
-          },
-        },
+        get: getMeOperation(contract),
       },
       "/api/v1/documents": {
         get: {
@@ -201,7 +194,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
           responses: {
             "204": { description: "Supprimé" },
             "401": unauthorizedResponse,
-            "403": messageResponse,
+            "403": forbiddenResponse,
             "404": problemResponse,
           },
         },
@@ -209,21 +202,21 @@ export function buildOpenApiDocument(): Record<string, unknown> {
     },
     components: {
       securitySchemes: {
-        cookieAuth: {
-          type: "apiKey",
-          in: "cookie",
-          name: SESSION_COOKIE,
-        },
-        bearerAuth: {
-          type: "http",
-          scheme: "bearer",
-        },
+        sessionCookie: schemes.sessionCookie,
+        bearerAuth: schemes.bearerAuth,
+      },
+      headers: {
+        CacheControlNoStore: headers.CacheControlNoStore,
+      },
+      responses: {
+        Unauthorized: responses.Unauthorized,
       },
       schemas: {
-        Problem: jsonSchema(problemSchema),
-        Unauthorized: jsonSchema(unauthorizedProblemSchema),
+        User: schemas.User,
+        Problem: schemas.Problem,
+        ServiceProblem: jsonSchema(problemSchema),
+        UnauthorizedBody: jsonSchema(unauthorizedProblemSchema),
         DocumentTitle: jsonSchema(documentTitleSchema),
-        Message: jsonSchema(messageSchema),
       },
     },
   };

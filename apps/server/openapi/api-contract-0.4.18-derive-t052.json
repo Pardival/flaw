@@ -9,77 +9,71 @@
   "x-ecarts-connus": [
     "403 mfa_required → T-009"
   ],
+  "x-bearer": "implémenté",
   "info": {
-    "title": "Flaw",
-    "version": "0.0.0"
+    "title": "Flaw API",
+    "version": "0.4.0-draft",
+    "summary": "API de l'application d'écriture Flaw (web, future app mobile)",
+    "description": "Principes :\n- Préfixe de version majeure dans l'URL : /api/v1. Ajouts compatibles\n  seulement dans une même version majeure ; toute rupture => /api/v2.\n- Le CONTENU des textes ne transite pas par du JSON éditable : il est\n  synchronisé en binaire Yjs (WebSocket /api/v1/sync ou POST .../sync).\n  Les routes REST gèrent la liste, les métadonnées, les versions,\n  les exports, les préférences et les statistiques.\n- Identifiants UUIDv7 générés par le client (création hors ligne\n  idempotente).\n- Erreurs au format RFC 9457 (application/problem+json).\n- Authentification : cookie de session (web) ou en-tête\n  Authorization: Bearer <jeton de session> (app mobile).\n- L'authentification elle-même (/api/auth/*) est assurée par le module\n  `auth` maison (A-011 v0.4.18 : argon2id via @node-rs/argon2, TOTP par\n  bibliothèque maintenue, aucune primitive cryptographique maison) et\n  documentée dans l'openapi.json généré (A-015).\n- Sécurité (v0.2) : même origine uniquement (aucun CORS) ; contrôle de\n  l'en-tête Origin sur toute requête modifiante authentifiée par cookie\n  et sur la poignée de main WebSocket ; toutes les réponses portent\n  Cache-Control: no-store ; corps limités (10 Mo) ; contrôle d'accès\n  objet par objet (404 si le texte n'appartient pas à l'utilisateur).\n- v0.4 : comptes isolés (aucun partage) : l'accès se décide sur le seul\n  propriétaire. Ré-authentification récente (mot de passe + TOTP de moins\n  de 5 min) exigée pour les opérations sensibles (export complet, révocation\n  de toutes les sessions, régénération des codes de secours, changement\n  d'appareil d'authentification) : sinon 403 reauth_required (G9).\n  Import (F21) : traité ENTIÈREMENT sur l'appareil ; aucune route ne reçoit\n  de fichier importé, le serveur ne voit qu'un nouveau texte synchronisé.\n",
+    "license": {
+      "name": "À décider (voir dossier, points flous)",
+      "url": "https://example.com/licence-a-decider"
+    }
   },
-  "paths": {
-    "/api/v1/healthz": {
-      "get": {
-        "operationId": "health",
-        "summary": "Sonde de vie (sans authentification)",
-        "security": [],
-        "responses": {
-          "200": {
-            "description": "Sonde de vie",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "status": {
-                      "type": "string",
-                      "const": "ok"
-                    }
-                  },
-                  "required": [
-                    "status"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Erreur générique (RFC 9457)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Erreur générique (RFC 9457)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Erreur générique (RFC 9457)",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Problem"
-                }
-              }
-            }
-          }
+  "servers": [
+    {
+      "url": "https://{domain}/api/v1",
+      "description": "Domaine unique fourni par FLAW_DOMAIN (.com ou .fr, à choisir)",
+      "variables": {
+        "domain": {
+          "default": "flaw.example.com"
         }
       }
+    }
+  ],
+  "security": [
+    {
+      "sessionCookie": []
     },
-    "/api/v1/me": {
+    {
+      "bearerAuth": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "compte"
+    },
+    {
+      "name": "textes"
+    },
+    {
+      "name": "synchronisation"
+    },
+    {
+      "name": "versions"
+    },
+    {
+      "name": "exports"
+    },
+    {
+      "name": "statistiques"
+    },
+    {
+      "name": "système"
+    }
+  ],
+  "paths": {
+    "/me": {
       "get": {
-        "operationId": "getMe",
+        "tags": [
+          "compte"
+        ],
         "summary": "Profil de l'utilisateur connecté",
+        "operationId": "getMe",
+        "description": "API-001 (v0.4.18). Profil du compte connecté. Ne renvoie JAMAIS de haché,\nde secret TOTP, de code de secours ni de jeton. Les préférences restent\nsur GET /me/preferences (non incluses ici). Réponse non mise en cache.\n",
         "security": [
           {
-            "cookieAuth": []
+            "sessionCookie": []
           },
           {
             "bearerAuth": []
@@ -88,164 +82,99 @@
         "responses": {
           "200": {
             "description": "Profil",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControlNoStore"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    },
-                    "email": {
-                      "type": "string",
-                      "format": "email",
-                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "user",
-                        "admin"
-                      ]
-                    },
-                    "locale": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "timeZone": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "mfaEnrolled": {
-                      "type": "boolean"
-                    },
-                    "passwordMustChange": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "email",
-                    "role",
-                    "locale",
-                    "timeZone",
-                    "mfaEnrolled",
-                    "passwordMustChange"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "headers": {
-              "Cache-Control": {
-                "description": "Cache-Control: no-store",
-                "required": true,
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
+                  "$ref": "#/components/schemas/User"
                 }
               }
             }
           },
           "401": {
-            "description": "Authentification requise",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Unauthorized"
-                }
-              }
-            },
-            "headers": {
-              "Cache-Control": {
-                "description": "Cache-Control: no-store",
-                "required": true,
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/MfaRequired"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Supprimer son compte et toutes ses données (RGPD, v3)",
+        "operationId": "deleteMe",
+        "responses": {
+          "202": {
+            "description": "Suppression programmée"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
     },
-    "/api/v1/documents": {
+    "/me/sessions": {
       "get": {
-        "operationId": "listDocuments",
-        "summary": "Documents du compte connecté",
-        "security": [
-          {
-            "cookieAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
+        "tags": [
+          "compte"
         ],
+        "summary": "Liste des sessions actives (type d'appareil, navigateur, système, dernière activité ; aucune localisation)",
+        "operationId": "listSessions",
         "responses": {
           "200": {
-            "description": "Documents",
+            "description": "Sessions",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "documents": {
-                      "type": "array",
-                      "items": {
-                        "type": "object",
-                        "properties": {
-                          "id": {
-                            "type": "string",
-                            "format": "uuid",
-                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                          }
-                        },
-                        "required": [
-                          "id"
-                        ],
-                        "additionalProperties": false
-                      }
-                    }
-                  },
-                  "required": [
-                    "documents"
-                  ],
-                  "additionalProperties": false
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Session"
+                  }
                 }
               }
             }
           },
           "401": {
-            "description": "Authentification requise",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Unauthorized"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Révoquer toutes les autres sessions (« déconnecter les autres appareils »)",
+        "description": "Ré-authentification récente exigée (G9).",
+        "operationId": "revokeOtherSessions",
+        "responses": {
+          "204": {
+            "description": "Sessions révoquées"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ReauthRequired"
           }
         }
       }
     },
-    "/api/v1/documents/{id}": {
+    "/me/sessions/{sessionId}": {
       "delete": {
-        "operationId": "deleteDocument",
-        "summary": "Supprime un document du compte connecté",
-        "security": [
-          {
-            "cookieAuth": []
-          },
-          {
-            "bearerAuth": []
-          }
+        "tags": [
+          "compte"
         ],
+        "summary": "Révoquer une session précise (effet immédiat, WebSocket comprises)",
+        "operationId": "revokeSession",
         "parameters": [
           {
-            "name": "id",
+            "name": "sessionId",
             "in": "path",
             "required": true,
             "schema": {
@@ -256,37 +185,748 @@
         ],
         "responses": {
           "204": {
-            "description": "Supprimé"
+            "description": "Session révoquée"
           },
-          "401": {
-            "description": "Authentification requise",
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/me/preferences": {
+      "get": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Préférences (thème, objectif quotidien, affichage des compteurs)",
+        "operationId": "getPreferences",
+        "responses": {
+          "200": {
+            "description": "Préférences",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
             "content": {
-              "application/problem+json": {
+              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Unauthorized"
+                  "$ref": "#/components/schemas/Preferences"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Modifier les préférences (dernier écrit gagne, contrôle par ETag)",
+        "operationId": "updatePreferences",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreferencesPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Préférences mises à jour",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Preferences"
                 }
               }
             }
           },
+          "412": {
+            "$ref": "#/components/responses/PreconditionFailed"
+          }
+        }
+      }
+    },
+    "/me/export": {
+      "post": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Export complet de toutes ses données (portabilité RGPD, archive ZIP)",
+        "description": "Archive ZIP : chaque texte en JSON (ProseMirror) et en Markdown (Fountain\npour les scripts), préférences et métadonnées (SEC-BKP-09). Ré-\nauthentification récente exigée (G9) ; journalisé dans audit_events.\n",
+        "operationId": "exportAccountData",
+        "responses": {
+          "200": {
+            "description": "Archive ZIP",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
           "403": {
-            "description": "Message",
+            "$ref": "#/components/responses/ReauthRequired"
+          }
+        }
+      }
+    },
+    "/documents": {
+      "get": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Liste des textes, triée par dernière modification décroissante",
+        "operationId": "listDocuments",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50
+            }
+          },
+          {
+            "name": "trashed",
+            "in": "query",
+            "description": "true pour lister la corbeille",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          },
+          {
+            "name": "updatedSince",
+            "in": "query",
+            "description": "Synchronisation incrémentale de la liste (inclut les suppressions)",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page de résultats",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Message"
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DocumentSummary"
+                      }
+                    },
+                    "nextCursor": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Créer un texte (idempotent sur l'id fourni par le client)",
+        "operationId": "createDocument",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Créé",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "Déjà créé avec cet id (rejeu d'une file hors ligne)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          }
+        }
+      }
+    },
+    "/documents/{documentId}": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Métadonnées d'un texte",
+        "operationId": "getDocument",
+        "responses": {
+          "200": {
+            "description": "Texte",
+            "headers": {
+              "ETag": {
+                "$ref": "#/components/headers/ETag"
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
                 }
               }
             }
           },
           "404": {
-            "description": "Erreur générique (RFC 9457)",
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Modifier titre / format / police (appliqué dans le Y.Doc côté serveur)",
+        "operationId": "updateDocument",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DocumentPatch"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Texte mis à jour",
             "content": {
-              "application/problem+json": {
+              "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "$ref": "#/components/schemas/Document"
                 }
               }
             }
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Mettre à la corbeille (ou supprimer définitivement avec permanent=true)",
+        "operationId": "deleteDocument",
+        "parameters": [
+          {
+            "name": "permanent",
+            "in": "query",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Supprimé"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/documents/{documentId}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Restaurer un texte depuis la corbeille",
+        "operationId": "restoreDocument",
+        "responses": {
+          "200": {
+            "description": "Restauré",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{documentId}/content": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "textes"
+        ],
+        "summary": "Contenu en lecture seule (projection), pour clients simples",
+        "operationId": "getDocumentContent",
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "prosemirror-json",
+                "text",
+                "markdown"
+              ],
+              "default": "prosemirror-json"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contenu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              },
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "text/markdown": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{documentId}/sync": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "synchronisation"
+        ],
+        "summary": "Synchronisation Yjs par requête HTTP (repli du WebSocket, tâches de fond mobiles)",
+        "description": "Corps binaire : message de synchronisation Yjs (state vector du client\n+ mises à jour locales non envoyées, encodage lib0). Réponse : les\nmises à jour manquantes côté client + le state vector serveur.\nLe canal temps réel normal est le WebSocket wss://<domaine>/api/v1/sync\n(protocole Hocuspocus/y-protocols), non décrit par OpenAPI.\n",
+        "operationId": "syncDocument",
+        "parameters": [
+          {
+            "name": "X-Flaw-Schema-Version",
+            "in": "header",
+            "required": true,
+            "description": "Version du schéma éditeur du client ; 426 si trop ancienne",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Mises à jour à appliquer côté client",
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Mise à jour trop volumineuse"
+          },
+          "426": {
+            "description": "Client trop ancien pour ce document, mise à jour requise"
+          }
+        }
+      }
+    },
+    "/documents/{documentId}/versions": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        }
+      ],
+      "get": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Historique des versions d'un texte",
+        "operationId": "listVersions",
+        "responses": {
+          "200": {
+            "description": "Versions (plus récentes d'abord)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Version"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Créer un point de sauvegarde manuel",
+        "operationId": "createVersion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "maxLength": 120
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Version créée",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Version"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{documentId}/versions/{versionId}/restore": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        },
+        {
+          "name": "versionId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "post": {
+        "tags": [
+          "versions"
+        ],
+        "summary": "Restaurer une version (crée d'abord une version « avant restauration »)",
+        "operationId": "restoreVersion",
+        "responses": {
+          "200": {
+            "description": "Restauré ; les clients connectés reçoivent la modification via la sync",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Document"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/documents/{documentId}/exports": {
+      "parameters": [
+        {
+          "$ref": "#/components/parameters/DocumentId"
+        }
+      ],
+      "post": {
+        "tags": [
+          "exports"
+        ],
+        "summary": "Générer un export côté serveur (repli)",
+        "description": "Les exports sont générés en priorité sur l'appareil (PDF via Typst\nWebAssembly, DOCX/EPUB/Fountain en TypeScript). Cette route est le\nREPLI : appareil sans module PDF en cache, mémoire insuffisante, échec\nou délai dépassé côté client, ou client sans moteur d'export (future\napp native). Même moteur (Typst 0.14 en WebAssembly) et même gabarit\nque le client : résultat identique. Une génération à la fois par\nutilisateur (429 sinon).\n",
+        "operationId": "exportDocument",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Fichier généré",
+            "headers": {
+              "Content-Disposition": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.openxmlformats-officedocument.wordprocessingml.document": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/epub+zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "text/x-fountain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "429": {
+            "description": "Un export est déjà en cours pour cet utilisateur"
+          },
+          "504": {
+            "description": "Délai de génération dépassé"
+          }
+        }
+      }
+    },
+    "/stats/daily": {
+      "get": {
+        "tags": [
+          "statistiques"
+        ],
+        "summary": "Progression quotidienne (mots écrits par jour)",
+        "operationId": "getDailyStats",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Totaux par jour (somme des compteurs de tous les appareils)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "goal": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "days": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/DailyProgress"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stats/daily/{day}/devices/{deviceId}": {
+      "parameters": [
+        {
+          "name": "day",
+          "in": "path",
+          "required": true,
+          "description": "Jour civil dans le fuseau de l'utilisateur",
+          "schema": {
+            "type": "string",
+            "format": "date"
+          }
+        },
+        {
+          "name": "deviceId",
+          "in": "path",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      ],
+      "put": {
+        "tags": [
+          "statistiques"
+        ],
+        "summary": "Publier le compteur d'un appareil pour un jour (fusion par maximum, idempotent)",
+        "operationId": "putDeviceDailyCounter",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "wordsWritten"
+                ],
+                "properties": {
+                  "wordsWritten": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Enregistré"
+          }
+        }
+      }
+    },
+    "/healthz": {
+      "get": {
+        "tags": [
+          "système"
+        ],
+        "summary": "Sonde de vie (sans authentification)",
+        "security": [],
+        "operationId": "health",
+        "responses": {
+          "200": {
+            "description": "OK"
           }
         }
       }
@@ -294,108 +934,632 @@
   },
   "components": {
     "securitySchemes": {
-      "cookieAuth": {
+      "sessionCookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "__Host-flaw_session"
+        "name": "__Secure-flaw.session_token",
+        "description": "Cookie de session (HttpOnly, Secure, SameSite=Lax, Path=/, SANS Domain :\nlié à l'hôte FLAW_DOMAIN). v1 : __Secure-flaw.session_token (accepté par\nl'Expert, réponse a, domaine dédié sans sous-domaine tiers) ; passage à\n__Host- avant la version publique (SEC-SESS-02).\n"
       },
       "bearerAuth": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "description": "Jeton de session opaque (module auth maison, haché SHA-256 en base), pour l'app mobile"
+      }
+    },
+    "parameters": {
+      "DocumentId": {
+        "name": "documentId",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "IfMatch": {
+        "name": "If-Match",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "maxLength": 128
+        }
+      }
+    },
+    "headers": {
+      "ETag": {
+        "schema": {
+          "type": "string"
+        }
+      },
+      "CacheControlNoStore": {
+        "description": "Toujours no-store (v0.4.18, getMe ; règle générale de l'API)",
+        "schema": {
+          "type": "string",
+          "const": "no-store"
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Non authentifié",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Introuvable (ou non autorisé : même réponse, pour ne rien révéler)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "Conflit (id déjà utilisé par un autre propriétaire)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "PreconditionFailed": {
+        "description": "ETag périmé",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "ReauthRequired": {
+        "description": "Ré-authentification récente requise (mot de passe + TOTP de moins de 5 min) : type .../reauth_required",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "MfaRequired": {
+        "description": "Session restreinte : second facteur (TOTP) non vérifié ou non enrôlé : type .../mfa_required (v0.4.18)",
+        "headers": {
+          "Cache-Control": {
+            "$ref": "#/components/headers/CacheControlNoStore"
+          }
+        },
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "ValidationError": {
+        "description": "Données invalides",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
       }
     },
     "schemas": {
       "Problem": {
         "type": "object",
+        "description": "RFC 9457",
         "properties": {
           "type": {
             "type": "string",
-            "const": "about:blank"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "number",
-                "const": 400
-              },
-              {
-                "type": "number",
-                "const": 404
-              },
-              {
-                "type": "number",
-                "const": 413
-              },
-              {
-                "type": "number",
-                "const": 500
-              }
-            ]
+            "format": "uri"
           },
           "title": {
             "type": "string"
           },
-          "code": {
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Session": {
+        "type": "object",
+        "required": [
+          "id",
+          "current",
+          "createdAt",
+          "lastSeenAt",
+          "expiresAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Session de la requête en cours"
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "desktop",
+              "tablet",
+              "phone",
+              null
+            ],
+            "description": "Type d'appareil (icône) ; aucune ville, aucun pays, aucune IP exposée (cahier v0.7)"
+          },
+          "deviceLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Firefox · macOS"
+            ],
+            "description": "Navigateur et système"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "role",
+          "locale",
+          "timeZone",
+          "mfaEnrolled",
+          "passwordMustChange"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
             "type": "string",
             "enum": [
-              "invalid_request",
-              "not_found",
-              "payload_too_large",
-              "internal_error"
+              "user",
+              "admin"
             ]
+          },
+          "locale": {
+            "type": "string",
+            "example": "fr-FR"
+          },
+          "timeZone": {
+            "type": "string",
+            "example": "Asia/Ho_Chi_Minh"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mfaEnrolled": {
+            "type": "boolean",
+            "description": "v0.4.18 (ajout) : TOTP enrôlé. Ni secret ni code."
+          },
+          "passwordMustChange": {
+            "type": "boolean",
+            "description": "v0.4.18 (ajout) : mot de passe provisoire (flaw-admin), changement exigé"
           }
         },
-        "required": [
-          "type",
-          "status",
-          "title",
-          "code"
-        ],
-        "additionalProperties": false
+        "description": "Jamais de password_hash, secret TOTP, code de secours ni jeton (v0.4.18)."
       },
-      "Unauthorized": {
+      "Preferences": {
         "type": "object",
         "properties": {
-          "type": {
+          "theme": {
             "type": "string",
-            "const": "about:blank"
+            "enum": [
+              "light",
+              "dark",
+              "system"
+            ],
+            "default": "system"
           },
-          "status": {
-            "type": "number",
-            "const": 401
+          "dailyWordGoal": {
+            "type": "integer",
+            "minimum": 0,
+            "default": 500
+          },
+          "showWordCount": {
+            "type": "boolean",
+            "default": true
+          },
+          "showDailyGoal": {
+            "type": "boolean",
+            "default": true
+          },
+          "frenchTypographyDefault": {
+            "type": "boolean",
+            "default": true,
+            "description": "F20 - valeur initiale des nouveaux textes en français ; chaque texte garde son propre réglage (meta du Y.Doc)"
+          },
+          "defaultTextLang": {
+            "type": "string",
+            "default": "fr",
+            "description": "Langue proposée à la création (BCP 47)"
+          },
+          "spellcheck": {
+            "type": "boolean",
+            "default": false,
+            "description": "Correcteur du navigateur (cahier v0.8) ; désactivé par défaut, toujours coupé en mode focus"
+          },
+          "lastDocumentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PreferencesPatch": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "theme": {
+            "type": "string",
+            "enum": [
+              "light",
+              "dark",
+              "system"
+            ]
+          },
+          "dailyWordGoal": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "showWordCount": {
+            "type": "boolean"
+          },
+          "showDailyGoal": {
+            "type": "boolean"
+          },
+          "frenchTypographyDefault": {
+            "type": "boolean"
+          },
+          "defaultTextLang": {
+            "type": "string",
+            "pattern": "^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$"
+          },
+          "spellcheck": {
+            "type": "boolean"
+          },
+          "lastDocumentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "Mode": {
+        "type": "string",
+        "enum": [
+          "novel",
+          "screenplay",
+          "document",
+          "blank"
+        ],
+        "description": "roman, script de film, document, page blanche"
+      },
+      "PageFormat": {
+        "type": "string",
+        "enum": [
+          "novel_13x20",
+          "pocket_11x17_8",
+          "trade_15x23",
+          "a5",
+          "a4",
+          "us_letter"
+        ]
+      },
+      "DocumentSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "mode",
+          "updatedAt",
+          "wordCount"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "wordCount": {
+            "type": "integer"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deletedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "excerpt": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
+      },
+      "Document": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/DocumentSummary"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "pageFormat": {
+                "$ref": "#/components/schemas/PageFormat"
+              },
+              "fontFamily": {
+                "type": "string",
+                "example": "EB Garamond"
+              },
+              "baseFontSizePt": {
+                "type": "number",
+                "example": 11
+              },
+              "schemaVersion": {
+                "type": "integer"
+              },
+              "outline": {
+                "type": "array",
+                "description": "Titres de chapitres / scènes (projection pour navigation)",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "level": {
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          }
+        ]
+      },
+      "DocumentCreate": {
+        "type": "object",
+        "required": [
+          "id",
+          "mode"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "UUIDv7 généré par le client"
           },
           "title": {
             "type": "string",
-            "const": "Authentification requise"
+            "maxLength": 300
           },
-          "code": {
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
+          "pageFormat": {
+            "$ref": "#/components/schemas/PageFormat"
+          },
+          "fontFamily": {
+            "type": "string"
+          },
+          "importedFrom": {
             "type": "string",
-            "const": "unauthorized"
+            "enum": [
+              "docx",
+              "txt",
+              "md"
+            ],
+            "description": "Texte créé par import sur l'appareil (F21). Seul le FORMAT est transmis\n(jamais le nom ni le contenu du fichier, SEC-IMP-10) ; le premier\ninstantané du texte porte la raison « import ».\n"
           }
-        },
-        "required": [
-          "type",
-          "status",
-          "title",
-          "code"
-        ],
-        "additionalProperties": false
+        }
       },
-      "DocumentTitle": {
-        "type": "string",
-        "maxLength": 300
+      "DocumentPatch": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "pageFormat": {
+            "$ref": "#/components/schemas/PageFormat"
+          },
+          "fontFamily": {
+            "type": "string"
+          },
+          "baseFontSizePt": {
+            "type": "number",
+            "minimum": 6,
+            "maximum": 48
+          }
+        }
       },
-      "Message": {
+      "Version": {
         "type": "object",
         "properties": {
-          "message": {
-            "type": "string"
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "session_end",
+              "manual",
+              "before_restore",
+              "before_delete",
+              "before_merge",
+              "before_layout_change",
+              "import"
+            ]
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wordCount": {
+            "type": "integer"
           }
-        },
+        }
+      },
+      "ExportRequest": {
+        "type": "object",
         "required": [
-          "message"
+          "format"
         ],
-        "additionalProperties": false
+        "properties": {
+          "format": {
+            "type": "string",
+            "enum": [
+              "pdf",
+              "docx",
+              "epub",
+              "fountain"
+            ]
+          },
+          "pageFormat": {
+            "$ref": "#/components/schemas/PageFormat"
+          },
+          "includeTitlePage": {
+            "type": "boolean",
+            "default": true
+          },
+          "numberPages": {
+            "type": "boolean",
+            "default": true
+          },
+          "mirrorMargins": {
+            "type": "boolean",
+            "default": true,
+            "description": "Roman - marges intérieures et extérieures alternées (cahier 5.6)"
+          },
+          "chaptersOnRecto": {
+            "type": "boolean",
+            "default": true,
+            "description": "Roman - chaque chapitre commence sur une page de droite (cahier 5.6)"
+          },
+          "versionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "Exporter une version passée plutôt que l'état courant"
+          }
+        }
+      },
+      "DailyProgress": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "wordsWritten": {
+            "type": "integer"
+          }
+        }
       }
     }
   }

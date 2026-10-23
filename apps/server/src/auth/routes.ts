@@ -175,7 +175,7 @@ function sendMessage(
   if (retryAfter !== undefined) {
     reply.header("retry-after", String(retryAfter));
   }
-  return reply.code(status).type("application/json; charset=utf-8").send({ message });
+  return sendProblem(reply, status, message);
 }
 
 function sendUnauthorized(reply: FastifyReply): unknown {

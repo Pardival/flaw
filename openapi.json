@@ -36,7 +36,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "$ref": "#/components/schemas/ServiceProblem"
                 }
               }
             }
@@ -46,7 +46,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "$ref": "#/components/schemas/ServiceProblem"
                 }
               }
             }
@@ -56,7 +56,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "$ref": "#/components/schemas/ServiceProblem"
                 }
               }
             }
@@ -66,11 +66,15 @@
     },
     "/api/v1/me": {
       "get": {
-        "operationId": "getMe",
+        "tags": [
+          "compte"
+        ],
         "summary": "Profil de l'utilisateur connecté",
+        "operationId": "getMe",
+        "description": "API-001 (v0.4.18). Profil du compte connecté. Ne renvoie JAMAIS de haché,\nde secret TOTP, de code de secours ni de jeton. Les préférences restent\nsur GET /me/preferences (non incluses ici). Réponse non mise en cache.\n",
         "security": [
           {
-            "cookieAuth": []
+            "sessionCookie": []
           },
           {
             "bearerAuth": []
@@ -79,86 +83,21 @@
         "responses": {
           "200": {
             "description": "Profil",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControlNoStore"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    },
-                    "email": {
-                      "type": "string",
-                      "format": "email",
-                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
-                    },
-                    "role": {
-                      "type": "string",
-                      "enum": [
-                        "user",
-                        "admin"
-                      ]
-                    },
-                    "locale": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "timeZone": {
-                      "type": "string",
-                      "minLength": 1
-                    },
-                    "mfaEnrolled": {
-                      "type": "boolean"
-                    },
-                    "passwordMustChange": {
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "email",
-                    "role",
-                    "locale",
-                    "timeZone",
-                    "mfaEnrolled",
-                    "passwordMustChange"
-                  ],
-                  "additionalProperties": false
-                }
-              }
-            },
-            "headers": {
-              "Cache-Control": {
-                "description": "Cache-Control: no-store",
-                "required": true,
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
+                  "$ref": "#/components/schemas/User"
                 }
               }
             }
           },
           "401": {
-            "description": "Authentification requise",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Unauthorized"
-                }
-              }
-            },
-            "headers": {
-              "Cache-Control": {
-                "description": "Cache-Control: no-store",
-                "required": true,
-                "schema": {
-                  "type": "string",
-                  "const": "no-store"
-                }
-              }
-            }
+            "$ref": "#/components/responses/Unauthorized"
           }
         }
       }
@@ -169,7 +108,7 @@
         "summary": "Documents du compte connecté",
         "security": [
           {
-            "cookieAuth": []
+            "sessionCookie": []
           },
           {
             "bearerAuth": []
@@ -214,7 +153,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Unauthorized"
+                  "$ref": "#/components/schemas/UnauthorizedBody"
                 }
               }
             }
@@ -228,7 +167,7 @@
         "summary": "Supprime un document du compte connecté",
         "security": [
           {
-            "cookieAuth": []
+            "sessionCookie": []
           },
           {
             "bearerAuth": []
@@ -254,17 +193,17 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Unauthorized"
+                  "$ref": "#/components/schemas/UnauthorizedBody"
                 }
               }
             }
           },
           "403": {
-            "description": "Message",
+            "description": "Accès refusé",
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Message"
+                  "$ref": "#/components/schemas/Problem"
                 }
               }
             }
@@ -274,7 +213,7 @@
             "content": {
               "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Problem"
+                  "$ref": "#/components/schemas/ServiceProblem"
                 }
               }
             }
@@ -285,18 +224,133 @@
   },
   "components": {
     "securitySchemes": {
-      "cookieAuth": {
+      "sessionCookie": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "__Host-flaw_session"
+        "name": "__Host-flaw_session",
+        "description": "Cookie de session (HttpOnly, Secure, SameSite=Lax, Path=/, SANS Domain :\nlié à l'hôte FLAW_DOMAIN). v1 : __Secure-flaw.session_token (accepté par\nl'Expert, réponse a, domaine dédié sans sous-domaine tiers) ; passage à\n__Host- avant la version publique (SEC-SESS-02).\n"
       },
       "bearerAuth": {
         "type": "http",
-        "scheme": "bearer"
+        "scheme": "bearer",
+        "description": "Jeton de session opaque (module auth maison, haché SHA-256 en base), pour l'app mobile"
+      }
+    },
+    "headers": {
+      "CacheControlNoStore": {
+        "description": "Toujours no-store (v0.4.18, getMe ; règle générale de l'API)",
+        "schema": {
+          "type": "string",
+          "const": "no-store"
+        }
+      }
+    },
+    "responses": {
+      "Unauthorized": {
+        "description": "Non authentifié",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
       }
     },
     "schemas": {
+      "User": {
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "role",
+          "locale",
+          "timeZone",
+          "mfaEnrolled",
+          "passwordMustChange"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "user",
+              "admin"
+            ]
+          },
+          "locale": {
+            "type": "string",
+            "example": "fr-FR"
+          },
+          "timeZone": {
+            "type": "string",
+            "example": "Asia/Ho_Chi_Minh"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "mfaEnrolled": {
+            "type": "boolean",
+            "description": "v0.4.18 (ajout) : TOTP enrôlé. Ni secret ni code."
+          },
+          "passwordMustChange": {
+            "type": "boolean",
+            "description": "v0.4.18 (ajout) : mot de passe provisoire (flaw-admin), changement exigé"
+          }
+        },
+        "description": "Jamais de password_hash, secret TOTP, code de secours ni jeton (v0.4.18)."
+      },
       "Problem": {
+        "type": "object",
+        "description": "RFC 9457",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ServiceProblem": {
         "type": "object",
         "properties": {
           "type": {
@@ -344,7 +398,7 @@
         ],
         "additionalProperties": false
       },
-      "Unauthorized": {
+      "UnauthorizedBody": {
         "type": "object",
         "properties": {
           "type": {
@@ -375,18 +429,6 @@
       "DocumentTitle": {
         "type": "string",
         "maxLength": 300
-      },
-      "Message": {
-        "type": "object",
-        "properties": {
-          "message": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "message"
-        ],
-        "additionalProperties": false
       }
     }
   }

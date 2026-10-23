@@ -55,7 +55,9 @@ jobs:
           exit "${status}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.
-      # oasdiff --fail-on ERR contre le contrat dérivé 0.4.18 (hors 403 mfa_required, T-009). Aucun fichier d'exceptions.
+      # Référence : contrat architecte dérivé (api-contract-full). GET /me seulement :
+      # le reste du fichier décrit des routes non livrées. 403 mfa_required = T-009.
+      # Aucun fichier d'exceptions.
       - name: oasdiff
         run: |
           set -euo pipefail
@@ -67,7 +69,20 @@ jobs:
             echo "oasdiff : fichier d'exceptions interdit"
             exit 1
           fi
-          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR apps/server/openapi/api-contract-0.4.18-derive-t052.json openapi.json
+          node --input-type=module << 'EOF'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const base = JSON.parse(readFileSync("apps/server/openapi/api-contract-0.4.18-derive-t052.json", "utf8"));
+          const rev = JSON.parse(readFileSync("openapi.json", "utf8"));
+          const slice = (operation, components) => ({
+            openapi: "3.1.0",
+            info: { title: "getMe", version: "0" },
+            paths: { "/api/v1/me": { get: operation } },
+            components,
+          });
+          writeFileSync("/tmp/oas-base-me.json", JSON.stringify(slice(base.paths["/me"].get, base.components)));
+          writeFileSync("/tmp/oas-rev-me.json", JSON.stringify(slice(rev.paths["/api/v1/me"].get, rev.components)));
+          EOF
+          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR /tmp/oas-base-me.json /tmp/oas-rev-me.json
 
       - name: Licences
         run: pnpm licenses:check

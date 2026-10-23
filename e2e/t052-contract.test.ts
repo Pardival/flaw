@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import { buildApp } from "../apps/server/src/app.ts";
-import { serializeSessionCookie, SESSION_COOKIE } from "../apps/server/src/auth/cookie.ts";
+import { DEVICE_COOKIE, serializeDeviceCookie, serializeSessionCookie, SESSION_COOKIE } from "../apps/server/src/auth/cookie.ts";
 import { BAD_REQUEST, MFA_REQUIRED, ORIGIN_REJECTED } from "../apps/server/src/auth/html.ts";
 import { allowedOrigins } from "../apps/server/src/auth/routes.ts";
 import type { AppConfig } from "../apps/server/src/config/load.ts";
@@ -80,19 +80,26 @@ describe("T-052 contrat", () => {
     expect(header.split(";").some((part) => part.trim().toLowerCase().startsWith("domain="))).toBe(false);
   });
 
-  it("répond 401 en problem+json et laisse sendMessage en {message}", async () => {
+  it("pose __Host-flaw_device Secure, Path=/, sans Domain", () => {
+    const header = serializeDeviceCookie("secret-appareil");
+    expect(DEVICE_COOKIE).toBe("__Host-flaw_device");
+    expect(header.startsWith(`${DEVICE_COOKIE}=secret-appareil`)).toBe(true);
+    expect(header).toContain("HttpOnly");
+    expect(header).toContain("Secure");
+    expect(header).toContain("SameSite=Strict");
+    expect(header).toContain("Path=/");
+    expect(header).not.toMatch(/;\s*Domain=/i);
+    expect(header.split(";").some((part) => part.trim().toLowerCase().startsWith("domain="))).toBe(false);
+  });
+
+  it("répond 400, 401 et 403 d'auth en problem+json", async () => {
     const app = buildApp(config());
     const missing = await app.inject({ method: "GET", url: "/api/v1/me" });
     expect(missing.statusCode).toBe(401);
     expect(missing.headers["content-type"]).toContain("application/problem+json");
     expect(missing.headers["cache-control"]).toBe("no-store");
     expect(missing.json()).toEqual(problem(401));
-    expect(missing.json()).toEqual({
-      type: "about:blank",
-      status: 401,
-      title: "Authentification requise",
-      code: "unauthorized",
-    });
+    expect(missing.json()).not.toHaveProperty("message");
 
     const legacy = await app.inject({
       method: "GET",
@@ -117,11 +124,35 @@ describe("T-052 contrat", () => {
       payload: "{}",
     });
     expect(rejected.statusCode).toBe(403);
-    expect(rejected.headers["content-type"]).toContain("application/json");
-    expect(rejected.json()).toEqual({ message: ORIGIN_REJECTED });
-    expect(rejected.json()).not.toEqual(problem(401));
+    expect(rejected.headers["content-type"]).toContain("application/problem+json");
+    expect(rejected.json()).toEqual(problem(403, ORIGIN_REJECTED));
+    expect(rejected.json()).not.toHaveProperty("message");
+
+    const routes = readFileSync(join(root, "apps/server/src/auth/routes.ts"), "utf8");
+    expect(routes).toContain("sendMessage(reply, 400, BAD_REQUEST)");
+    expect(routes).toContain("sendMessage(reply, 401, MFA_REQUIRED)");
+    expect(routes).toContain("sendMessage(reply, 429, TOO_MANY");
+    expect(routes).toContain("return sendProblem(reply, status, message)");
+    expect(routes).not.toContain("application/json; charset=utf-8");
+    expect(routes).not.toContain(".send({ message })");
     expect(BAD_REQUEST).toBe("requête invalide");
     expect(MFA_REQUIRED).toBe("code d'authentification requis");
+    await app.close();
+  });
+
+  it("tue la mutation du 401 not-found vers {message}", async () => {
+    const source = readFileSync(join(root, "apps/server/src/app.ts"), "utf8");
+    const start = source.indexOf("app.setNotFoundHandler");
+    const handler = source.slice(start, source.indexOf('app.get("/api/v1/healthz"', start));
+    expect(handler).toContain("sendProblem(reply, 401)");
+    expect(handler).not.toContain("{ message");
+    expect(handler).not.toContain("AUTH_REQUIRED");
+    const app = buildApp(config());
+    const missing = await app.inject({ method: "GET", url: "/api/v1/n-existe-pas" });
+    expect(missing.statusCode).toBe(401);
+    expect(missing.headers["content-type"]).toContain("application/problem+json");
+    expect(missing.json()).toEqual(problem(401));
+    expect(missing.json()).not.toHaveProperty("message");
     await app.close();
   });
 
@@ -174,24 +205,36 @@ describe("T-052 contrat", () => {
       }
     )["/api/v1/me"].get;
     expect(me.operationId).toBe("getMe");
-    const ok = me.responses["200"]?.content?.["application/json"]?.schema?.required ?? [];
-    expect([...ok].sort()).toEqual(["email", "id", "locale", "mfaEnrolled", "passwordMustChange", "role", "timeZone"]);
-    expect(me.responses["401"]?.content).toHaveProperty("application/problem+json");
-    const header = {
-      description: "Cache-Control: no-store",
-      required: true,
-      schema: { type: "string", const: "no-store" },
-    };
-    const responses = me.responses as Record<string, { headers?: Record<string, unknown> }>;
-    expect(responses["200"]?.headers?.["Cache-Control"]).toEqual(header);
-    expect(responses["401"]?.headers?.["Cache-Control"]).toEqual(header);
     const contract = JSON.parse(
       readFileSync(join(root, "apps/server/openapi/api-contract-0.4.18-derive-t052.json"), "utf8"),
     ) as {
       "x-source": { ref: string; version: string; hash: string; arc_sum: string };
       "x-ecarts-connus": string[];
-      paths: { "/api/v1/healthz": unknown; "/api/v1/me": unknown };
+      "x-bearer": string;
+      paths: { "/me": { get: { responses: Record<string, unknown> } }; "/healthz": unknown };
+      components: {
+        schemas: { User: { required?: string[] }; Problem: unknown };
+        responses: { Unauthorized: unknown };
+        headers: { CacheControlNoStore: unknown };
+        securitySchemes: { sessionCookie: { name: string }; bearerAuth: unknown };
+      };
     };
+    const userSchema = contract.components.schemas.User;
+    expect([...(userSchema.required ?? [])].sort()).toEqual([
+      "email",
+      "id",
+      "locale",
+      "mfaEnrolled",
+      "passwordMustChange",
+      "role",
+      "timeZone",
+    ]);
+    const responses = me.responses as Record<string, { headers?: Record<string, unknown>; content?: unknown; $ref?: string }>;
+    expect(responses["200"]?.headers?.["Cache-Control"]).toEqual({
+      $ref: "#/components/headers/CacheControlNoStore",
+    });
+    expect(responses["401"]).toEqual({ $ref: "#/components/responses/Unauthorized" });
+    expect(responses["403"]).toBeUndefined();
     expect(contract["x-source"]).toEqual({
       ref: "ARC-API",
       version: "0.4.0-draft",
@@ -199,14 +242,29 @@ describe("T-052 contrat", () => {
       arc_sum: "322da9f66ea0",
     });
     expect(contract["x-ecarts-connus"]).toEqual(["403 mfa_required → T-009"]);
-    expect(JSON.stringify(contract.paths["/api/v1/healthz"])).not.toContain("clientIp");
-    expect(contract.paths["/api/v1/me"]).toEqual(
-      (document.paths as { "/api/v1/me": unknown })["/api/v1/me"],
-    );
-    const schemes = (document.components as { securitySchemes: Record<string, unknown> }).securitySchemes;
-    expect(schemes.cookieAuth).toEqual({ type: "apiKey", in: "cookie", name: "__Host-flaw_session" });
-    expect(schemes.bearerAuth).toEqual({ type: "http", scheme: "bearer" });
-    const alternatives = [{ cookieAuth: [] }, { bearerAuth: [] }];
+    expect(contract["x-bearer"]).toBe("implémenté");
+    expect(JSON.stringify(contract.paths["/healthz"])).not.toContain("clientIp");
+    const expected = structuredClone(contract.paths["/me"].get);
+    delete expected.responses["403"];
+    expect(me).toEqual(expected);
+    expect(contract.paths["/me"].get.responses["403"]).toBeDefined();
+    const components = document.components as {
+      schemas: { User: unknown; Problem: unknown };
+      responses: { Unauthorized: unknown };
+      headers: { CacheControlNoStore: unknown };
+      securitySchemes: { sessionCookie: { name: string }; bearerAuth: unknown };
+    };
+    expect(components.schemas.User).toEqual(contract.components.schemas.User);
+    expect(components.schemas.Problem).toEqual(contract.components.schemas.Problem);
+    expect(components.responses.Unauthorized).toEqual(contract.components.responses.Unauthorized);
+    expect(components.headers.CacheControlNoStore).toEqual(contract.components.headers.CacheControlNoStore);
+    expect(components.securitySchemes.bearerAuth).toEqual(contract.components.securitySchemes.bearerAuth);
+    expect(components.securitySchemes.sessionCookie).toEqual({
+      ...contract.components.securitySchemes.sessionCookie,
+      name: "__Host-flaw_session",
+    });
+    expect(contract.components.securitySchemes.sessionCookie.name).toBe("__Secure-flaw.session_token");
+    const alternatives = [{ sessionCookie: [] }, { bearerAuth: [] }];
     const paths = document.paths as Record<string, Record<string, { security?: unknown }>>;
     expect(paths["/api/v1/me"]?.get?.security).toEqual(alternatives);
     expect(paths["/api/v1/documents"]?.get?.security).toEqual(alternatives);
@@ -231,6 +289,8 @@ describe("T-052 contrat", () => {
     const allowed = new Set([
       join(root, "apps/server/src/auth/auth.test.ts"),
       join(root, "e2e/t052-contract.test.ts"),
+      join(root, "apps/server/openapi/api-contract-0.4.18-derive-t052.json"),
+      join(root, "openapi.json"),
     ]);
     const files: string[] = [];
     walk(root, files);
@@ -240,8 +300,10 @@ describe("T-052 contrat", () => {
 
   it("compare oasdiff au contrat 0.4.18 sans fichier d'exceptions", () => {
     const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
+    expect(ci).toContain("apps/server/openapi/api-contract-0.4.18-derive-t052.json");
+    expect(ci).toContain('base.paths["/me"].get');
     const command = ci.split("\n").find((line) => line.includes("breaking --fail-on ERR"));
-    expect(command).toContain("apps/server/openapi/api-contract-0.4.18-derive-t052.json openapi.json");
+    expect(command).toContain("/tmp/oas-base-me.json /tmp/oas-rev-me.json");
     expect(command).not.toContain("ignore");
     expect(ci).not.toContain("git show FETCH_HEAD:openapi.json");
   });
