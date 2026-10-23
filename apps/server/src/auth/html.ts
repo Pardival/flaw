@@ -25,3 +25,6 @@ export const AUTH_REQUIRED = "authentification requise";
 export const ORIGIN_REJECTED = "origine refusée";
 export const PASSWORD_REJECTED = "mot de passe refusé";
 export const BAD_REQUEST = "requête invalide";
+export const RESTRICTED = "session restreinte";
+export const ENROLL_REFUSED = "enrôlement refusé";
+export const MFA_REQUIRED = "code d'authentification requis";

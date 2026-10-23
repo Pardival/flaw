@@ -10,7 +10,8 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { Client, Pool } from "pg";
 import { z } from "zod";
 
-import { registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
+import { AUTH_REQUIRED } from "./auth/html.ts";
+import { anonymousRequest, registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
 import { assertPasswordMinLength } from "./auth/password.ts";
 import { holdSecrets, loadConfig, type AppConfig } from "./config/load.ts";
 import type { LoadedSecrets } from "./config/secrets.ts";
@@ -99,6 +100,23 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
   });
 
   trackRoutes(app);
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (request, body, done) => {
+    const text = typeof body === "string" ? body : "";
+    if (text.trim().length === 0) {
+      if (request.method === "DELETE") {
+        done(null, undefined);
+        return;
+      }
+      done(Object.assign(new Error("corps vide"), { statusCode: 400 }), undefined);
+      return;
+    }
+    try {
+      done(null, JSON.parse(text) as unknown);
+    } catch {
+      done(Object.assign(new Error("json"), { statusCode: 400 }), undefined);
+    }
+  });
   registerAuth(app, config, { ...options, logStream: stream });
 
   app.addHook("onRequest", async (request, reply) => {
@@ -153,7 +171,10 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
     return sendProblem(reply, status);
   });
 
-  app.setNotFoundHandler((_request, reply) => {
+  app.setNotFoundHandler(async (request, reply) => {
+    if (await anonymousRequest(app, request)) {
+      return reply.code(401).type("application/json; charset=utf-8").send({ message: AUTH_REQUIRED });
+    }
     return sendProblem(reply, 404);
   });
 

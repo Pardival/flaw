@@ -4,6 +4,7 @@ import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+import { AUTH_REQUIRED } from "../auth/html.ts";
 import { buildApp, type BuildOptions } from "../app.ts";
 import type { AppConfig } from "../config/load.ts";
 import { omitServerAssigned, parseStrict } from "./validation.ts";
@@ -64,7 +65,7 @@ function headerNames(headers: Record<string, unknown>): string[] {
 }
 
 describe("API-023 santé", () => {
-  it("répond 200 sans authentification, en no-store, avec l'IP résolue", async () => {
+  it("répond 200 sans authentification, en no-store, sans clientIp ni adresse IP", async () => {
     const { app } = appWithLogs();
     const response = await app.inject({
       method: "GET",
@@ -77,6 +78,41 @@ describe("API-023 santé", () => {
     expect(response.body).not.toContain("clientIp");
     expect(response.body).not.toContain("203.0.113.9");
     expect(response.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
+  it("route inconnue sans session → 401", async () => {
+    const { app } = appWithLogs();
+    const response = await app.inject({ method: "GET", url: "/api/v1/inexistante" });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ message: AUTH_REQUIRED });
+    const posted = await app.inject({
+      method: "POST",
+      url: "/api/v1/inexistante",
+      headers: { "content-type": "application/json", origin: "https://flaw.test" },
+      payload: "{}",
+    });
+    expect(posted.statusCode).toBe(401);
+    await app.close();
+  });
+
+  it("accepte un DELETE JSON à corps vide et refuse un POST JSON à corps vide", async () => {
+    const { app } = appWithLogs();
+    const removed = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/documents/00000000-0000-4000-8000-000000000001",
+      headers: { "content-type": "application/json", origin: "https://flaw.test" },
+      payload: "",
+    });
+    expect(removed.statusCode).toBe(401);
+    expect(removed.json()).toEqual({ message: AUTH_REQUIRED });
+    const posted = await app.inject({
+      method: "POST",
+      url: "/api/auth/sign-in",
+      headers: { "content-type": "application/json", origin: "https://flaw.test" },
+      payload: "",
+    });
+    expect(posted.statusCode).toBe(400);
     await app.close();
   });
 

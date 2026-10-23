@@ -43,7 +43,7 @@ import {
 import * as passwordModule from "./password.ts";
 import { AUTH_ROUTES, isPublicRoute } from "./routes.ts";
 import { openAuth } from "./service.ts";
-import { insertLock, listAuditEvents, purgeRateLimits } from "./store.ts";
+import { insertLock, listAuditEvents, LOCK_STAGE_ANCHOR, purgeRateLimits } from "./store.ts";
 
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -1483,9 +1483,14 @@ describe("authentification sur PostgreSQL", () => {
     const until = new Date(Date.parse("2026-01-15T00:05:00.000Z"));
     await insertLock(pool, bucket, until, 1);
     await insertLock(pool, bucket, until, 4);
-    const rows = await pool.query<{ hits: number }>("SELECT hits FROM flaw.rate_limits WHERE bucket = $1", [bucket]);
-    expect(rows.rows).toHaveLength(1);
+    const rows = await pool.query<{ hits: number; window_start: Date }>(
+      "SELECT hits, window_start FROM flaw.rate_limits WHERE bucket = $1 ORDER BY window_start",
+      [bucket],
+    );
+    expect(rows.rows).toHaveLength(2);
     expect(rows.rows[0]?.hits).toBe(1);
+    expect(rows.rows[1]?.hits).toBe(1);
+    expect(rows.rows[1]?.window_start.toISOString()).toBe(LOCK_STAGE_ANCHOR.toISOString());
     const stale = bucketHmac(key, "lock|vieux");
     await pool.query("INSERT INTO flaw.rate_limits (bucket, window_start, hits) VALUES ($1, $2, 1)", [
       stale,
@@ -1499,7 +1504,34 @@ describe("authentification sur PostgreSQL", () => {
     const kept = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM flaw.rate_limits WHERE bucket = $1", [
       bucket,
     ]);
-    expect(kept.rows[0]?.n).toBe(1);
+    expect(kept.rows[0]?.n).toBe(2);
+  });
+
+  dbTest("conserve l'escalade du verrouillage après purge des compteurs (SEC-AUTH-04)", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const ip = nextIp();
+    clock.ms = Date.parse("2026-01-15T00:00:00.000Z");
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const failed = await sign(app, email, "mauvais-mot-de-passe", ip);
+      expect(failed.statusCode).toBe(401);
+    }
+    const locked = await sign(app, email, PASSWORD, ip);
+    expect(locked.statusCode).toBe(429);
+    expect(Number(locked.headers["retry-after"])).toBeLessThanOrEqual(60);
+    await purgeRateLimits(pool, new Date(clock.ms + 24 * 60 * 60 * 1000));
+    clock.ms += 120_000;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const failed = await sign(app, email, "mauvais-mot-de-passe", ip);
+      expect(failed.statusCode).toBe(401);
+    }
+    const escalated = await sign(app, email, PASSWORD, ip);
+    expect(escalated.statusCode).toBe(429);
+    const retry = Number(escalated.headers["retry-after"]);
+    expect(retry).toBeGreaterThan(60);
+    expect(retry).toBeLessThanOrEqual(300);
+    await app.close();
   });
 
   dbTest("vérifie argon2 même quand le compte est inconnu", async () => {

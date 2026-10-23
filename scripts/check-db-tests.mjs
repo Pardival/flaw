@@ -15,7 +15,12 @@ const TEST_FILE = /\.test\.(?:ts|mts|tsx|js|mjs|cjs)$/;
 const SKIP_DIRS = new Set(["node_modules", "dist", ".git", "coverage"]);
 
 export function usesPostgresHarness(source) {
-  return source.includes("POSTGRES_PASSWORD") || source.includes("applyMigrations(");
+  if (source.includes("POSTGRES_PASSWORD") || source.includes("applyMigrations(")) {
+    return true;
+  }
+  // Un `docker run` de l'image postgres:N démarre le serveur. La simple
+  // mention de l'image (awk dans le conteneur, entrypoint sleep) ne compte pas.
+  return /["']run["'][\s\S]{0,160}postgres:\d/.test(source);
 }
 
 export function discoverHarnessFiles(dir) {

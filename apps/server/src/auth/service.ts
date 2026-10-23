@@ -1,13 +1,26 @@
 /**
  * Authentification par mot de passe et sessions opaques hachées.
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { Pool } from "pg";
 
+import {
+  COLUMN,
+  dekResolvable,
+  generateDek,
+  openContent,
+  sealContent,
+  unwrapDek,
+  wrapDek,
+  type KeyStatus,
+} from "@flaw/crypto";
+
 import type { SecurityEvent } from "../platform/security-log.ts";
-import { deviceLabel, summarizeDevice } from "./device.ts";
 import { hashSessionToken, newSessionToken } from "./cookie.ts";
+import { deviceLabel, deviceSecretMatches, hashDeviceSecret, issueDeviceSecret, summarizeDevice } from "./device.ts";
 import { bucketHmac, hmacKey, ipHmac, subjectHmac, tempHmac } from "./hmac.ts";
+import { encodeBase32, matchTotp, recoveryCode, recoveryCodeHmac } from "./mfa.ts";
+import { RESTRICTED_TTL_MS } from "./restricted-session.ts";
 import {
   ARGON_TARGET,
   assessPassword,
@@ -27,30 +40,48 @@ import {
   countUsers,
   deleteBuckets,
   deleteDocument,
+  deleteRecoveryCodes,
+  deleteTotpFactors,
   deleteVerification,
+  deleteVerificationsByValue,
   findAccount,
   findAccountByUser,
+  findActiveUserKey,
   findSession,
+  findSessionById,
+  findTotpFactor,
+  findUserKey,
   findVerification,
+  findVerificationRow,
   insertAccount,
   insertAudit,
   insertAuthEvent,
   insertLock,
+  insertRecoveryCode,
   insertSession,
-  purgeRateLimits,
-  recentRate,
-  rotateSession,
-  insertUser,
-  insertVerification,
+  insertTotpFactor,
+  insertUserKey,
+  invalidateRecoveryCodes,
+  kekMayEncrypt,
   listDevices,
   listDocuments,
   maxLockStage,
+  purgeRateLimits,
+  recentRate,
   revokeAllSessions,
   revokeOtherSessions,
   revokeSession,
+  rotateSession,
   setPassword,
   touchSession,
+  insertUser,
+  insertVerification,
+  claimTotpStep,
+  upsertVerification,
+  consumeRecoveryCode,
   type SessionRow,
+  type Sql,
+  type TotpFactorRow,
 } from "./store.ts";
 
 const WINDOW_MS = 15 * 60 * 1000;
@@ -69,6 +100,10 @@ export type AuthDeps = {
   argon: ArgonParams;
   now: () => Date;
   onEvent?: (event: SecurityEvent) => void;
+  kek?: Uint8Array;
+  kekId?: string;
+  recoveryPepper?: Uint8Array;
+  recoveryPepperId?: string;
 };
 
 export type SignInResult =
@@ -79,8 +114,11 @@ export type SignInResult =
       userId: string;
       identifier: string;
       sessionId: string;
+      restricted: boolean;
+      deviceToken?: string;
     }
   | { kind: "invalid" }
+  | { kind: "mfa" }
   | { kind: "limited"; retryAfter: number };
 
 type AttemptContext = {
@@ -89,6 +127,9 @@ type AttemptContext = {
   ip: string;
   userAgent: string | undefined;
   remember: boolean;
+  totp?: string;
+  recoveryCode?: string;
+  deviceToken?: string;
 };
 
 function sliceStart(now: Date): Date {
@@ -200,45 +241,92 @@ export function openAuth(deps: AuthDeps) {
     if (account.password_hash !== null && passwordNeedsRehash(account.password_hash, deps.argon)) {
       await setPassword(deps.pool, account.user_id, await hashPassword(password, deps.argon));
     }
-    const failBucket = bucketHmac(key, `acct-fail|${input.identifier}`);
-    await deleteBuckets(deps.pool, [failBucket, lockBucket]);
-    const bounds = boundsFor(input.remember, now);
-    const issued = newSessionToken();
-    const sessionId = await insertSession(deps.pool, {
-      userId: account.user_id,
-      tokenHash: issued.hash,
-      expiresAt: bounds.idle,
-      absoluteExpiresAt: bounds.absolute,
-      createdAt: now,
-      browser: device.browser,
-      os: device.os,
-      remember: input.remember,
-    });
-    await insertAudit(deps.pool, account.user_id, "login_success", "ok");
-    emit({
-      type: "login_success",
-      result: "succes",
-      userId: account.user_id,
-      sessionId,
-      ip: input.ip,
-      userAgent: input.userAgent ?? null,
-    });
-    emit({
-      type: "session_created",
-      result: "succes",
-      userId: account.user_id,
-      sessionId,
-      ip: input.ip,
-      userAgent: input.userAgent ?? null,
-    });
-    return {
-      kind: "ok",
-      token: issued.token,
-      maxAge: input.remember ? deps.maxDays * 24 * 60 * 60 : null,
-      userId: account.user_id,
-      identifier: input.identifier,
-      sessionId,
-    };
+    const provisional = tempExpires !== null;
+    if (provisional) {
+      await clearFailures(input.identifier);
+      return issueSession(account.user_id, input, now, true);
+    }
+    const factor = await findTotpFactor(deps.pool, account.user_id);
+    if (factor !== null && (await factorDekRevoked(account.user_id, factor))) {
+      await signalRevokedDek(account.user_id, input.ip, input.userAgent);
+      return { kind: "invalid" };
+    }
+    const confirmed = factor !== null && (await totpIsConfirmed(account.user_id, now));
+    const presentsFactor = input.totp !== undefined || input.recoveryCode !== undefined;
+    if (!presentsFactor && (factor === null || !confirmed)) {
+      const pending = await findVerificationRow(deps.pool, enrollPendingId(account.user_id));
+      if (pending !== null && now.getTime() >= pending.expires_at.getTime()) {
+        return { kind: "invalid" };
+      }
+      if (pending !== null || factor !== null) {
+        await clearFailures(input.identifier);
+        return issueSession(account.user_id, input, now, true);
+      }
+      await clearFailures(input.identifier);
+      return issueSession(account.user_id, input, now, false);
+    }
+    if (factor === null) {
+      return { kind: "invalid" };
+    }
+    const trusted = confirmed && (await deviceIsTrusted(account.user_id, input.deviceToken, now));
+    if (!trusted) {
+      if (input.totp !== undefined && input.recoveryCode !== undefined) {
+        return { kind: "invalid" };
+      }
+      if (input.recoveryCode !== undefined) {
+        const consumed = await consumeRecovery(account.user_id, input.recoveryCode, now);
+        if (!consumed) {
+          await registerFailure(input.identifier, now);
+          await insertAuthEvent(
+            deps.pool,
+            "login_failed",
+            subjectHmac(key, input.identifier),
+            ipHmac(key, input.ip),
+            summary,
+          );
+          emit({
+            type: "login_failure",
+            result: "echec",
+            userId: account.user_id,
+            ip: input.ip,
+            userAgent: input.userAgent ?? null,
+          });
+          return { kind: "invalid" };
+        }
+        await upsertVerification(deps.pool, reconfigureId(account.user_id), "1", new Date(now.getTime() + DAY_MS));
+        await clearFailures(input.identifier);
+        return issueSession(account.user_id, input, now, true);
+      }
+      if (input.totp === undefined) {
+        return { kind: "mfa" };
+      }
+      const step = await acceptTotp(account.user_id, factor, input.totp, now);
+      if (step === null) {
+        await registerFailure(input.identifier, now);
+        await insertAuthEvent(
+          deps.pool,
+          "login_failed",
+          subjectHmac(key, input.identifier),
+          ipHmac(key, input.ip),
+          summary,
+        );
+        emit({
+          type: "mfa_failed",
+          result: "echec",
+          userId: account.user_id,
+          ip: input.ip,
+          userAgent: input.userAgent ?? null,
+        });
+        return { kind: "invalid" };
+      }
+      await confirmTotp(deps.pool, account.user_id, now);
+      const deviceToken = await trustDevice(account.user_id, now);
+      await clearFailures(input.identifier);
+      const session = await issueSession(account.user_id, input, now, false);
+      return { ...session, deviceToken };
+    }
+    await clearFailures(input.identifier);
+    return issueSession(account.user_id, input, now, false);
   }
 
   async function noteHit(bucket: string, now: Date): Promise<{ hits: number; retryAfter: number }> {
@@ -270,6 +358,14 @@ export function openAuth(deps: AuthDeps) {
     };
   }
 
+  function ceiling(row: SessionRow): Date {
+    if (!row.restricted) {
+      return row.absolute_expires_at;
+    }
+    const cap = new Date(row.created_at.getTime() + RESTRICTED_TTL_MS);
+    return cap < row.absolute_expires_at ? cap : row.absolute_expires_at;
+  }
+
   async function resolve(token: string | undefined): Promise<SessionRow | null> {
     if (token === undefined) {
       return null;
@@ -279,17 +375,230 @@ export function openAuth(deps: AuthDeps) {
       return null;
     }
     const now = deps.now();
-    if (now.getTime() >= row.absolute_expires_at.getTime() || now.getTime() >= row.expires_at.getTime()) {
+    const absolute = ceiling(row);
+    if (now.getTime() >= absolute.getTime() || now.getTime() >= row.expires_at.getTime()) {
       return null;
     }
     const idleMs = (row.remember ? deps.idleDays : 1) * DAY_MS;
     const nextIdle = new Date(now.getTime() + idleMs);
-    const expires = nextIdle < row.absolute_expires_at ? nextIdle : row.absolute_expires_at;
+    const expires = nextIdle < absolute ? nextIdle : absolute;
     if (expires.getTime() <= now.getTime()) {
       return null;
     }
     await touchSession(deps.pool, row.id, now, expires);
     return row;
+  }
+
+  async function issueSession(
+    userId: string,
+    input: AttemptContext,
+    now: Date,
+    restricted: boolean,
+  ): Promise<Extract<SignInResult, { kind: "ok" }>> {
+    const device = summarizeDevice(input.userAgent);
+    const bounds = restricted
+      ? { idle: new Date(now.getTime() + RESTRICTED_TTL_MS), absolute: new Date(now.getTime() + RESTRICTED_TTL_MS) }
+      : boundsFor(input.remember, now);
+    const issued = newSessionToken();
+    const sessionId = await insertSession(deps.pool, {
+      userId,
+      tokenHash: issued.hash,
+      expiresAt: bounds.idle,
+      absoluteExpiresAt: bounds.absolute,
+      createdAt: now,
+      browser: device.browser,
+      os: device.os,
+      remember: input.remember,
+      restricted,
+    });
+    await insertAudit(deps.pool, userId, "login_success", "ok");
+    emit({
+      type: "login_success",
+      result: "succes",
+      userId,
+      sessionId,
+      ip: input.ip,
+      userAgent: input.userAgent ?? null,
+    });
+    emit({
+      type: "session_created",
+      result: "succes",
+      userId,
+      sessionId,
+      ip: input.ip,
+      userAgent: input.userAgent ?? null,
+    });
+    return {
+      kind: "ok",
+      token: issued.token,
+      maxAge: restricted ? RESTRICTED_TTL_MS / 1000 : input.remember ? deps.maxDays * 24 * 60 * 60 : null,
+      userId,
+      identifier: input.identifier,
+      sessionId,
+      restricted,
+    };
+  }
+
+  async function clearFailures(identifier: string): Promise<void> {
+    await deleteBuckets(deps.pool, [
+      bucketHmac(key, `acct-fail|${identifier}`),
+      bucketHmac(key, `acct-lock|${identifier}`),
+    ]);
+  }
+
+  function enrollPendingId(userId: string): string {
+    return bucketHmac(key, `enroll-pending|${userId}`);
+  }
+
+  function totpConfirmedId(userId: string): string {
+    return bucketHmac(key, `totp-confirmed|${userId}`);
+  }
+
+  async function totpIsConfirmed(userId: string, now: Date): Promise<boolean> {
+    const row = await findVerificationRow(deps.pool, totpConfirmedId(userId));
+    return row !== null && now.getTime() < row.expires_at.getTime();
+  }
+
+  async function markEnrollmentDue(sql: Sql, userId: string, at: Date): Promise<void> {
+    await upsertVerification(sql, enrollPendingId(userId), "1", new Date(at.getTime() + TEMP_TTL_MS));
+  }
+
+  async function confirmTotp(sql: Sql, userId: string, at: Date): Promise<void> {
+    await upsertVerification(sql, totpConfirmedId(userId), "1", new Date(at.getTime() + 10 * 365 * DAY_MS));
+    await deleteVerification(sql, enrollPendingId(userId));
+  }
+
+  async function deviceIsTrusted(userId: string, token: string | undefined, now: Date): Promise<boolean> {
+    if (token === undefined) {
+      return false;
+    }
+    const row = await findVerificationRow(deps.pool, hashDeviceSecret(token));
+    return deviceSecretMatches(row, userId, now);
+  }
+
+  async function trustDevice(userId: string, now: Date): Promise<string> {
+    const issued = issueDeviceSecret();
+    await upsertVerification(deps.pool, issued.hash, userId, new Date(now.getTime() + 90 * DAY_MS));
+    return issued.token;
+  }
+
+  async function factorDekRevoked(userId: string, factor: TotpFactorRow): Promise<boolean> {
+    const keyRow = await findUserKey(deps.pool, userId, factor.key_id);
+    return keyRow !== null && keyRow.status === "revoked";
+  }
+
+  async function signalRevokedDek(userId: string, ip: string, userAgent: string | undefined): Promise<void> {
+    await insertAudit(deps.pool, userId, "admin.dek_revoked", "refus");
+    emit({
+      type: "admin_action",
+      result: "echec",
+      userId,
+      ip,
+      userAgent: userAgent ?? null,
+      action: "admin.dek_revoked",
+    });
+  }
+
+  function stepId(userId: string): string {
+    return bucketHmac(key, `totp-step|${userId}`);
+  }
+
+  function reconfigureId(userId: string): string {
+    return bucketHmac(key, `reconfigure|${userId}`);
+  }
+
+  async function lastStep(userId: string): Promise<number | null> {
+    const row = await findVerificationRow(deps.pool, stepId(userId));
+    if (row === null) {
+      return null;
+    }
+    const parsed = Number(row.value_hash);
+    return Number.isInteger(parsed) ? parsed : null;
+  }
+
+  function openDek(userId: string, row: { wrapped_ct: Buffer; wrapped_nonce: Buffer; key_id: string; enc_version: number; status: string }): Uint8Array | null {
+    if (deps.kek === undefined || !dekResolvable(row.status as KeyStatus)) {
+      return null;
+    }
+    try {
+      return unwrapDek(deps.kek, userId, {
+        wrappedCt: new Uint8Array(row.wrapped_ct),
+        wrappedNonce: new Uint8Array(row.wrapped_nonce),
+        keyId: row.key_id,
+        encVersion: row.enc_version,
+        status: row.status as KeyStatus,
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  async function readTotpSecret(userId: string, factor: TotpFactorRow): Promise<Uint8Array | null> {
+    const keyRow = await findUserKey(deps.pool, userId, factor.key_id);
+    if (keyRow === null) {
+      return null;
+    }
+    const dek = openDek(userId, keyRow);
+    if (dek === null) {
+      return null;
+    }
+    try {
+      return openContent(
+        { ownerId: userId, rowId: factor.id, column: COLUMN.secretCt },
+        {
+          ciphertext: new Uint8Array(factor.secret_ct),
+          nonce: new Uint8Array(factor.secret_nonce),
+          keyId: factor.key_id,
+          encVersion: factor.enc_version,
+        },
+        (ownerId, keyId) => (ownerId === userId && keyId === factor.key_id ? dek : undefined),
+      );
+    } catch {
+      return null;
+    } finally {
+      dek.fill(0);
+    }
+  }
+
+  async function acceptTotp(userId: string, factor: TotpFactorRow, code: string, now: Date): Promise<number | null> {
+    const secret = await readTotpSecret(userId, factor);
+    if (secret === null) {
+      return null;
+    }
+    try {
+      const step = matchTotp(secret, code, now, await lastStep(userId));
+      if (step === null) {
+        return null;
+      }
+      const claimed = await claimTotpStep(deps.pool, stepId(userId), step, new Date(now.getTime() + 90 * DAY_MS));
+      return claimed ? step : null;
+    } finally {
+      secret.fill(0);
+    }
+  }
+
+  async function consumeRecovery(userId: string, code: string, now: Date): Promise<boolean> {
+    if (deps.recoveryPepper === undefined || deps.recoveryPepperId === undefined) {
+      return false;
+    }
+    const mac = recoveryCodeHmac(deps.recoveryPepper, deps.recoveryPepperId, userId, code);
+    if (mac === null) {
+      return false;
+    }
+    if (await consumeRecoveryCode(deps.pool, userId, mac, now)) {
+      return true;
+    }
+    return false;
+  }
+
+  async function provisionalActive(userId: string, now: Date): Promise<boolean> {
+    const expires = await findVerification(deps.pool, tempHmac(key, userId));
+    return expires !== null && now.getTime() < expires.getTime();
+  }
+
+  async function reconfigureActive(userId: string, now: Date): Promise<boolean> {
+    const row = await findVerificationRow(deps.pool, reconfigureId(userId));
+    return row !== null && now.getTime() < row.expires_at.getTime();
   }
 
   async function signOut(sessionId: string, userId: string, ip: string, userAgent: string | undefined): Promise<void> {
@@ -341,10 +650,19 @@ export function openAuth(deps: AuthDeps) {
     await insertAudit(deps.pool, userId, "password_changed", "ok");
     emit({ type: "password_changed", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
     emit({ type: "session_revoked", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
+    const restrictedLeft = currentSession?.restricted === true;
+    const maxAge = restrictedLeft
+      ? Math.max(
+          1,
+          Math.ceil(((currentSession?.created_at.getTime() ?? now.getTime()) + RESTRICTED_TTL_MS - now.getTime()) / 1000),
+        )
+      : currentSession?.remember === true
+        ? deps.maxDays * 24 * 60 * 60
+        : null;
     return {
       kind: "ok",
       token: issued.token,
-      maxAge: currentSession?.remember === true ? deps.maxDays * 24 * 60 * 60 : null,
+      maxAge,
     };
   }
 
@@ -360,52 +678,294 @@ export function openAuth(deps: AuthDeps) {
     return { kind: "ok" };
   }
 
-  async function issueProvisional(userId: string, at: Date): Promise<string> {
-    const password = provisionalPassword();
+  async function issueProvisional(sql: Sql, userId: string, at: Date, chosen?: string): Promise<string> {
+    const password = chosen ?? provisionalPassword();
     const assessed = assessPassword(password, Math.max(deps.minLength, 20));
     if (!assessed.ok) {
       throw new Error("mot de passe refusé");
     }
     const hashed = await hashPassword(assessed.password, deps.argon);
-    await setPassword(deps.pool, userId, hashed);
-    await deleteVerification(deps.pool, tempHmac(key, userId));
+    await setPassword(sql, userId, hashed);
+    await deleteVerification(sql, tempHmac(key, userId));
     const marker = createHash("sha256").update(randomBytes(32)).digest("hex");
-    await insertVerification(deps.pool, tempHmac(key, userId), marker, new Date(at.getTime() + TEMP_TTL_MS));
-    await insertAudit(deps.pool, userId, "password_reset_used", "ok");
+    await insertVerification(sql, tempHmac(key, userId), marker, new Date(at.getTime() + TEMP_TTL_MS));
+    await insertAudit(sql, userId, "password_reset_used", "ok");
     return assessed.password;
   }
 
-  async function createUser(identifier: string, ip: string): Promise<{ password: string; userId: string }> {
+  async function inTransaction<T>(run: (sql: Sql) => Promise<T>): Promise<T> {
+    const client = await deps.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const value = await run(client);
+      await client.query("COMMIT");
+      return value;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  function requireIdentifier(identifier: string): string {
     const normalized = identifier.normalize("NFC").trim().toLowerCase();
     if (normalized.length === 0 || normalized.length > 320) {
       throw new Error("requête invalide");
     }
+    return normalized;
+  }
+
+  function adminEmit(action: SecurityEvent["action"], userId: string, ip: string): void {
+    emit({ type: "admin_action", result: "succes", userId, ip, userAgent: null, action });
+  }
+
+  async function createUser(
+    identifier: string,
+    ip: string,
+    chosen?: string,
+  ): Promise<{ password: string; userId: string }> {
+    const normalized = requireIdentifier(identifier);
     if ((await countUsers(deps.pool)) > 0) {
       throw new Error("un seul compte");
     }
     const userId = await insertUser(deps.pool);
     const placeholder = await hashPassword(provisionalPassword(), deps.argon);
     await insertAccount(deps.pool, userId, normalized, placeholder);
-    const password = await issueProvisional(userId, deps.now());
-    emit({ type: "admin_action", result: "succes", userId, ip, userAgent: null });
+    const at = deps.now();
+    const password = await issueProvisional(deps.pool, userId, at, chosen);
+    await markEnrollmentDue(deps.pool, userId, at);
+    await insertAudit(deps.pool, userId, "admin.create_user", "ok");
+    adminEmit("admin.create_user", userId, ip);
     return { password, userId };
   }
 
-  async function resetPassword(identifier: string, ip: string): Promise<string> {
-    const normalized = identifier.normalize("NFC").trim().toLowerCase();
-    if (normalized.length === 0 || normalized.length > 320) {
-      throw new Error("requête invalide");
-    }
+  async function resetPassword(identifier: string, ip: string, chosen?: string): Promise<string> {
+    const normalized = requireIdentifier(identifier);
     const account = await findAccount(deps.pool, normalized);
     if (account === null) {
       throw new Error("compte introuvable");
     }
     const now = deps.now();
-    await revokeAllSessions(deps.pool, account.user_id, now);
-    const password = await issueProvisional(account.user_id, now);
-    emit({ type: "admin_action", result: "succes", userId: account.user_id, ip, userAgent: null });
+    const password = await inTransaction(async (sql) => {
+      await revokeAllSessions(sql, account.user_id, now);
+      await deleteVerificationsByValue(sql, account.user_id);
+      await deleteVerification(sql, reconfigureId(account.user_id));
+      const issued = await issueProvisional(sql, account.user_id, now, chosen);
+      await markEnrollmentDue(sql, account.user_id, now);
+      await insertAudit(sql, account.user_id, "admin.reset_password", "ok");
+      return issued;
+    });
+    adminEmit("admin.reset_password", account.user_id, ip);
     emit({ type: "password_reset_used", result: "succes", userId: account.user_id, ip, userAgent: null });
     return password;
+  }
+
+  async function disableMfa(identifier: string, ip: string, chosen?: string): Promise<string> {
+    const normalized = requireIdentifier(identifier);
+    const account = await findAccount(deps.pool, normalized);
+    if (account === null) {
+      throw new Error("compte introuvable");
+    }
+    const now = deps.now();
+    const password = await inTransaction(async (sql) => {
+      await revokeAllSessions(sql, account.user_id, now);
+      await deleteTotpFactors(sql, account.user_id);
+      await deleteRecoveryCodes(sql, account.user_id);
+      await deleteVerificationsByValue(sql, account.user_id);
+      await deleteVerification(sql, stepId(account.user_id));
+      await deleteVerification(sql, reconfigureId(account.user_id));
+      await deleteVerification(sql, totpConfirmedId(account.user_id));
+      const issued = await issueProvisional(sql, account.user_id, now, chosen);
+      await markEnrollmentDue(sql, account.user_id, now);
+      await insertAudit(sql, account.user_id, "admin.disable_mfa", "ok");
+      return issued;
+    });
+    adminEmit("admin.disable_mfa", account.user_id, ip);
+    emit({ type: "mfa_disabled", result: "succes", userId: account.user_id, ip, userAgent: null });
+    return password;
+  }
+
+  async function revokeSessions(identifier: string, ip: string): Promise<void> {
+    const normalized = requireIdentifier(identifier);
+    const account = await findAccount(deps.pool, normalized);
+    if (account === null) {
+      throw new Error("compte introuvable");
+    }
+    await revokeAllSessions(deps.pool, account.user_id, deps.now());
+    await insertAudit(deps.pool, account.user_id, "admin.revoke_sessions", "ok");
+    adminEmit("admin.revoke_sessions", account.user_id, ip);
+    emit({ type: "session_revoked", result: "succes", userId: account.user_id, ip, userAgent: null });
+  }
+
+  async function enroll(
+    userId: string,
+    restricted: boolean,
+  ): Promise<{ kind: "ok"; secret: string; codes: string[] } | { kind: "forbidden" }> {
+    const kek = deps.kek;
+    const kekId = deps.kekId;
+    const recoveryPepper = deps.recoveryPepper;
+    const recoveryPepperId = deps.recoveryPepperId;
+    if (!restricted || kek === undefined || kekId === undefined || recoveryPepper === undefined || recoveryPepperId === undefined) {
+      return { kind: "forbidden" };
+    }
+    const now = deps.now();
+    if (await provisionalActive(userId, now)) {
+      return { kind: "forbidden" };
+    }
+    const existing = await findTotpFactor(deps.pool, userId);
+    const reconfigure = await reconfigureActive(userId, now);
+    if (existing !== null && !reconfigure) {
+      return { kind: "forbidden" };
+    }
+    const secret = randomBytes(20);
+    let dek: Uint8Array | undefined;
+    const client = await deps.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await deleteVerification(client, totpConfirmedId(userId));
+      if (reconfigure) {
+        await deleteTotpFactors(client, userId);
+        await invalidateRecoveryCodes(client, userId, now);
+        await deleteVerification(client, stepId(userId));
+        await deleteVerification(client, reconfigureId(userId));
+      }
+      const active = await findActiveUserKey(client, userId);
+      let dekId: string;
+      if (active !== null) {
+        const opened = openDek(userId, active);
+        if (opened === null) {
+          await client.query("ROLLBACK");
+          return { kind: "forbidden" };
+        }
+        dek = opened;
+        dekId = active.id;
+      } else {
+        dek = generateDek();
+        dekId = randomUUID();
+        if (!(await kekMayEncrypt(client, kekId))) {
+          await client.query("ROLLBACK");
+          return { kind: "forbidden" };
+        }
+        const wrapped = wrapDek(kek, kekId, userId, dek);
+        await insertUserKey(client, {
+          id: dekId,
+          userId,
+          wrappedCt: wrapped.wrappedCt,
+          wrappedNonce: wrapped.wrappedNonce,
+          kekId,
+          encVersion: wrapped.encVersion,
+        });
+      }
+      const factorId = randomUUID();
+      const sealed = sealContent(dek, dekId, { ownerId: userId, rowId: factorId, column: COLUMN.secretCt }, secret);
+      await insertTotpFactor(client, {
+        id: factorId,
+        userId,
+        secretCt: sealed.ciphertext,
+        secretNonce: sealed.nonce,
+        dekId,
+        encVersion: sealed.encVersion,
+      });
+      const codes: string[] = [];
+      for (let index = 0; index < 10; index += 1) {
+        const code = recoveryCode();
+        const mac = recoveryCodeHmac(recoveryPepper, recoveryPepperId, userId, code);
+        if (mac === null) {
+          throw new Error("code refusé");
+        }
+        await insertRecoveryCode(client, userId, recoveryPepperId, mac);
+        codes.push(code);
+      }
+      await insertAudit(client, userId, "mfa_enabled", "ok");
+      await client.query("COMMIT");
+      emit({ type: "mfa_enabled", result: "succes", userId, ip: null, userAgent: null });
+      return { kind: "ok", secret: encodeBase32(secret), codes };
+    } catch {
+      await client.query("ROLLBACK");
+      return { kind: "forbidden" };
+    } finally {
+      secret.fill(0);
+      dek?.fill(0);
+      client.release();
+    }
+  }
+
+  async function verifyMfa(
+    userId: string,
+    sessionId: string,
+    code: string,
+    userAgent: string | undefined,
+    ip: string,
+  ): Promise<
+    | { kind: "ok"; token: string; maxAge: number | null; deviceToken: string }
+    | { kind: "invalid" }
+    | { kind: "forbidden" }
+    | { kind: "limited"; retryAfter: number }
+  > {
+    const session = await findSessionById(deps.pool, sessionId);
+    if (session === null) {
+      return { kind: "forbidden" };
+    }
+    const account = await findAccountByUser(deps.pool, userId);
+    if (account === null) {
+      return { kind: "forbidden" };
+    }
+    const now = deps.now();
+    const lockBucket = bucketHmac(key, `acct-lock|${account.identifier}`);
+    const lockedUntil = await activeLock(deps.pool, lockBucket, now);
+    if (lockedUntil !== null) {
+      if (session.revoked_at === null) {
+        await revokeSession(deps.pool, sessionId, now);
+      }
+      return { kind: "limited", retryAfter: retrySeconds(lockedUntil, now) };
+    }
+    const ipHit = await noteHit(bucketHmac(key, `ip|${ip}`), now);
+    if (ipHit.hits > 20) {
+      emit({ type: "rate_limited", result: "echec", userId, ip, userAgent: userAgent ?? null });
+      return { kind: "limited", retryAfter: ipHit.retryAfter };
+    }
+    if (!session.restricted || session.revoked_at !== null) {
+      return { kind: "forbidden" };
+    }
+    if ((await provisionalActive(userId, now)) || (await reconfigureActive(userId, now))) {
+      return { kind: "forbidden" };
+    }
+    const factor = await findTotpFactor(deps.pool, userId);
+    if (factor === null) {
+      return { kind: "forbidden" };
+    }
+    if (await factorDekRevoked(userId, factor)) {
+      await signalRevokedDek(userId, ip, userAgent);
+      return { kind: "invalid" };
+    }
+    const step = await acceptTotp(userId, factor, code, now);
+    if (step === null) {
+      emit({ type: "mfa_failed", result: "echec", userId, sessionId, ip: null, userAgent: userAgent ?? null });
+      await registerFailure(account.identifier, now);
+      const locked = await activeLock(deps.pool, lockBucket, now);
+      if (locked !== null) {
+        await revokeSession(deps.pool, sessionId, now);
+        return { kind: "limited", retryAfter: retrySeconds(locked, now) };
+      }
+      return { kind: "invalid" };
+    }
+    await confirmTotp(deps.pool, userId, now);
+    const deviceToken = await trustDevice(userId, now);
+    await revokeSession(deps.pool, sessionId, now);
+    const elevated = await issueSession(
+      userId,
+      {
+        identifier: account.identifier,
+        password: "",
+        ip: "127.0.0.1",
+        userAgent,
+        remember: session.remember,
+      },
+      now,
+      false,
+    );
+    return { kind: "ok", token: elevated.token, maxAge: elevated.maxAge, deviceToken };
   }
 
   return {
@@ -417,6 +977,10 @@ export function openAuth(deps: AuthDeps) {
     forgetPassword,
     createUser,
     resetPassword,
+    disableMfa,
+    revokeSessions,
+    enroll,
+    verifyMfa,
     async profile(userId: string): Promise<{ id: string; role: string; identifier: string } | null> {
       const account = await findAccountByUser(deps.pool, userId);
       if (account === null) {
@@ -433,6 +997,22 @@ export function openAuth(deps: AuthDeps) {
         lastActivity: row.last_activity_at.toISOString(),
         current: row.id === currentSessionId,
       }));
+    },
+    async mfaVerifyBlocked(token: string): Promise<{ retryAfter: number } | null> {
+      const row = await findSession(deps.pool, hashSessionToken(token));
+      if (row === null) {
+        return null;
+      }
+      const account = await findAccountByUser(deps.pool, row.owner_id);
+      if (account === null) {
+        return null;
+      }
+      const now = deps.now();
+      const lockedUntil = await activeLock(deps.pool, bucketHmac(key, `acct-lock|${account.identifier}`), now);
+      if (lockedUntil === null) {
+        return null;
+      }
+      return { retryAfter: retrySeconds(lockedUntil, now) };
     },
     listDocuments: (userId: string) => listDocuments(deps.pool, userId),
     deleteDocument: (userId: string, documentId: string) => deleteDocument(deps.pool, userId, documentId),

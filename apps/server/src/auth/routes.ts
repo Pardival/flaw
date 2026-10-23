@@ -13,10 +13,12 @@ import { writeSecurityLog, type SecurityEvent } from "../platform/security-log.t
 import type { Writable } from "node:stream";
 import type { Pool } from "pg";
 
-import { clearSessionCookie, readBearer, readCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
-import { LOGIN_HTML, AUTH_REQUIRED, BAD_REQUEST, FORGOT_MESSAGE, INVALID_LOGIN, ORIGIN_REJECTED, PASSWORD_REJECTED, TOO_MANY } from "./html.ts";
+import { clearSessionCookie, DEVICE_COOKIE, readBearer, readCookie, serializeDeviceCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
+import { LOGIN_HTML, AUTH_REQUIRED, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, INVALID_LOGIN, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
 import { ARGON_TARGET, type ArgonParams } from "./password.ts";
+import { restrictedAllows } from "./restricted-session.ts";
 import { openAuth } from "./service.ts";
+import { decodeValidatedKey } from "../crypto/kek.ts";
 
 export const PUBLIC_ROUTES = [
   { method: "GET", url: "/login", auth: false },
@@ -33,6 +35,8 @@ export const PROTECTED_ROUTES = [
   { method: "GET", url: "/api/v1/me", auth: true },
   { method: "GET", url: "/api/v1/documents", auth: true },
   { method: "DELETE", url: "/api/v1/documents/:id", auth: true },
+  { method: "POST", url: "/api/auth/mfa/enroll", auth: true },
+  { method: "POST", url: "/api/auth/mfa/verify", auth: true },
 ] as const;
 
 export const AUTH_ROUTES = [...PUBLIC_ROUTES, ...PROTECTED_ROUTES] as const;
@@ -44,6 +48,8 @@ const signInSchema = z
     identifier: z.string().min(1).max(320),
     password: z.string().min(1).max(1024),
     remember: z.boolean().optional(),
+    totp: z.string().regex(/^\d{6}$/).optional(),
+    recoveryCode: z.string().min(1).max(64).optional(),
   })
   .strict();
 
@@ -90,12 +96,29 @@ type SessionContext = {
   userId: string;
   sessionId: string;
   token: string;
+  restricted: boolean;
 };
+
+const resolvers = new WeakMap<FastifyInstance, (token: string) => Promise<boolean>>();
 
 const sessions = new WeakMap<FastifyRequest, SessionContext>();
 
 export function sessionOf(request: FastifyRequest): SessionContext | undefined {
   return sessions.get(request);
+}
+
+export async function anonymousRequest(app: FastifyInstance, request: FastifyRequest): Promise<boolean> {
+  const cookie = readCookie(headerValue(request.headers.cookie), SESSION_COOKIE);
+  const bearer = readBearer(headerValue(request.headers.authorization));
+  const token = cookie ?? bearer;
+  if (token === undefined) {
+    return true;
+  }
+  const resolve = resolvers.get(app);
+  if (resolve === undefined) {
+    return true;
+  }
+  return !(await resolve(token));
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {
@@ -195,8 +218,19 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
           onEvent: (event: SecurityEvent) => {
             writeSecurityLog(stream, event);
           },
+          kek: decodeValidatedKey(runtime.secrets.kek) ?? undefined,
+          kekId: config.FLAW_KEK_ID,
+          recoveryPepper: decodeValidatedKey(runtime.secrets.recoveryPepper) ?? undefined,
+          recoveryPepperId: config.RECOVERY_PEPPER_ID,
         })
       : null;
+
+  resolvers.set(app, async (token) => {
+    if (auth === null) {
+      return false;
+    }
+    return (await auth.resolve(token)) !== null;
+  });
 
   app.addContentTypeParser(
     "application/x-www-form-urlencoded",
@@ -233,9 +267,23 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     const token = cookie ?? bearer;
     const session = await auth.resolve(token);
     if (session === null) {
+      if (token !== undefined && request.method === "POST" && pattern === "/api/auth/mfa/verify") {
+        const blocked = await auth.mfaVerifyBlocked(token);
+        if (blocked !== null) {
+          return sendMessage(reply, 429, TOO_MANY, blocked.retryAfter);
+        }
+      }
       return sendMessage(reply, 401, AUTH_REQUIRED);
     }
-    sessions.set(request, { userId: session.owner_id, sessionId: session.id, token: token ?? "" });
+    if (session.restricted && !restrictedAllows(request.method, pattern ?? "")) {
+      return sendMessage(reply, 403, RESTRICTED);
+    }
+    sessions.set(request, {
+      userId: session.owner_id,
+      sessionId: session.id,
+      token: token ?? "",
+      restricted: session.restricted,
+    });
     return undefined;
   });
 
@@ -286,14 +334,24 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       remember: parsed.data.remember === true,
       ip: clientIp(request, config.TRUSTED_PROXY_CIDR),
       userAgent: headerValue(request.headers["user-agent"]),
+      ...(parsed.data.totp === undefined ? {} : { totp: parsed.data.totp }),
+      ...(parsed.data.recoveryCode === undefined ? {} : { recoveryCode: parsed.data.recoveryCode }),
+      deviceToken: readCookie(headerValue(request.headers.cookie), DEVICE_COOKIE),
     });
     if (result.kind === "limited") {
       return sendMessage(reply, 429, TOO_MANY, result.retryAfter);
     }
+    if (result.kind === "mfa") {
+      return sendMessage(reply, 401, MFA_REQUIRED);
+    }
     if (result.kind === "invalid") {
       return sendMessage(reply, 401, INVALID_LOGIN);
     }
-    reply.header("set-cookie", serializeSessionCookie(result.token, result.maxAge));
+    const cookies = [serializeSessionCookie(result.token, result.maxAge)];
+    if (result.deviceToken !== undefined) {
+      cookies.push(serializeDeviceCookie(result.deviceToken));
+    }
+    reply.header("set-cookie", cookies.length === 1 ? cookies[0]! : cookies);
     return { id: result.userId, identifier: result.identifier };
   });
 
@@ -339,6 +397,52 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return sendMessage(reply, 401, INVALID_LOGIN);
     }
     reply.header("set-cookie", serializeSessionCookie(result.token, result.maxAge));
+    return { ok: true as const };
+  });
+
+  const mfaCode = z.object({ code: z.string().regex(/^\d{6}$/) }).strict();
+
+  app.post("/api/auth/mfa/enroll", async (request, reply) => {
+    const current = sessionOf(request);
+    if (auth === null || current === undefined) {
+      return sendMessage(reply, 401, AUTH_REQUIRED);
+    }
+    const result = await auth.enroll(current.userId, current.restricted);
+    if (result.kind === "forbidden") {
+      return sendMessage(reply, 403, ENROLL_REFUSED);
+    }
+    return { secret: result.secret, codes: result.codes };
+  });
+
+  app.post("/api/auth/mfa/verify", async (request, reply) => {
+    const current = sessionOf(request);
+    if (auth === null || current === undefined) {
+      return sendMessage(reply, 401, AUTH_REQUIRED);
+    }
+    const parsed = mfaCode.safeParse(request.body);
+    if (!parsed.success) {
+      return sendMessage(reply, 400, BAD_REQUEST);
+    }
+    const result = await auth.verifyMfa(
+      current.userId,
+      current.sessionId,
+      parsed.data.code,
+      headerValue(request.headers["user-agent"]),
+      clientIp(request, config.TRUSTED_PROXY_CIDR),
+    );
+    if (result.kind === "forbidden") {
+      return sendMessage(reply, 403, ENROLL_REFUSED);
+    }
+    if (result.kind === "limited") {
+      return sendMessage(reply, 429, TOO_MANY, result.retryAfter);
+    }
+    if (result.kind === "invalid") {
+      return sendMessage(reply, 401, INVALID_LOGIN);
+    }
+    reply.header("set-cookie", [
+      serializeSessionCookie(result.token, result.maxAge),
+      serializeDeviceCookie(result.deviceToken),
+    ]);
     return { ok: true as const };
   });
 

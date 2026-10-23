@@ -10,6 +10,7 @@ WITH expected AS (
     ('auth_factors', false, false, true, true, true, true),
     ('recovery_codes', false, false, true, true, true, true),
     ('user_keys', false, false, true, true, true, true),
+    ('keks', false, false, true, true, true, false),
     ('user_preferences', false, false, true, true, true, true),
     ('daily_progress', false, false, true, true, true, true),
     ('rate_limits', false, false, true, true, true, true),

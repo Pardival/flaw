@@ -11,6 +11,7 @@ import {
   KEY_LENGTH,
   contentAad,
   dekAad,
+  dekResolvable,
   deriveIdentifierHmacKey,
   deriveRecoveryCodeKey,
   generateDek,
@@ -242,6 +243,9 @@ describe("enveloppe KEK → DEK → contenu", () => {
     expect(wrapped.encVersion).toBe(ENC_VERSION);
     expect(wrapped.keyId).toBe(kekId);
     expect(wrapped.status).toBe("active");
+    expect(dekResolvable("active")).toBe(true);
+    expect(dekResolvable("retired")).toBe(true);
+    expect(dekResolvable("revoked")).toBe(false);
     expect(wrapped.wrappedNonce.length).toBe(24);
     expect(hex(unwrapDek(kek, userId, wrapped))).toBe(hex(dek));
     const sealed = sealContent(dek, dekId, label, clairA);

@@ -22,4 +22,4 @@ description = "Phrase de contrôle argon2id au build du Dockerfile, pas un secre
 condition = "AND"
 targetRules = ["generic-api-key"]
 paths = ['''^apps/server/Dockerfile$''']
-regexes = ['''construction-argon2id''']
+regexes = ['''^construction-argon2id$''']

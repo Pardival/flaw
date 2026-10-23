@@ -1,5 +1,6 @@
 #!/bin/sh
-# Commande serveur : check-roles, create-user, reset-password.
+# Commande serveur : create-user, reset-password, disable-mfa, revoke-sessions,
+# rotate-kek, check-roles, replay-erasures.
 set -eu
 cd /app
-exec node apps/server/src/admin/cli.ts "$@"
+exec node apps/server/src/admin-cli/cli.ts "$@"

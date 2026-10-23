@@ -36,6 +36,20 @@
       "when": 1760800000000,
       "tag": "0004_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1760900000000,
+      "tag": "0005_restricted_revoked",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1761000000000,
+      "tag": "0006_kek_retired",
+      "breakpoints": true
     }
   ]
 }

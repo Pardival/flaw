@@ -1,7 +1,8 @@
 {
   "comment": "Abaisser un seuil exige une revue de sécurité. Lowering a threshold requires security review.",
   "files": {
-    "auth.test.ts": 29,
-    "rls.test.ts": 12
+    "auth.test.ts": 30,
+    "rls.test.ts": 12,
+    "admin-cli.test.ts": 19
   }
 }

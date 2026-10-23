@@ -60,7 +60,10 @@ const GRANTS: Record<string, { sel: boolean; ins: boolean; upd: boolean; del: bo
   erasure_outbox: { sel: true, ins: true, upd: false, del: false },
   erasure_journal_head: { sel: true, ins: true, upd: false, del: false },
   auth_events: { sel: false, ins: true, upd: false, del: false },
+  keks: { sel: true, ins: true, upd: true, del: false },
 };
+
+const ADDED_TABLES = ["keks"] as const;
 
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
 const container = `flaw-t005-rls-${process.pid}`;
@@ -462,7 +465,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
         order by c.relname
       `),
     );
-    expect(catalog.map((row) => String(row.name)).sort()).toEqual([...TABLE_NAMES].sort());
+    expect(catalog.map((row) => String(row.name)).sort()).toEqual([...TABLE_NAMES, ...ADDED_TABLES].sort());
     for (const row of catalog) {
       expect(row.owner, String(row.name)).toBe("flaw_owner");
     }
@@ -474,7 +477,11 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
         where n.nspname = 'flaw'
       `),
     );
-    expect(functions.map((row) => String(row.name)).sort()).toEqual(["journaliser_effacement", "purge_journaux"]);
+    expect(functions.map((row) => String(row.name)).sort()).toEqual([
+      "journaliser_effacement",
+      "purge_journaux",
+      "user_keys_keep_revoked",
+    ]);
     for (const row of functions) {
       expect(row.owner).toBe("flaw_owner");
     }
@@ -715,7 +722,7 @@ describe("rôle flaw_app, RLS et requêtes paramétrées", () => {
         where n.nspname = 'flaw' and c.relkind = 'r'
       `),
     );
-    expect(Number(again[0]?.n)).toBe(TABLE_NAMES.length);
+    expect(Number(again[0]?.n)).toBe(TABLE_NAMES.length + ADDED_TABLES.length);
     expect(await appRoleEcarts(app)).toEqual([]);
   });
 
