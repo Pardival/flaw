@@ -70,6 +70,7 @@ import {
   recentRate,
   revokeAllSessions,
   revokeOtherSessions,
+  revokeOwnedSession,
   revokeSession,
   rotateSession,
   setPassword,
@@ -85,6 +86,7 @@ import {
 } from "./store.ts";
 
 const WINDOW_MS = 15 * 60 * 1000;
+const REAUTH_WINDOW_MS = 5 * 60 * 1000;
 const SLICE_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TEMP_TTL_MS = DAY_MS;
@@ -149,6 +151,32 @@ function delayForStage(stage: number): number {
 
 function retrySeconds(until: Date, now: Date): number {
   return Math.max(1, Math.ceil((until.getTime() - now.getTime()) / 1000));
+}
+
+/**
+ * Point d'extension T-021. Aucune route temps réel n'existe encore :
+ * la fermeture immédiate des connexions d'une session révoquée sera branchée ici.
+ */
+function closeRevokedRealtime(sessionIds: readonly string[]): void {
+  // T-021 : fermer ici les connexions temps réel de sessionIds.
+  void sessionIds.length;
+}
+
+function deviceTypeOf(os: string): "desktop" | "tablet" | "phone" | null {
+  if (os === "Windows" || os === "macOS" || os === "Linux") {
+    return "desktop";
+  }
+  if (os === "iPadOS") {
+    return "tablet";
+  }
+  if (os === "Android" || os === "iOS") {
+    return "phone";
+  }
+  return null;
+}
+
+function reauthIsRecent(at: Date, now: Date): boolean {
+  return now.getTime() - at.getTime() < REAUTH_WINDOW_MS;
 }
 
 export function openAuth(deps: AuthDeps) {
@@ -411,6 +439,7 @@ export function openAuth(deps: AuthDeps) {
       os: device.os,
       remember: input.remember,
       restricted,
+      reauthenticatedAt: now,
     });
     await insertAudit(deps.pool, userId, "login_success", "ok");
     emit({
@@ -429,6 +458,18 @@ export function openAuth(deps: AuthDeps) {
       ip: input.ip,
       userAgent: input.userAgent ?? null,
     });
+    if (!restricted) {
+      emit({
+        type: "new_login",
+        result: "succes",
+        userId,
+        sessionId,
+        ip: null,
+        userAgent: null,
+        browser: device.browser,
+        os: device.os,
+      });
+    }
     return {
       kind: "ok",
       token: issued.token,
@@ -1043,13 +1084,56 @@ export function openAuth(deps: AuthDeps) {
     },
     async devices(userId: string, currentSessionId: string) {
       const rows = await listDevices(deps.pool, userId, deps.now());
-      return rows.map((row) => ({
-        id: row.id,
-        browser: row.browser,
-        os: row.os,
-        lastActivity: row.last_activity_at.toISOString(),
-        current: row.id === currentSessionId,
-      }));
+      return rows.map((row) => {
+        const lastActivity = row.last_activity_at.toISOString();
+        return {
+          id: row.id,
+          current: row.id === currentSessionId,
+          deviceType: deviceTypeOf(row.os),
+          deviceLabel: `${row.browser} · ${row.os}`,
+          browser: row.browser,
+          os: row.os,
+          createdAt: row.created_at.toISOString(),
+          lastSeenAt: lastActivity,
+          lastActivity,
+          expiresAt: row.expires_at.toISOString(),
+        };
+      });
+    },
+    async revokeOtherDevices(
+      userId: string,
+      sessionId: string,
+      ip: string,
+      userAgent: string | undefined,
+    ): Promise<{ kind: "ok" } | { kind: "reauth" }> {
+      const row = await findSessionById(deps.pool, sessionId);
+      const now = deps.now();
+      if (row === null || row.owner_id !== userId || row.revoked_at !== null || !reauthIsRecent(row.reauthenticated_at, now)) {
+        return { kind: "reauth" };
+      }
+      const revoked = await revokeOtherSessions(deps.pool, userId, sessionId, now);
+      closeRevokedRealtime(revoked);
+      if (revoked.length > 0) {
+        await insertAudit(deps.pool, userId, "session_revoked", "ok");
+        emit({ type: "session_revoked", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
+      }
+      return { kind: "ok" };
+    },
+    async revokeOwnedDevice(
+      userId: string,
+      sessionId: string,
+      ip: string,
+      userAgent: string | undefined,
+    ): Promise<boolean> {
+      const now = deps.now();
+      const removed = await revokeOwnedSession(deps.pool, userId, sessionId, now);
+      if (!removed) {
+        return false;
+      }
+      closeRevokedRealtime([sessionId]);
+      await insertAudit(deps.pool, userId, "session_revoked", "ok");
+      emit({ type: "session_revoked", result: "succes", userId, sessionId, ip, userAgent: userAgent ?? null });
+      return true;
     },
     async invalidTokenLimited(ip: string): Promise<{ retryAfter: number } | null> {
       const now = deps.now();

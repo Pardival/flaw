@@ -64,6 +64,13 @@
       "when": 1761200000000,
       "tag": "0008_dek_revoked_immutable",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1761300000000,
+      "tag": "0009_reauthenticated_at",
+      "breakpoints": true
     }
   ]
 }

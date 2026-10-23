@@ -8,6 +8,7 @@ import { type Writable } from "node:stream";
 
 export const SECURITY_EVENTS = [
   "login_success",
+  "new_login",
   "login_failure",
   "rate_limited",
   "mfa_enabled",
@@ -59,7 +60,22 @@ export type SecurityEvent = {
   userAgent?: string | null;
   result: "succes" | "echec";
   action?: string;
+  browser?: string;
+  os?: string;
 };
+
+function devicePart(value: string | undefined): string | undefined {
+  if (value === undefined || value.length === 0 || value.length > 40) {
+    return undefined;
+  }
+  if (!/^[A-Za-z0-9 .+-]+$/.test(value)) {
+    return undefined;
+  }
+  if (/(?:\d{1,3}\.){3}\d{1,3}/.test(value)) {
+    return undefined;
+  }
+  return value;
+}
 
 const SENSITIVE_KEY =
   /authorization|cookie|password|passwd|token|secret|totp|title|content|body|reset|set-cookie/i;
@@ -98,15 +114,19 @@ export function redact(value: unknown): unknown {
 
 export function securityRecord(event: SecurityEvent, now: Date = new Date()): Record<string, unknown> {
   const action = adminAction(event.action);
+  const browser = devicePart(event.browser);
+  const os = devicePart(event.os);
   return redact({
     ts: now.toISOString(),
     type: event.type,
     user_id: event.userId ?? null,
     session_id: event.sessionId == null || event.sessionId.length === 0 ? null : hashSession(event.sessionId),
-    ip: event.ip ?? null,
+    ip: event.type === "new_login" ? null : (event.ip ?? null),
     user_agent: summarizeUserAgent(event.userAgent),
     result: event.result,
     ...(action === undefined ? {} : { action }),
+    ...(browser === undefined ? {} : { browser }),
+    ...(os === undefined ? {} : { os }),
   }) as Record<string, unknown>;
 }
 

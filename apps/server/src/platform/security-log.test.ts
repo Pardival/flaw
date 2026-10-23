@@ -41,10 +41,13 @@ describe("SEC-LOG-01", () => {
         type,
         user_id: "user-7",
         session_id: hashSession(session),
-        ip: "203.0.113.9",
+        ip: type === "new_login" ? null : "203.0.113.9",
         user_agent: "Mozilla/5.0",
         result: type === "login_success" ? "succes" : "echec",
       });
+      if (type === "new_login") {
+        expect(text).not.toContain("203.0.113.9");
+      }
       expect(text).not.toContain(session);
       expect(record.session_id).toMatch(/^[0-9a-f]{16}$/);
     }

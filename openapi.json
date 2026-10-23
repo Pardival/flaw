@@ -105,6 +105,110 @@
         }
       }
     },
+    "/api/v1/me/sessions": {
+      "get": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Liste des sessions actives (type d'appareil, navigateur, système, dernière activité ; aucune localisation)",
+        "operationId": "listSessions",
+        "responses": {
+          "200": {
+            "description": "Sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Session"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/MfaRequired"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Révoquer toutes les autres sessions (« déconnecter les autres appareils »)",
+        "description": "Ré-authentification récente exigée (G9).",
+        "operationId": "revokeOtherSessions",
+        "responses": {
+          "204": {
+            "description": "Sessions révoquées"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/ReauthRequired"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/v1/me/sessions/{sessionId}": {
+      "delete": {
+        "tags": [
+          "compte"
+        ],
+        "summary": "Révoquer une session précise (effet immédiat, WebSocket comprises)",
+        "operationId": "revokeSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Session révoquée"
+          },
+          "403": {
+            "$ref": "#/components/responses/MfaRequired"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        },
+        "security": [
+          {
+            "sessionCookie": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
     "/api/v1/documents": {
       "get": {
         "operationId": "listDocuments",
@@ -273,6 +377,26 @@
             }
           }
         }
+      },
+      "ReauthRequired": {
+        "description": "Ré-authentification récente requise (mot de passe + TOTP de moins de 5 min) : type .../reauth_required",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "Introuvable (ou non autorisé : même réponse, pour ne rien révéler)",
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -331,6 +455,61 @@
           }
         },
         "description": "Jamais de password_hash, secret TOTP, code de secours ni jeton (v0.4.18)."
+      },
+      "Session": {
+        "type": "object",
+        "required": [
+          "id",
+          "current",
+          "createdAt",
+          "lastSeenAt",
+          "expiresAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "Session de la requête en cours"
+          },
+          "deviceType": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "desktop",
+              "tablet",
+              "phone",
+              null
+            ],
+            "description": "Type d'appareil (icône) ; aucune ville, aucun pays, aucune IP exposée (cahier v0.7)"
+          },
+          "deviceLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Firefox · macOS"
+            ],
+            "description": "Navigateur et système"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       },
       "Problem": {
         "type": "object",

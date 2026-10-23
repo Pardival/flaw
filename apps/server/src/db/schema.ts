@@ -119,6 +119,7 @@ export const sessions = flaw.table(
     os: text("os").notNull().default("inconnu"),
     remember: boolean("remember").notNull().default(false),
     restricted: boolean("restricted").notNull().default(false),
+    reauthenticatedAt: timestamp("reauthenticated_at", { withTimezone: true, mode: "date" }).notNull(),
     createdAt: createdAt(),
   },
   (table) => [

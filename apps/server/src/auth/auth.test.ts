@@ -20,7 +20,7 @@ import type { LoadedSecrets } from "../config/secrets.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
-import { mfaRequiredProblem, problem } from "../platform/problem.ts";
+import { mfaRequiredProblem, problem, reauthRequiredProblem } from "../platform/problem.ts";
 import { checkRoles } from "../admin/check-roles.ts";
 import { DEVICE_COOKIE, hashSessionToken, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
 import { issueDeviceSecret, summarizeDevice } from "./device.ts";
@@ -194,6 +194,49 @@ function tokenOf(header: string): string {
   return pair.slice(eq + 1);
 }
 
+function routeUrl(url: string): string {
+  return url.replace(/:[A-Za-z0-9_]+/g, "00000000-0000-4000-8000-000000000001");
+}
+
+const LOCATION_KEYS = new Set(["ip", "location", "country", "city"]);
+
+function containsIp(value: string): boolean {
+  if (/(?:^|[^0-9])(?:\d{1,3}\.){3}\d{1,3}(?=$|[^0-9])/.test(value)) {
+    return true;
+  }
+  for (const token of value.split(/[^0-9a-f:.]+/i)) {
+    if (/^(?:\d{1,3}\.){3}\d{1,3}$/.test(token)) {
+      return true;
+    }
+    if (/^[0-9a-f:]+$/i.test(token) && (token.includes("::") || /^(?:[0-9a-f]{1,4}:){7}[0-9a-f]{1,4}$/i.test(token))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function assertNoLocation(value: unknown): void {
+  const walk = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const entry of node) {
+        walk(entry);
+      }
+      return;
+    }
+    if (node !== null && typeof node === "object") {
+      for (const [key, entry] of Object.entries(node)) {
+        expect(LOCATION_KEYS.has(key.toLowerCase()), key).toBe(false);
+        walk(entry);
+      }
+      return;
+    }
+    if (typeof node === "string") {
+      expect(containsIp(node), node).toBe(false);
+    }
+  };
+  walk(value);
+}
+
 describe("politique et fichiers (hors base)", () => {
   it("refuse PASSWORD_MIN_LENGTH=6 et garde le plancher 8 (SEC-AUTH-02)", () => {
     const loaded = loadConfig({ PASSWORD_MIN_LENGTH: "6" });
@@ -320,9 +363,7 @@ describe("politique et fichiers (hors base)", () => {
     expect(routes.length).toBeGreaterThan(0);
     expect(routes.some((route) => route.method === "GET" && route.url === "/api/v1/nouvelle")).toBe(true);
     for (const route of routes) {
-      const url = route.url.includes(":")
-        ? route.url.replace(/:id/g, "00000000-0000-4000-8000-000000000001")
-        : route.url;
+      const url = routeUrl(route.url);
       const response = await app.inject({
         method: route.method as "GET",
         url,
@@ -362,7 +403,7 @@ describe("politique et fichiers (hors base)", () => {
       if (!route.auth) {
         continue;
       }
-      const url = route.url.includes(":id") ? "/api/v1/documents/00000000-0000-4000-8000-000000000001" : route.url;
+      const url = routeUrl(route.url);
       const response = await app.inject({
         method: route.method,
         url,
@@ -2152,5 +2193,221 @@ describe("authentification sur PostgreSQL", () => {
     expect(relog.headers["content-type"]).toContain("application/problem+json");
     expect(relog.json()).toEqual(problem(401, MFA_REQUIRED));
     await app.close();
+  });
+
+  dbTest("liste les sessions v1 sans IP ni localisation (API-003, SEC-SESS-05)", async () => {
+    const email = nextEmail();
+    const ip = nextIp();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const anonymous = await app.inject({ method: "GET", url: "/api/v1/me/sessions" });
+    expect(anonymous.statusCode).toBe(401);
+    expect(anonymous.headers["content-type"]).toContain("application/problem+json");
+    expect(anonymous.headers["cache-control"]).toBe("no-store");
+    expect(anonymous.json()).toEqual(problem(401));
+    const signed = await sign(app, email, PASSWORD, ip, true, {
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+    });
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/v1/me/sessions",
+      headers: { cookie: cookiePair(setCookie(signed.headers)) },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    const body = response.json() as Array<Record<string, unknown>>;
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({
+      browser: "Firefox",
+      os: "Linux",
+      deviceType: "desktop",
+      deviceLabel: "Firefox · Linux",
+      current: true,
+    });
+    expect(body[0]?.lastSeenAt).toBe(body[0]?.lastActivity);
+    expect(typeof body[0]?.createdAt).toBe("string");
+    expect(typeof body[0]?.expiresAt).toBe("string");
+    assertNoLocation(body);
+    expect(JSON.stringify(body)).not.toContain(ip);
+    await app.close();
+  });
+
+  dbTest("révoque les autres sessions sous 5 min, sinon 403 (API-004, SEC-AUTH-11)", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const ua = { "user-agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0" };
+    const first = await sign(app, email, PASSWORD, nextIp(), true, ua);
+    const second = await sign(app, email, PASSWORD, nextIp(), true, ua);
+    const third = await sign(app, email, PASSWORD, nextIp(), true, ua);
+    const cookies = [first, second, third].map((response) => cookiePair(setCookie(response.headers)));
+    const current = cookies[2] ?? "";
+    const listed = await app.inject({ method: "GET", url: "/api/v1/me/sessions", headers: { cookie: current } });
+    expect((listed.json() as unknown[]).length).toBe(3);
+    clock.ms += 5 * 60 * 1000 - 1;
+    const early = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/me/sessions",
+      headers: { origin: ORIGIN, cookie: current, "content-type": "application/json" },
+      payload: "{}",
+    });
+    expect(early.statusCode).toBe(204);
+    expect(early.body).toBe("");
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: current } })).statusCode).toBe(200);
+    for (const cookie of cookies.slice(0, 2)) {
+      const gone = await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie } });
+      expect(gone.statusCode).toBe(401);
+      expect(gone.headers["content-type"]).toContain("application/problem+json");
+      expect(gone.headers["cache-control"]).toBe("no-store");
+      expect(gone.json()).toEqual(problem(401));
+    }
+    clock.ms += 1;
+    const late = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/me/sessions",
+      headers: { origin: ORIGIN, cookie: current, "content-type": "application/json" },
+      payload: "{}",
+    });
+    expect(late.statusCode).toBe(403);
+    expect(late.headers["content-type"]).toContain("application/problem+json");
+    expect(late.headers["cache-control"]).toBe("no-store");
+    expect(late.json()).toEqual(reauthRequiredProblem());
+    expect(new URL((late.json() as { type: string }).type).pathname.endsWith("/reauth_required")).toBe(true);
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: current } })).statusCode).toBe(200);
+    const fresh = await sign(app, email, PASSWORD, nextIp(), true, ua);
+    const freshCookie = cookiePair(setCookie(fresh.headers));
+    const again = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/me/sessions",
+      headers: { origin: ORIGIN, cookie: freshCookie, "content-type": "application/json" },
+      payload: "{}",
+    });
+    expect(again.statusCode).toBe(204);
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: current } })).statusCode).toBe(401);
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: freshCookie } })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  dbTest("révoque une session et confond id inconnu et session étrangère (API-005, SEC-API-02)", async () => {
+    const emailA = nextEmail();
+    const emailB = nextEmail();
+    await seedUser(emailA, PASSWORD);
+    await seedUser(emailB, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const first = await sign(app, emailA, PASSWORD, nextIp(), true);
+    const second = await sign(app, emailA, PASSWORD, nextIp(), true);
+    const foreign = await sign(app, emailB, PASSWORD, nextIp(), true);
+    const cookieA = cookiePair(setCookie(first.headers));
+    const cookieOther = cookiePair(setCookie(second.headers));
+    const cookieB = cookiePair(setCookie(foreign.headers));
+    const mine = (await app.inject({ method: "GET", url: "/api/v1/me/sessions", headers: { cookie: cookieA } })).json() as Array<{
+      id: string;
+      current: boolean;
+    }>;
+    const target = mine.find((row) => row.current === false);
+    const theirs = (await app.inject({ method: "GET", url: "/api/v1/me/sessions", headers: { cookie: cookieB } })).json() as Array<{
+      id: string;
+    }>;
+    expect(target).toBeDefined();
+    const removed = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/me/sessions/${target?.id}`,
+      headers: { origin: ORIGIN, cookie: cookieA, "content-type": "application/json" },
+      payload: "{}",
+    });
+    expect(removed.statusCode).toBe(204);
+    const dead = await app.inject({ method: "GET", url: "/api/v1/me/sessions", headers: { cookie: cookieOther } });
+    expect(dead.statusCode).toBe(401);
+    expect(dead.headers["content-type"]).toContain("application/problem+json");
+    expect(dead.headers["cache-control"]).toBe("no-store");
+    expect(dead.json()).toEqual(problem(401));
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: cookieA } })).statusCode).toBe(200);
+    const unknown = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/me/sessions/00000000-0000-4000-8000-000000000099",
+      headers: { origin: ORIGIN, cookie: cookieA, "content-type": "application/json" },
+      payload: "{}",
+    });
+    const other = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/me/sessions/${theirs[0]?.id}`,
+      headers: { origin: ORIGIN, cookie: cookieA, "content-type": "application/json" },
+      payload: "{}",
+    });
+    expect(unknown.statusCode).toBe(404);
+    expect(other.statusCode).toBe(404);
+    expect(unknown.body).toBe(other.body);
+    expect(unknown.headers["content-type"]).toContain("application/problem+json");
+    expect(other.headers["content-type"]).toContain("application/problem+json");
+    expect(unknown.headers["cache-control"]).toBe("no-store");
+    expect(other.headers["cache-control"]).toBe("no-store");
+    expect(unknown.json()).toEqual(problem(404));
+    expect((await app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie: cookieB } })).statusCode).toBe(200);
+    await app.close();
+  });
+
+  dbTest("journalise new_login sans IP et refuse ces routes en session restreinte (SEC-AUTH-14)", async () => {
+    const email = nextEmail();
+    const ip = nextIp();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const mark = logMark();
+    const signed = await sign(app, email, PASSWORD, ip, true, {
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+    });
+    const lines = logText
+      .slice(mark)
+      .split("\n")
+      .filter((line) => line.includes('"new_login"'));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).not.toContain(ip);
+    const record = JSON.parse(lines[0] ?? "{}") as { type: string; browser?: string; os?: string; ip: unknown };
+    expect(record).toMatchObject({ type: "new_login", browser: "Firefox", os: "Linux", ip: null });
+    const markAgain = logMark();
+    await sign(app, email, PASSWORD, nextIp(), true, {
+      "user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Firefox/128.0",
+    });
+    const again = logText
+      .slice(markAgain)
+      .split("\n")
+      .filter((line) => line.includes('"new_login"'));
+    expect(again).toHaveLength(1);
+    expect(JSON.parse(again[0] ?? "{}")).toMatchObject({ browser: "Firefox", os: "macOS", ip: null });
+    const cookie = cookiePair(setCookie(signed.headers));
+    await pool.query("UPDATE flaw.sessions SET restricted = true WHERE token_hash = $1", [
+      hashSessionToken(tokenOf(setCookie(signed.headers))),
+    ]);
+    const expected = mfaRequiredFromContract();
+    for (const request of [
+      { method: "GET" as const, url: "/api/v1/me/sessions" },
+      { method: "DELETE" as const, url: "/api/v1/me/sessions" },
+      { method: "DELETE" as const, url: "/api/v1/me/sessions/00000000-0000-4000-8000-000000000099" },
+    ]) {
+      const response = await app.inject({
+        method: request.method,
+        url: request.url,
+        headers: {
+          cookie,
+          ...(request.method === "DELETE" ? { origin: ORIGIN, "content-type": "application/json" } : {}),
+        },
+        ...(request.method === "DELETE" ? { payload: "{}" } : {}),
+      });
+      expect(response.statusCode, request.url).toBe(403);
+      expect(response.headers["content-type"]).toContain("application/problem+json");
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.json()).toEqual(expected);
+    }
+    await app.close();
+    await wipeUsers();
+    const provisionalEmail = nextEmail();
+    const created = await floorAuth().createUser(provisionalEmail, nextIp());
+    const provisional = buildApp(config(), appOptions());
+    const markRestricted = logMark();
+    const opened = await sign(provisional, provisionalEmail, created.password, nextIp(), false, {
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0",
+    });
+    expect(opened.statusCode).toBe(200);
+    expect(logText.slice(markRestricted)).not.toContain("new_login");
+    await provisional.close();
   });
 });

@@ -58,9 +58,12 @@ describe("session restreinte et OpenAPI", () => {
     const operations = openApiOperations(openapi).map((op) => `${op.method} ${op.path}`).sort();
     expect(operations).toEqual([
       "DELETE /api/v1/documents/{id}",
+      "DELETE /api/v1/me/sessions",
+      "DELETE /api/v1/me/sessions/{sessionId}",
       "GET /api/v1/documents",
       "GET /api/v1/healthz",
       "GET /api/v1/me",
+      "GET /api/v1/me/sessions",
     ]);
     for (const op of openApiOperations(openapi)) {
       const isPublic = op.method === "GET" && op.path === "/api/v1/healthz";

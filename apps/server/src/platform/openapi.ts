@@ -24,6 +24,18 @@ function getMeOperation(contract: Json): Json {
   return structuredClone(me.get) as Json;
 }
 
+function sessionOperation(operation: unknown, security: unknown, ensureMfa: boolean): Json {
+  const copy = structuredClone(operation) as Json;
+  copy.security = security;
+  if (ensureMfa) {
+    const responses = copy.responses as Json;
+    if (responses["403"] === undefined) {
+      responses["403"] = { $ref: "#/components/responses/MfaRequired" };
+    }
+  }
+  return copy;
+}
+
 export const healthResponseSchema = z
   .object({
     status: z.literal("ok"),
@@ -119,6 +131,9 @@ const forbiddenResponse = {
 
 export function buildOpenApiDocument(): Record<string, unknown> {
   const contract = readArchitectContract();
+  const architectPaths = contract.paths as Json;
+  const sessionCollection = architectPaths["/me/sessions"] as Json;
+  const sessionItem = architectPaths["/me/sessions/{sessionId}"] as Json;
   const components = contract.components as Json;
   const schemes = structuredClone(components.securitySchemes) as Json;
   const sessionCookie = schemes.sessionCookie as Json;
@@ -155,6 +170,13 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       },
       "/api/v1/me": {
         get: getMeOperation(contract),
+      },
+      "/api/v1/me/sessions": {
+        get: sessionOperation(sessionCollection.get, sessionSecurity, true),
+        delete: sessionOperation(sessionCollection.delete, sessionSecurity, false),
+      },
+      "/api/v1/me/sessions/{sessionId}": {
+        delete: sessionOperation(sessionItem.delete, sessionSecurity, true),
       },
       "/api/v1/documents": {
         get: {
@@ -207,9 +229,12 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       responses: {
         Unauthorized: responses.Unauthorized,
         MfaRequired: responses.MfaRequired,
+        ReauthRequired: responses.ReauthRequired,
+        NotFound: responses.NotFound,
       },
       schemas: {
         User: schemas.User,
+        Session: schemas.Session,
         Problem: schemas.Problem,
         ServiceProblem: jsonSchema(problemSchema),
         UnauthorizedBody: jsonSchema(unauthorizedProblemSchema),
