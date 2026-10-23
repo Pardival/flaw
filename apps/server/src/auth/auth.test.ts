@@ -1943,6 +1943,17 @@ describe("authentification sur PostgreSQL", () => {
       headers: { cookie: `${SESSION_COOKIE}=${token}`, "x-real-ip": nextIp() },
     });
     expect(other.statusCode).toBe(200);
+    const unknown = await app.inject({
+      method: "GET",
+      url: "/api/v1/inconnu",
+      remoteAddress: "172.31.250.10",
+      headers: {
+        cookie: `${SESSION_COOKIE}=${randomBytes(24).toString("base64url")}`,
+        "x-real-ip": ip,
+      },
+    });
+    expect(unknown.statusCode).toBe(429);
+    expect(unknown.json()).toEqual(problem(429, TOO_MANY));
     await app.close();
   });
 
@@ -1972,6 +1983,30 @@ describe("authentification sur PostgreSQL", () => {
       [hashSessionToken(token)],
     );
     expect(after.rows[0]?.last_activity_at.getTime()).toBe(before.rows[0]?.last_activity_at.getTime());
+    await app.close();
+  });
+
+  dbTest("un cookie valide et un Bearer étranger sur une route inconnue restent un 404 (Q-019)", async () => {
+    const emailA = nextEmail();
+    const emailB = nextEmail();
+    await seedUser(emailA, PASSWORD);
+    await seedUser(emailB, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signedA = await sign(app, emailA, PASSWORD, nextIp());
+    const signedB = await sign(app, emailB, PASSWORD, nextIp());
+    const tokenA = tokenOf(setCookie(signedA.headers));
+    const tokenB = tokenOf(setCookie(signedB.headers));
+    const missing = await app.inject({
+      method: "GET",
+      url: "/api/v1/inconnu",
+      headers: {
+        cookie: `${SESSION_COOKIE}=${tokenA}`,
+        authorization: `Bearer ${tokenB}`,
+      },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.headers["content-type"]).toContain("application/problem+json");
+    expect(missing.json()).toEqual(problem(404));
     await app.close();
   });
 

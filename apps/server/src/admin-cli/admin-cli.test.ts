@@ -1546,4 +1546,38 @@ describe("flaw-admin et session restreinte", () => {
     expect(slice).toContain("session_created");
     expect(slice).not.toContain("127.0.0.1");
   });
+
+  dbTest("mfa/enroll journalise l'adresse du client", async () => {
+    const email = nextEmail();
+    const created = await floorAuth().createUser(email, nextIp());
+    let log = "";
+    const stream = new PassThrough();
+    stream.on("data", (chunk: Buffer) => {
+      log += chunk.toString("utf8");
+    });
+    const app = track(buildApp(config(), { ...appOptions(), logStream: stream }));
+    const signed = await sign(app, email, created.password);
+    expect(signed.statusCode).toBe(200);
+    const changed = await changePassword(app, cookiePair(setCookie(signed.headers)), created.password, NEW_PASSWORD);
+    expect(changed.statusCode).toBe(200);
+    const mark = log.length;
+    const enrolled = await app.inject({
+      method: "POST",
+      url: "/api/auth/mfa/enroll",
+      remoteAddress: "172.31.250.10",
+      headers: {
+        "content-type": "application/json",
+        origin: ORIGIN,
+        cookie: cookiePair(setCookie(changed.headers)),
+        "user-agent": CHROME,
+        "x-real-ip": "203.0.113.77",
+      },
+      payload: "{}",
+    });
+    expect(enrolled.statusCode).toBe(200);
+    const slice = log.slice(mark);
+    expect(slice).toContain("mfa_enabled");
+    expect(slice).toContain("203.0.113.77");
+    expect(slice).not.toContain("127.0.0.1");
+  });
 });

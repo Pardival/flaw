@@ -804,6 +804,8 @@ export function openAuth(deps: AuthDeps) {
   async function enroll(
     userId: string,
     restricted: boolean,
+    ip?: string,
+    userAgent?: string,
   ): Promise<{ kind: "ok"; secret: string; codes: string[] } | { kind: "forbidden" }> {
     const kek = deps.kek;
     const kekId = deps.kekId;
@@ -882,7 +884,7 @@ export function openAuth(deps: AuthDeps) {
       }
       await insertAudit(client, userId, "mfa_enabled", "ok");
       await client.query("COMMIT");
-      emit({ type: "mfa_enabled", result: "succes", userId, ip: null, userAgent: null });
+      emit({ type: "mfa_enabled", result: "succes", userId, ip: ip ?? null, userAgent: userAgent ?? null });
       return { kind: "ok", secret: encodeBase32(secret), codes };
     } catch {
       await client.query("ROLLBACK");
