@@ -11,7 +11,7 @@ import {
   type FailureKind,
   type PasswordChange,
 } from "../api.ts";
-import { messages } from "./messages.fr.ts";
+import { t } from "../../i18n/i18n.ts";
 
 export const SESSIONS_PATH = "/api/v1/me/sessions";
 
@@ -313,8 +313,8 @@ function labelsOf(record: Record<string, unknown>): { browser: string; os: strin
     }
   }
   return {
-    browser: browser ?? messages.unknownValue,
-    os: os ?? messages.unknownValue,
+    browser: browser ?? t("account:unknownValue"),
+    os: os ?? t("account:unknownValue"),
   };
 }
 
@@ -354,14 +354,16 @@ export function parseSessions(payload: unknown): AccountSession[] | null {
 
 export function sessionView(session: AccountSession, timeZone: string): SessionView {
   const typeLabel =
-    session.deviceType === null ? messages.deviceType.unknown : messages.deviceType[session.deviceType];
+    session.deviceType === null
+      ? t("account:deviceType.unknown")
+      : t(`account:deviceType.${session.deviceType}`);
   return {
     id: session.id,
     current: session.current,
     typeLabel,
     browser: session.browser,
     os: session.os,
-    lastActivity: formatActivity(session.lastActivity, timeZone) ?? messages.activityUnknown,
+    lastActivity: formatActivity(session.lastActivity, timeZone) ?? t("account:activityUnknown"),
   };
 }
 

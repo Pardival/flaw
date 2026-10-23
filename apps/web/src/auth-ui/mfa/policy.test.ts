@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { messages } from "./messages.fr.ts";
+import { t } from "../../i18n/i18n.ts";
 import {
   BACKUP_FILENAME,
   RECOVERY_CODE_COUNT,
@@ -52,16 +52,16 @@ describe("lien otpauth", () => {
     expect(TOTP_ALGORITHM).toBe("SHA1");
     expect(TOTP_DIGITS).toBe("6");
     expect(TOTP_PERIOD).toBe("30");
-    expect(otpauthUri(secret, "ada@exemple.fr", messages.issuer)).toBe(
+    expect(otpauthUri(secret, "ada@exemple.fr", t("mfa:issuer"))).toBe(
       "otpauth://totp/Flaw%3Aada%40exemple.fr?secret=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&issuer=Flaw&algorithm=SHA1&digits=6&period=30",
     );
   });
 
   it("reste sur le schéma otpauth même si le libellé est hostile", () => {
-    const uri = otpauthUri(secret, "javascript:alert(1)", messages.issuer);
+    const uri = otpauthUri(secret, "javascript:alert(1)", t("mfa:issuer"));
     expect(uri?.startsWith("otpauth://totp/")).toBe(true);
     expect(uri).not.toMatch(/^javascript:/);
     expect(uri).not.toMatch(/https?:\/\//);
-    expect(otpauthUri("0000000000000000", "ada@exemple.fr", messages.issuer)).toBeNull();
+    expect(otpauthUri("0000000000000000", "ada@exemple.fr", t("mfa:issuer"))).toBeNull();
   });
 });

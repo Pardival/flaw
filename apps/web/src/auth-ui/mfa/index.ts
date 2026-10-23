@@ -14,8 +14,6 @@ export {
 } from "./flow.ts";
 export type { EnrollmentOutcome, FactorOutcome } from "./flow.ts";
 
-export { messages } from "./messages.fr.ts";
-
 export {
   activationPhase,
   challengePhase,

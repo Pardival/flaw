@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { messages } from "./messages.fr.ts";
+import { t } from "../i18n/i18n.ts";
 import {
   THEME_STORAGE_KEY,
   applyThemeChoice,
@@ -69,8 +69,8 @@ describe("thème", () => {
   });
 
   it("nomme la bascule en français dans le catalogue, pas dans le composant", () => {
-    expect(messages.themeToDark).toBe("Passer au thème sombre");
-    expect(messages.themeToLight).toBe("Passer au thème clair");
+    expect(t("theme:themeToDark")).toBe("Passer au thème sombre");
+    expect(t("theme:themeToLight")).toBe("Passer au thème clair");
     const files = readdirSync(new URL(".", import.meta.url)).filter((name) => name.endsWith(".tsx"));
     for (const name of files) {
       const source = readFileSync(new URL(name, import.meta.url), "utf8");

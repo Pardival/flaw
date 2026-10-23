@@ -1,15 +1,11 @@
-/**
- * Catalogue français des écrans D-001, D-002, D-004 et D-042.
- * T-055 migrera ces clés vers i18next. Aucun composant ne duplique ces phrases.
- */
-
-export const messages = {
+/** Ressources i18next des écrans D-001, D-002, D-004 et D-042. Français par défaut. */
+export const auth = {
   loading: "Chargement…",
   pending: "Envoi…",
   connexionTitle: "Connexion",
   emailLabel: "E-mail",
   passwordLabel: "Mot de passe",
-  passwordHint: (min: number) => `${min} caractères minimum`,
+  passwordHint: "{{min}} caractères minimum",
   rememberLabel: "Rester connecté",
   rememberHint: "Session fermée après 30 jours d'inactivité, 90 jours au maximum.",
   submitSignIn: "Connexion",
@@ -23,7 +19,7 @@ export const messages = {
   newPasswordIntro: "Le mot de passe provisoire doit être remplacé.",
   currentPasswordLabel: "Mot de passe provisoire",
   newPasswordLabel: "Nouveau mot de passe",
-  passwordCounter: (count: number, min: number) => `${count} caractères sur ${min} minimum`,
+  passwordCounter: "{{current}} caractères sur {{min}} minimum",
   submitChange: "Enregistrer le mot de passe",
   passwordRejected: "Mot de passe refusé.",
   currentPasswordWrong: "Mot de passe provisoire incorrect.",

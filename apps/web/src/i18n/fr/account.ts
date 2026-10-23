@@ -1,17 +1,13 @@
-/**
- * Catalogue français de l'écran D-008 (réglages du compte).
- * T-055 migrera ces clés vers i18next. Aucun composant ne duplique ces phrases.
- */
-
-export const messages = {
+/** Ressources i18next de l'écran D-008 (réglages du compte). Français par défaut. */
+export const account = {
   loading: "Chargement…",
   pending: "Envoi…",
   title: "Réglages du compte",
   passwordTitle: "Mot de passe",
   currentPasswordLabel: "Mot de passe actuel",
   newPasswordLabel: "Nouveau mot de passe",
-  passwordHint: (min: number) => `${min} caractères minimum`,
-  passwordCounter: (count: number, min: number) => `${count} caractères sur ${min} minimum`,
+  passwordHint: "{{min}} caractères minimum",
+  passwordCounter: "{{current}} caractères sur {{min}} minimum",
   submitPassword: "Enregistrer le mot de passe",
   passwordSaved: "Mot de passe enregistré.",
   passwordRejected: "Mot de passe refusé.",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { messages } from "./messages.fr.ts";
+import { useTranslate } from "../i18n/i18n.ts";
 import {
   applyThemeChoice,
   browserPrefersDark,
@@ -15,9 +15,10 @@ import {
 export function ThemeToggle() {
   const [choice, setChoice] = useState<ThemeChoice>(() => readChoice(browserStorage()));
   const [prefersDark, setPrefersDark] = useState(browserPrefersDark);
+  const t = useTranslate("theme");
   const resolved = resolveTheme(choice, prefersDark);
   const next = toggleTheme(choice, prefersDark);
-  const label = next === "sombre" ? messages.themeToDark : messages.themeToLight;
+  const label = next === "sombre" ? t("themeToDark") : t("themeToLight");
 
   useEffect(() => {
     if (typeof window.matchMedia !== "function") {

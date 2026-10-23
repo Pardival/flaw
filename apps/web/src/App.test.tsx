@@ -5,18 +5,16 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { App } from "./App.tsx";
-import { messages as accountMessages } from "./auth-ui/account/messages.fr.ts";
-import { messages } from "./auth-ui/messages.fr.ts";
-import { messages as mfaMessages } from "./auth-ui/mfa/messages.fr.ts";
 import type { MfaPhase } from "./auth-ui/mfa/phase.ts";
 import type { AuthPhase } from "./auth-ui/phase.ts";
+import { t } from "./i18n/i18n.ts";
 
 function html(node: ReactNode): string {
   return renderToStaticMarkup(node).replaceAll("&#x27;", "'");
 }
 
 const screens: { phase: AuthPhase; marker: string }[] = [
-  { phase: { name: "loading" }, marker: messages.loading },
+  { phase: { name: "loading" }, marker: t("auth:loading") },
   { phase: { name: "connexion", notice: null }, marker: 'data-screen="connexion"' },
   { phase: { name: "connexion-mdp-oublie", notice: "credential" }, marker: 'data-screen="connexion-mdp-oublie"' },
   { phase: { name: "nouveau-mot-de-passe", notice: null }, marker: 'data-screen="nouveau-mot-de-passe"' },
@@ -53,8 +51,8 @@ describe("App monte les écrans d'auth", () => {
     expect(fallback).toContain('data-screen="ready"');
     expect(fallback).toContain('class="writing"');
     expect(fallback).toContain('data-screen="reglages-compte"');
-    expect(fallback).toContain(accountMessages.title);
-    expect(fallback).toContain(accountMessages.loading);
+    expect(fallback).toContain(t("account:title"));
+    expect(fallback).toContain(t("account:loading"));
   });
 
   it("rend chaque écran 2FA depuis App", () => {
@@ -88,10 +86,10 @@ describe("App monte les écrans d'auth", () => {
     );
     expect(ready).toContain("texte secret");
     expect(ready).toContain('data-screen="reglages-compte"');
-    expect(ready).not.toContain(mfaMessages.challengeTitle);
+    expect(ready).not.toContain(t("mfa:challengeTitle"));
   });
 
-  it("branche mfa et account sans retirer leurs catalogues français, et le viewport garde la ligne visible", () => {
+  it("branche mfa et account via i18next, sans import direct des anciens catalogues, et le viewport garde la ligne visible", () => {
     const source = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
     expect(source).toContain("AuthScreens");
     expect(source).toContain('from "./auth-ui/mfa/index.ts"');
@@ -99,10 +97,13 @@ describe("App monte les écrans d'auth", () => {
     expect(source).not.toContain("messages.fr.ts");
     const mfaScreen = readFileSync(new URL("./auth-ui/mfa/screens.tsx", import.meta.url), "utf8");
     const accountScreen = readFileSync(new URL("./auth-ui/account/screen.tsx", import.meta.url), "utf8");
-    expect(mfaScreen).toContain('from "./messages.fr.ts"');
-    expect(accountScreen).toContain('from "./messages.fr.ts"');
-    expect(mfaScreen).not.toContain("i18next");
-    expect(accountScreen).not.toContain("i18next");
+    const authScreen = readFileSync(new URL("./auth-ui/screens.tsx", import.meta.url), "utf8");
+    const themeToggle = readFileSync(new URL("./theme/ThemeToggle.tsx", import.meta.url), "utf8");
+    for (const file of [mfaScreen, accountScreen, authScreen, themeToggle]) {
+      expect(file).not.toContain("messages.fr.ts");
+      expect(file).toContain("useTranslate(");
+      expect(file).toContain("t(");
+    }
     const htmlPage = readFileSync(new URL("../index.html", import.meta.url), "utf8");
     expect(htmlPage).toContain('lang="fr"');
     expect(htmlPage).toContain("width=device-width");

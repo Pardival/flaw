@@ -2,7 +2,6 @@ export { AccountSettings } from "./AccountSettings.tsx";
 export type { AccountSettingsProps } from "./AccountSettings.tsx";
 export { AccountSettingsScreen } from "./screen.tsx";
 export type { AccountSettingsScreenProps, ReauthDraft } from "./screen.tsx";
-export { messages } from "./messages.fr.ts";
 export {
   SESSIONS_PATH,
   activityZone,

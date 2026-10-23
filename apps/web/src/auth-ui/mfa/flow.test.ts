@@ -20,7 +20,7 @@ import {
   submitTotpCode,
   verifyEnrollmentCode,
 } from "./flow.ts";
-import { messages } from "./messages.fr.ts";
+import { t } from "../../i18n/i18n.ts";
 
 type Call = { path: string; init: RequestInit };
 
@@ -127,8 +127,8 @@ describe("second facteur sur le client existant", () => {
 describe("enrôlement et vérification", () => {
   it("demande la clé une seule fois et construit le lien otpauth", async () => {
     const { api, calls } = client(() => jsonResponse(200, { secret, codes, extra: "non" }));
-    const first = await enrollOnce(api, "ada@exemple.fr", messages.issuer);
-    const second = await enrollOnce(api, "ada@exemple.fr", messages.issuer);
+    const first = await enrollOnce(api, "ada@exemple.fr", t("mfa:issuer"));
+    const second = await enrollOnce(api, "ada@exemple.fr", t("mfa:issuer"));
     expect(calls).toHaveLength(1);
     expect(calls[0]?.path).toBe(MFA_PATHS.enroll);
     expect(bodyOf(calls[0])).toEqual({});
@@ -153,18 +153,18 @@ describe("enrôlement et vérification", () => {
         ? jsonResponse(403, { code: "forbidden", detail: "enrôlement refusé" })
         : jsonResponse(200, { secret, codes }),
     );
-    expect(await enrollOnce(api, "ada@exemple.fr", messages.issuer)).toEqual({ ok: false, notice: "forbidden" });
+    expect(await enrollOnce(api, "ada@exemple.fr", t("mfa:issuer"))).toEqual({ ok: false, notice: "forbidden" });
     failed = false;
-    const again = await enrollOnce(api, "ada@exemple.fr", messages.issuer);
+    const again = await enrollOnce(api, "ada@exemple.fr", t("mfa:issuer"));
     expect(again.ok).toBe(true);
-    const fresh = await enrollFresh(api, "ada@exemple.fr", messages.issuer);
+    const fresh = await enrollFresh(api, "ada@exemple.fr", t("mfa:issuer"));
     expect(fresh.ok).toBe(true);
     expect(calls.map((call) => call.path)).toEqual([MFA_PATHS.enroll, MFA_PATHS.enroll, MFA_PATHS.enroll]);
   });
 
   it("refuse une réponse qui n'a pas 10 codes distincts", async () => {
     const { api, calls } = client(() => jsonResponse(200, { secret, codes: codes.slice(0, 9) }));
-    expect(await enrollFresh(api, "ada@exemple.fr", messages.issuer)).toEqual({ ok: false, notice: "server" });
+    expect(await enrollFresh(api, "ada@exemple.fr", t("mfa:issuer"))).toEqual({ ok: false, notice: "server" });
     expect(calls).toHaveLength(1);
   });
 
@@ -177,13 +177,13 @@ describe("enrôlement et vérification", () => {
     });
     expect(await verifyEnrollmentCode(api, "12")).toEqual({ ok: false, notice: "format" });
     expect(calls).toHaveLength(0);
-    const enrolled = await enrollOnce(api, "ada@exemple.fr", messages.issuer);
+    const enrolled = await enrollOnce(api, "ada@exemple.fr", t("mfa:issuer"));
     expect(enrolled.ok).toBe(true);
     expect(await verifyEnrollmentCode(api, "654321")).toEqual({ ok: true });
     expect(calls[1]?.path).toBe(MFA_PATHS.verify);
     expect(bodyOf(calls[1])).toEqual({ code: "654321" });
     expect(bodyOf(calls[1])).not.toHaveProperty("secret");
-    const after = await enrollOnce(api, "ada@exemple.fr", messages.issuer);
+    const after = await enrollOnce(api, "ada@exemple.fr", t("mfa:issuer"));
     expect(after.ok).toBe(true);
     expect(calls.filter((call) => call.path === MFA_PATHS.enroll)).toHaveLength(2);
   });
@@ -196,8 +196,8 @@ describe("enrôlement et vérification", () => {
   });
 
   it("choisit le libellé du compte sans garder un identifiant vide", () => {
-    expect(enrollmentAccount(undefined, credentials, messages.accountFallback)).toBe("ada@exemple.fr");
-    expect(enrollmentAccount("  Bureau  ", credentials, messages.accountFallback)).toBe("Bureau");
-    expect(enrollmentAccount("  ", undefined, messages.accountFallback)).toBe(messages.accountFallback);
+    expect(enrollmentAccount(undefined, credentials, t("mfa:accountFallback"))).toBe("ada@exemple.fr");
+    expect(enrollmentAccount("  Bureau  ", credentials, t("mfa:accountFallback"))).toBe("Bureau");
+    expect(enrollmentAccount("  ", undefined, t("mfa:accountFallback"))).toBe(t("mfa:accountFallback"));
   });
 });

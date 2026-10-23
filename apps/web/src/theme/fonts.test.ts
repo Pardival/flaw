@@ -38,11 +38,14 @@ describe("polices auto-hébergées", () => {
       ui: "Inter",
     });
     const packageJson = readFileSync(join(webRoot, "package.json"), "utf8");
-    expect(packageJson).not.toContain("i18next");
     expect(packageJson).not.toContain("fontsource");
+    expect(packageJson).not.toMatch(/"i18next"\s*:\s*"[\^~]/);
+    expect(packageJson).not.toMatch(/"react-i18next"\s*:\s*"[\^~]/);
     expect(JSON.parse(packageJson).dependencies).toEqual({
+      i18next: "26.4.7",
       react: "19.3.1",
       "react-dom": "19.3.1",
+      "react-i18next": "17.0.20",
     });
 
     const files = [...walk(webRoot), ...walk(fontRoot)].filter((path) => !path.endsWith(`${join("theme", "fonts.ts")}`));

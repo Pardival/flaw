@@ -1,34 +1,35 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
-import { messages } from "./messages.fr.ts";
+import { useTranslate } from "../../i18n/i18n.ts";
 import type { MfaNotice } from "./phase.ts";
 import { BACKUP_FILENAME, backupText, groupSecret } from "./policy.ts";
 
-function alertMessage(notice: MfaNotice): string | null {
+function alertMessage(notice: MfaNotice, phrase: (key: string) => string): string | null {
   switch (notice) {
     case null:
       return null;
     case "format":
-      return messages.codeFormat;
+      return phrase("codeFormat");
     case "rejected":
-      return messages.codeRejected;
+      return phrase("codeRejected");
     case "required":
-      return messages.codeRequired;
+      return phrase("codeRequired");
     case "limited":
-      return messages.tooMany;
+      return phrase("tooMany");
     case "invalid":
-      return messages.invalidRequest;
+      return phrase("invalidRequest");
     case "forbidden":
-      return messages.enrollRefused;
+      return phrase("enrollRefused");
     case "network":
-      return messages.network;
+      return phrase("network");
     case "server":
-      return messages.server;
+      return phrase("server");
   }
 }
 
 function Alert({ notice }: { notice: MfaNotice }) {
-  const text = alertMessage(notice);
+  const t = useTranslate("mfa");
+  const text = alertMessage(notice, t);
   if (text === null) {
     return null;
   }
@@ -36,17 +37,19 @@ function Alert({ notice }: { notice: MfaNotice }) {
 }
 
 export function LoadingScreen() {
+  const t = useTranslate("mfa");
   return (
     <p role="status" data-screen="loading">
-      {messages.loading}
+      {t("loading")}
     </p>
   );
 }
 
 export function SignedOutScreen() {
+  const t = useTranslate("mfa");
   return (
     <p role="status" data-screen="deconnecte">
-      {messages.signedOut}
+      {t("signedOut")}
     </p>
   );
 }
@@ -62,6 +65,7 @@ export function Connexion2faScreen({
   onSubmit: (code: string) => void;
   onUseRecovery: () => void;
 }) {
+  const t = useTranslate("mfa");
   const [code, setCode] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -71,10 +75,10 @@ export function Connexion2faScreen({
 
   return (
     <form data-screen="connexion-2fa" method="post" onSubmit={submit} aria-labelledby="mfa-challenge-title">
-      <h1 id="mfa-challenge-title">{messages.challengeTitle}</h1>
-      <p>{messages.challengeIntro}</p>
+      <h1 id="mfa-challenge-title">{t("challengeTitle")}</h1>
+      <p>{t("challengeIntro")}</p>
       <Alert notice={notice} />
-      <label htmlFor="mfa-totp">{messages.totpLabel}</label>
+      <label htmlFor="mfa-totp">{t("totpLabel")}</label>
       <input
         id="mfa-totp"
         name="code"
@@ -93,10 +97,10 @@ export function Connexion2faScreen({
         }}
       />
       <button type="submit" disabled={pending}>
-        {pending ? messages.pending : messages.submitCode}
+        {pending ? t("pending") : t("submitCode")}
       </button>
       <button type="button" onClick={onUseRecovery} disabled={pending}>
-        {messages.useRecovery}
+        {t("useRecovery")}
       </button>
     </form>
   );
@@ -113,6 +117,7 @@ export function ConnexionCodeSecoursScreen({
   onSubmit: (code: string) => void;
   onBack: () => void;
 }) {
+  const t = useTranslate("mfa");
   const [code, setCode] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -122,10 +127,10 @@ export function ConnexionCodeSecoursScreen({
 
   return (
     <form data-screen="connexion-code-secours" method="post" onSubmit={submit} aria-labelledby="mfa-recovery-title">
-      <h1 id="mfa-recovery-title">{messages.recoveryTitle}</h1>
-      <p>{messages.recoveryIntro}</p>
+      <h1 id="mfa-recovery-title">{t("recoveryTitle")}</h1>
+      <p>{t("recoveryIntro")}</p>
       <Alert notice={notice} />
-      <label htmlFor="mfa-recovery">{messages.recoveryLabel}</label>
+      <label htmlFor="mfa-recovery">{t("recoveryLabel")}</label>
       <input
         id="mfa-recovery"
         name="recoveryCode"
@@ -142,12 +147,12 @@ export function ConnexionCodeSecoursScreen({
         }}
         aria-describedby="mfa-recovery-hint"
       />
-      <p id="mfa-recovery-hint">{messages.recoveryHint}</p>
+      <p id="mfa-recovery-hint">{t("recoveryHint")}</p>
       <button type="submit" disabled={pending}>
-        {pending ? messages.pending : messages.submitRecovery}
+        {pending ? t("pending") : t("submitRecovery")}
       </button>
       <button type="button" onClick={onBack} disabled={pending}>
-        {messages.backToTotp}
+        {t("backToTotp")}
       </button>
     </form>
   );
@@ -168,6 +173,7 @@ export function Activation2faScreen({
   onSubmit: (code: string) => void;
   onSignOut: () => void;
 }) {
+  const t = useTranslate("mfa");
   const [code, setCode] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -177,18 +183,18 @@ export function Activation2faScreen({
 
   return (
     <section data-screen="activation-2fa" aria-labelledby="mfa-activation-title">
-      <h1 id="mfa-activation-title">{messages.activationTitle}</h1>
-      <p>{messages.activationIntro}</p>
+      <h1 id="mfa-activation-title">{t("activationTitle")}</h1>
+      <p>{t("activationIntro")}</p>
       <Alert notice={notice} />
       {secret !== null && otpauth !== null ? (
         <>
-          <p id="mfa-secret-label">{messages.secretLabel}</p>
+          <p id="mfa-secret-label">{t("secretLabel")}</p>
           <p data-field="totp-secret" aria-labelledby="mfa-secret-label">
             {groupSecret(secret)}
           </p>
-          <a href={otpauth}>{messages.openApp}</a>
+          <a href={otpauth}>{t("openApp")}</a>
           <form method="post" onSubmit={submit}>
-            <label htmlFor="mfa-enroll-code">{messages.totpLabel}</label>
+            <label htmlFor="mfa-enroll-code">{t("totpLabel")}</label>
             <input
               id="mfa-enroll-code"
               name="code"
@@ -207,13 +213,13 @@ export function Activation2faScreen({
               }}
             />
             <button type="submit" disabled={pending}>
-              {pending ? messages.pending : messages.submitCode}
+              {pending ? t("pending") : t("submitCode")}
             </button>
           </form>
         </>
       ) : null}
       <button type="button" onClick={onSignOut} disabled={pending}>
-        {messages.signOut}
+        {t("signOut")}
       </button>
     </section>
   );
@@ -253,17 +259,18 @@ export function CodesSecoursScreen({
   onCopy: () => void;
   onContinue: () => void;
 }) {
+  const t = useTranslate("mfa");
   return (
     <section data-screen="codes-secours" aria-labelledby="mfa-codes-title">
-      <h1 id="mfa-codes-title">{messages.codesTitle}</h1>
-      <p>{messages.codesIntro}</p>
+      <h1 id="mfa-codes-title">{t("codesTitle")}</h1>
+      <p>{t("codesIntro")}</p>
       <ol data-count={codes.length}>
         {codes.map((code, index) => (
           <li key={index}>{code}</li>
         ))}
       </ol>
       <button type="button" onClick={onCopy}>
-        {messages.copy}
+        {t("copy")}
       </button>
       <button
         type="button"
@@ -271,15 +278,15 @@ export function CodesSecoursScreen({
           saveCodes(codes);
         }}
       >
-        {messages.save}
+        {t("save")}
       </button>
       <button type="button" onClick={printCodes}>
-        {messages.print}
+        {t("print")}
       </button>
-      {copyNotice === "copied" ? <p role="status">{messages.copied}</p> : null}
-      {copyNotice === "failed" ? <p role="alert">{messages.copyFailed}</p> : null}
+      {copyNotice === "copied" ? <p role="status">{t("copied")}</p> : null}
+      {copyNotice === "failed" ? <p role="alert">{t("copyFailed")}</p> : null}
       <button type="button" onClick={onContinue}>
-        {messages.continueTexts}
+        {t("continueTexts")}
       </button>
     </section>
   );
@@ -296,16 +303,17 @@ export function Reconfigurer2faScreen({
   onReconfigure: () => void;
   onSignOut: () => void;
 }) {
+  const t = useTranslate("mfa");
   return (
     <section data-screen="reconfigurer-2fa" aria-labelledby="mfa-reconfigure-title">
-      <h1 id="mfa-reconfigure-title">{messages.reconfigureTitle}</h1>
-      <p>{messages.reconfigureBody}</p>
+      <h1 id="mfa-reconfigure-title">{t("reconfigureTitle")}</h1>
+      <p>{t("reconfigureBody")}</p>
       <Alert notice={notice} />
       <button type="button" onClick={onReconfigure} disabled={pending}>
-        {pending ? messages.pending : messages.reconfigureNow}
+        {pending ? t("pending") : t("reconfigureNow")}
       </button>
       <button type="button" onClick={onSignOut} disabled={pending}>
-        {messages.signOut}
+        {t("signOut")}
       </button>
     </section>
   );

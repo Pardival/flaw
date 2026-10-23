@@ -1,33 +1,34 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 
+import { useTranslate } from "../i18n/i18n.ts";
 import type { Credentials, PasswordChange } from "./api.ts";
-import { messages } from "./messages.fr.ts";
 import type { Notice } from "./phase.ts";
 import { IDENTIFIER_MAX_LENGTH, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, codePointLength } from "./policy.ts";
 
-function alertMessage(notice: Notice): string | null {
+function alertMessage(notice: Notice, phrase: (key: string) => string): string | null {
   switch (notice) {
     case null:
       return null;
     case "credential":
-      return messages.credentialError;
+      return phrase("credentialError");
     case "limited":
-      return messages.tooMany;
+      return phrase("tooMany");
     case "rejected":
-      return messages.passwordRejected;
+      return phrase("passwordRejected");
     case "invalid":
-      return messages.invalidRequest;
+      return phrase("invalidRequest");
     case "network":
-      return messages.network;
+      return phrase("network");
     case "mfa":
-      return messages.mfaRequired;
+      return phrase("mfaRequired");
     case "current":
-      return messages.currentPasswordWrong;
+      return phrase("currentPasswordWrong");
   }
 }
 
 function Alert({ notice }: { notice: Notice }) {
-  const text = alertMessage(notice);
+  const t = useTranslate("auth");
+  const text = alertMessage(notice, t);
   if (text === null) {
     return null;
   }
@@ -35,10 +36,11 @@ function Alert({ notice }: { notice: Notice }) {
 }
 
 function ForgotExplanation() {
+  const t = useTranslate("auth");
   return (
     <section aria-labelledby="auth-forgot-title">
-      <h2 id="auth-forgot-title">{messages.forgotTitle}</h2>
-      <p>{messages.forgotBody}</p>
+      <h2 id="auth-forgot-title">{t("forgotTitle")}</h2>
+      <p>{t("forgotBody")}</p>
     </section>
   );
 }
@@ -60,6 +62,7 @@ export function CredentialsScreen({
   onForgot: (identifier: string) => void;
   onBack: () => void;
 }) {
+  const t = useTranslate("auth");
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(false);
@@ -68,7 +71,7 @@ export function CredentialsScreen({
   const passwordId = reconnect ? "auth-reconnect-password" : "auth-password";
   const rememberId = reconnect ? "auth-reconnect-remember" : "auth-remember";
   const titleId = reconnect ? "auth-reconnect-title" : "auth-connexion-title";
-  const submitLabel = reconnect ? messages.reconnectAction : messages.submitSignIn;
+  const submitLabel = reconnect ? t("reconnectAction") : t("submitSignIn");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -77,11 +80,11 @@ export function CredentialsScreen({
 
   return (
     <form data-screen={variant} method="post" onSubmit={submit} aria-labelledby={titleId}>
-      <h1 id={titleId}>{reconnect ? messages.reconnectTitle : messages.connexionTitle}</h1>
-      {reconnect ? <p>{messages.reconnectBody}</p> : null}
+      <h1 id={titleId}>{reconnect ? t("reconnectTitle") : t("connexionTitle")}</h1>
+      {reconnect ? <p>{t("reconnectBody")}</p> : null}
       <Alert notice={notice} />
       {variant === "connexion-mdp-oublie" || (reconnect && forgot) ? <ForgotExplanation /> : null}
-      <label htmlFor={emailId}>{messages.emailLabel}</label>
+      <label htmlFor={emailId}>{t("emailLabel")}</label>
       <input
         id={emailId}
         name="identifier"
@@ -95,7 +98,7 @@ export function CredentialsScreen({
           setIdentifier(event.currentTarget.value);
         }}
       />
-      <label htmlFor={passwordId}>{messages.passwordLabel}</label>
+      <label htmlFor={passwordId}>{t("passwordLabel")}</label>
       <input
         id={passwordId}
         name="password"
@@ -108,8 +111,8 @@ export function CredentialsScreen({
           setPassword(event.currentTarget.value);
         }}
       />
-      <p>{messages.passwordHint(PASSWORD_MIN_LENGTH)}</p>
-      <label htmlFor={rememberId}>{messages.rememberLabel}</label>
+      <p>{t("passwordHint", { min: PASSWORD_MIN_LENGTH })}</p>
+      <label htmlFor={rememberId}>{t("rememberLabel")}</label>
       <input
         id={rememberId}
         name="remember"
@@ -119,13 +122,13 @@ export function CredentialsScreen({
           setRemember(event.currentTarget.checked);
         }}
       />
-      <p>{messages.rememberHint}</p>
+      <p>{t("rememberHint")}</p>
       <button type="submit" disabled={pending}>
-        {pending ? messages.pending : submitLabel}
+        {pending ? t("pending") : submitLabel}
       </button>
       {variant === "connexion-mdp-oublie" ? (
         <button type="button" onClick={onBack}>
-          {messages.backToSignIn}
+          {t("backToSignIn")}
         </button>
       ) : (
         <button
@@ -134,7 +137,7 @@ export function CredentialsScreen({
             onForgot(identifier);
           }}
         >
-          {messages.forgotAction}
+          {t("forgotAction")}
         </button>
       )}
     </form>
@@ -152,6 +155,7 @@ export function NouveauMotDePasseScreen({
   initialNewPassword?: string;
   onSubmit: (value: PasswordChange) => void;
 }) {
+  const t = useTranslate("auth");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState(initialNewPassword);
 
@@ -162,9 +166,9 @@ export function NouveauMotDePasseScreen({
 
   return (
     <form data-screen="nouveau-mot-de-passe" method="post" onSubmit={submit} aria-labelledby="auth-new-title">
-      <h1 id="auth-new-title">{messages.newPasswordTitle}</h1>
-      <p>{messages.newPasswordIntro}</p>
-      <label htmlFor="auth-current-password">{messages.currentPasswordLabel}</label>
+      <h1 id="auth-new-title">{t("newPasswordTitle")}</h1>
+      <p>{t("newPasswordIntro")}</p>
+      <label htmlFor="auth-current-password">{t("currentPasswordLabel")}</label>
       <input
         id="auth-current-password"
         name="currentPassword"
@@ -177,7 +181,7 @@ export function NouveauMotDePasseScreen({
           setCurrentPassword(event.currentTarget.value);
         }}
       />
-      <label htmlFor="auth-new-password">{messages.newPasswordLabel}</label>
+      <label htmlFor="auth-new-password">{t("newPasswordLabel")}</label>
       <input
         id="auth-new-password"
         name="newPassword"
@@ -192,19 +196,22 @@ export function NouveauMotDePasseScreen({
         }}
         aria-describedby="auth-password-counter"
       />
-      <p id="auth-password-counter">{messages.passwordCounter(codePointLength(newPassword), PASSWORD_MIN_LENGTH)}</p>
+      <p id="auth-password-counter">
+        {t("passwordCounter", { current: codePointLength(newPassword), min: PASSWORD_MIN_LENGTH })}
+      </p>
       <Alert notice={notice} />
       <button type="submit" disabled={pending}>
-        {pending ? messages.pending : messages.submitChange}
+        {pending ? t("pending") : t("submitChange")}
       </button>
     </form>
   );
 }
 
 export function LoadingScreen() {
+  const t = useTranslate("auth");
   return (
     <p role="status" data-screen="loading">
-      {messages.loading}
+      {t("loading")}
     </p>
   );
 }

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 
+import { useTranslate } from "../../i18n/i18n.ts";
 import type { PasswordChange } from "../api.ts";
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, codePointLength } from "../policy.ts";
 import {
@@ -8,7 +9,6 @@ import {
   type AccountPhase,
   type AccountSession,
 } from "./account.ts";
-import { messages } from "./messages.fr.ts";
 
 export type ReauthDraft = {
   password: string;
@@ -35,39 +35,39 @@ export type AccountSettingsScreenProps = {
   onRegenerateCodes: () => void;
 };
 
-function alertMessage(notice: AccountNotice): string | null {
+function alertMessage(notice: AccountNotice, phrase: (key: string) => string): string | null {
   switch (notice) {
     case null:
     case "reauth":
       return null;
     case "unauthorized":
-      return messages.unauthorized;
+      return phrase("unauthorized");
     case "mfa":
-      return messages.mfaRequired;
+      return phrase("mfaRequired");
     case "not_found":
-      return messages.notFound;
+      return phrase("notFound");
     case "forbidden":
-      return messages.forbidden;
+      return phrase("forbidden");
     case "network":
-      return messages.network;
+      return phrase("network");
     case "server":
-      return messages.server;
+      return phrase("server");
     case "rejected":
-      return messages.passwordRejected;
+      return phrase("passwordRejected");
     case "current_password":
-      return messages.currentPasswordWrong;
+      return phrase("currentPasswordWrong");
     case "reauth_failed":
-      return messages.reauthFailed;
+      return phrase("reauthFailed");
     case "invalid":
-      return messages.invalidRequest;
+      return phrase("invalidRequest");
     case "limited":
-      return messages.tooMany;
+      return phrase("tooMany");
     case "password_saved":
-      return messages.passwordSaved;
+      return phrase("passwordSaved");
     case "revoked":
-      return messages.revoked;
+      return phrase("revoked");
     case "others_revoked":
-      return messages.othersRevoked;
+      return phrase("othersRevoked");
     default: {
       const exhaustive: never = notice;
       return exhaustive;
@@ -76,7 +76,8 @@ function alertMessage(notice: AccountNotice): string | null {
 }
 
 function Alert({ notice }: { notice: AccountNotice }) {
-  const text = alertMessage(notice);
+  const t = useTranslate("account");
+  const text = alertMessage(notice, t);
   if (text === null) {
     return null;
   }
@@ -93,6 +94,7 @@ function PasswordForm({
   initialNewPassword: string;
   onChangePassword: (value: PasswordChange) => void;
 }) {
+  const t = useTranslate("account");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState(initialNewPassword);
 
@@ -103,8 +105,8 @@ function PasswordForm({
 
   return (
     <form method="post" onSubmit={submit} aria-labelledby="account-password-title">
-      <h2 id="account-password-title">{messages.passwordTitle}</h2>
-      <label htmlFor="account-current-password">{messages.currentPasswordLabel}</label>
+      <h2 id="account-password-title">{t("passwordTitle")}</h2>
+      <label htmlFor="account-current-password">{t("currentPasswordLabel")}</label>
       <input
         id="account-current-password"
         name="currentPassword"
@@ -118,7 +120,7 @@ function PasswordForm({
           setCurrentPassword(event.currentTarget.value);
         }}
       />
-      <label htmlFor="account-new-password">{messages.newPasswordLabel}</label>
+      <label htmlFor="account-new-password">{t("newPasswordLabel")}</label>
       <input
         id="account-new-password"
         name="newPassword"
@@ -134,10 +136,10 @@ function PasswordForm({
         }}
         aria-describedby="account-password-counter"
       />
-      <p id="account-password-counter">{messages.passwordCounter(codePointLength(newPassword), PASSWORD_MIN_LENGTH)}</p>
-      <p>{messages.passwordHint(PASSWORD_MIN_LENGTH)}</p>
+      <p id="account-password-counter">{t("passwordCounter", { current: codePointLength(newPassword), min: PASSWORD_MIN_LENGTH })}</p>
+      <p>{t("passwordHint", { min: PASSWORD_MIN_LENGTH })}</p>
       <button type="submit" disabled={pending}>
-        {pending ? messages.pending : messages.submitPassword}
+        {pending ? t("pending") : t("submitPassword")}
       </button>
     </form>
   );
@@ -152,6 +154,7 @@ function ReauthForm({
   totpRequired: boolean;
   onReauth: (value: ReauthDraft) => void;
 }) {
+  const t = useTranslate("account");
   const [password, setPassword] = useState("");
   const [totp, setTotp] = useState("");
   const [remember, setRemember] = useState(false);
@@ -163,9 +166,9 @@ function ReauthForm({
 
   return (
     <form method="post" onSubmit={submit} aria-labelledby="account-reauth-title">
-      <h3 id="account-reauth-title">{messages.reauthTitle}</h3>
-      <p role="alert">{totpRequired ? messages.reauthBody : messages.reauthBodyPassword}</p>
-      <label htmlFor="account-reauth-password">{messages.reauthPasswordLabel}</label>
+      <h3 id="account-reauth-title">{t("reauthTitle")}</h3>
+      <p role="alert">{totpRequired ? t("reauthBody") : t("reauthBodyPassword")}</p>
+      <label htmlFor="account-reauth-password">{t("reauthPasswordLabel")}</label>
       <input
         id="account-reauth-password"
         name="password"
@@ -181,7 +184,7 @@ function ReauthForm({
       />
       {totpRequired ? (
         <>
-          <label htmlFor="account-reauth-totp">{messages.reauthTotpLabel}</label>
+          <label htmlFor="account-reauth-totp">{t("reauthTotpLabel")}</label>
           <input
             id="account-reauth-totp"
             name="totp"
@@ -200,7 +203,7 @@ function ReauthForm({
           />
         </>
       ) : null}
-      <label htmlFor="account-reauth-remember">{messages.rememberLabel}</label>
+      <label htmlFor="account-reauth-remember">{t("rememberLabel")}</label>
       <input
         id="account-reauth-remember"
         name="remember"
@@ -211,9 +214,9 @@ function ReauthForm({
           setRemember(event.currentTarget.checked);
         }}
       />
-      <p>{messages.rememberHint}</p>
+      <p>{t("rememberHint")}</p>
       <button type="submit" disabled={pending}>
-        {pending ? messages.pending : messages.submitReauth}
+        {pending ? t("pending") : t("submitReauth")}
       </button>
     </form>
   );
@@ -232,6 +235,7 @@ function DeviceList({
   onRevoke: (sessionId: string) => void;
   onSignOut: () => void;
 }) {
+  const t = useTranslate("account");
   return (
     <ul>
       {sessions.map((session) => {
@@ -239,22 +243,22 @@ function DeviceList({
         return (
           <li key={view.id} data-session={view.id} data-current={view.current ? "true" : "false"}>
             <p>
-              {messages.typeLabel} {view.typeLabel}
+              {t("typeLabel")} {view.typeLabel}
             </p>
             <p>
-              {messages.browserLabel} {view.browser}
+              {t("browserLabel")} {view.browser}
             </p>
             <p>
-              {messages.osLabel} {view.os}
+              {t("osLabel")} {view.os}
             </p>
             <p>
-              {messages.activityLabel} {view.lastActivity}
+              {t("activityLabel")} {view.lastActivity}
             </p>
             {view.current ? (
               <>
-                <p>{messages.thisDevice}</p>
+                <p>{t("thisDevice")}</p>
                 <button type="button" data-action="sign-out" disabled={pending} onClick={onSignOut}>
-                  {messages.signOut}
+                  {t("signOut")}
                 </button>
               </>
             ) : (
@@ -266,7 +270,7 @@ function DeviceList({
                   onRevoke(view.id);
                 }}
               >
-                {messages.revoke}
+                {t("revoke")}
               </button>
             )}
           </li>
@@ -294,11 +298,12 @@ export function AccountSettingsScreen({
   onChangeDevice,
   onRegenerateCodes,
 }: AccountSettingsScreenProps) {
+  const t = useTranslate("account");
   if (phase === "loading") {
     return (
       <section data-screen="reglages-compte" aria-labelledby="account-title">
-        <h1 id="account-title">{messages.title}</h1>
-        <p role="status">{messages.loading}</p>
+        <h1 id="account-title">{t("title")}</h1>
+        <p role="status">{t("loading")}</p>
       </section>
     );
   }
@@ -306,8 +311,8 @@ export function AccountSettingsScreen({
   if (phase === "signed_out") {
     return (
       <section data-screen="reglages-compte" aria-labelledby="account-title">
-        <h1 id="account-title">{messages.title}</h1>
-        <p role="status">{messages.signedOut}</p>
+        <h1 id="account-title">{t("title")}</h1>
+        <p role="status">{t("signedOut")}</p>
       </section>
     );
   }
@@ -315,7 +320,7 @@ export function AccountSettingsScreen({
   if (phase === "blocked") {
     return (
       <section data-screen="reglages-compte" aria-labelledby="account-title">
-        <h1 id="account-title">{messages.title}</h1>
+        <h1 id="account-title">{t("title")}</h1>
         <Alert notice={notice} />
       </section>
     );
@@ -323,26 +328,26 @@ export function AccountSettingsScreen({
 
   return (
     <section data-screen="reglages-compte" aria-labelledby="account-title">
-      <h1 id="account-title">{messages.title}</h1>
+      <h1 id="account-title">{t("title")}</h1>
       <Alert notice={notice} />
       <PasswordForm pending={pending} initialNewPassword={initialNewPassword} onChangePassword={onChangePassword} />
       <section aria-labelledby="account-mfa-title">
-        <h2 id="account-mfa-title">{messages.mfaTitle}</h2>
-        <p>{mfaEnrolled ? messages.mfaActive : messages.mfaObligatory}</p>
+        <h2 id="account-mfa-title">{t("mfaTitle")}</h2>
+        <p>{mfaEnrolled ? t("mfaActive") : t("mfaObligatory")}</p>
         {mfaEnrolled ? (
           <>
             <button type="button" data-action="change-device" disabled={pending} onClick={onChangeDevice}>
-              {messages.changeDevice}
+              {t("changeDevice")}
             </button>
             <button type="button" data-action="regenerate-codes" disabled={pending} onClick={onRegenerateCodes}>
-              {messages.regenerateCodes}
+              {t("regenerateCodes")}
             </button>
           </>
         ) : null}
       </section>
       <section aria-labelledby="account-devices-title">
-        <h2 id="account-devices-title">{messages.devicesTitle}</h2>
-        {sessionsKnown && sessions.length === 0 ? <p>{messages.emptyDevices}</p> : null}
+        <h2 id="account-devices-title">{t("devicesTitle")}</h2>
+        {sessionsKnown && sessions.length === 0 ? <p>{t("emptyDevices")}</p> : null}
         {sessions.length > 0 ? (
           <DeviceList
             sessions={sessions}
@@ -353,7 +358,7 @@ export function AccountSettingsScreen({
           />
         ) : null}
         <button type="button" data-action="revoke-others" disabled={pending} onClick={onRevokeOthers}>
-          {messages.revokeOthers}
+          {t("revokeOthers")}
         </button>
         {reauth ? <ReauthForm pending={pending} totpRequired={mfaEnrolled} onReauth={onReauth} /> : null}
       </section>

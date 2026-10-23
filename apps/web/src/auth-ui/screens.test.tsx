@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { AuthScreens } from "./AuthScreens.tsx";
-import { messages } from "./messages.fr.ts";
+import { t } from "../i18n/i18n.ts";
 import { PASSWORD_MIN_LENGTH } from "./policy.ts";
 import { NouveauMotDePasseScreen } from "./screens.tsx";
 
@@ -21,12 +21,12 @@ describe("écrans D-001 D-002 D-004 D-042", () => {
       </AuthScreens>,
     );
     expect(page).toContain('data-screen="connexion"');
-    expect(page).toContain(messages.emailLabel);
-    expect(page).toContain(messages.passwordLabel);
-    expect(page).toContain(messages.passwordHint(PASSWORD_MIN_LENGTH));
-    expect(page).toContain(messages.rememberLabel);
-    expect(page).toContain(messages.rememberHint);
-    expect(page).toContain(messages.forgotAction);
+    expect(page).toContain(t("auth:emailLabel"));
+    expect(page).toContain(t("auth:passwordLabel"));
+    expect(page).toContain(t("auth:passwordHint", { min: PASSWORD_MIN_LENGTH }));
+    expect(page).toContain(t("auth:rememberLabel"));
+    expect(page).toContain(t("auth:rememberHint"));
+    expect(page).toContain(t("auth:forgotAction"));
     expect(page).not.toContain("texte secret");
     expect(page).not.toContain("mailto:");
     expect(page).not.toContain("href=");
@@ -39,8 +39,8 @@ describe("écrans D-001 D-002 D-004 D-042", () => {
       </AuthScreens>,
     );
     expect(page).toContain('data-screen="connexion-mdp-oublie"');
-    expect(page).toContain(messages.credentialError);
-    expect(page).toContain(messages.forgotBody);
+    expect(page).toContain(t("auth:credentialError"));
+    expect(page).toContain(t("auth:forgotBody"));
     expect(page).toContain("Aucun e-mail n'est envoyé.");
     expect(page).toContain("mot de passe provisoire (commande serveur)");
     expect(page).not.toMatch(/mailto:/i);
@@ -58,8 +58,8 @@ describe("écrans D-001 D-002 D-004 D-042", () => {
       />,
     );
     expect(page).toContain('data-screen="nouveau-mot-de-passe"');
-    expect(page).toContain(messages.newPasswordIntro);
-    expect(messages.passwordCounter(12, 15)).toBe("12 caractères sur 15 minimum");
+    expect(page).toContain(t("auth:newPasswordIntro"));
+    expect(t("auth:passwordCounter", { current: 12, min: 15 })).toBe("12 caractères sur 15 minimum");
     expect(page).toContain("12 caractères sur 15 minimum");
     const forced = html(
       <AuthScreens initialPhase={{ name: "nouveau-mot-de-passe", notice: null }}>
@@ -77,10 +77,10 @@ describe("écrans D-001 D-002 D-004 D-042", () => {
       </AuthScreens>,
     );
     expect(page).toContain('data-screen="reconnexion-necessaire"');
-    expect(page).toContain(messages.reconnectTitle);
-    expect(page).toContain(messages.reconnectBody);
-    expect(page).toContain(messages.reconnectAction);
-    expect(page).toContain(messages.forgotBody);
+    expect(page).toContain(t("auth:reconnectTitle"));
+    expect(page).toContain(t("auth:reconnectBody"));
+    expect(page).toContain(t("auth:reconnectAction"));
+    expect(page).toContain(t("auth:forgotBody"));
     expect(page).toContain("brouillon local");
   });
 
@@ -90,7 +90,7 @@ describe("écrans D-001 D-002 D-004 D-042", () => {
         <p>texte secret</p>
       </AuthScreens>,
     );
-    expect(hidden).toContain(messages.loading);
+    expect(hidden).toContain(t("auth:loading"));
     expect(hidden).not.toContain("texte secret");
     const ready = html(
       <AuthScreens initialPhase={{ name: "ready" }}>
