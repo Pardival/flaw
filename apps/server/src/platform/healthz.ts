@@ -281,7 +281,7 @@ async function main(): Promise<void> {
     refuse("refus de démarrer : poivre");
   }
   const { loadOldRecoveryPeppers } = await import("../config/secrets.ts");
-  const oldPeppers = loadOldRecoveryPeppers(process.env, kek, hmacPepper);
+  const oldPeppers = loadOldRecoveryPeppers(process.env, kek, hmacPepper, recoveryPepper);
   if (!oldPeppers.ok) {
     refuse(oldPeppers.message);
   }

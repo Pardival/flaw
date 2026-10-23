@@ -7,7 +7,7 @@
  */
 import { dirname, join } from "node:path";
 
-import { peppersMatchKek } from "../crypto/kek.ts";
+import { decodeValidatedKey, peppersMatchKek, sameKeyBytes } from "../crypto/kek.ts";
 import { readSecretFile, type SecretKind } from "../platform/healthz.ts";
 import { parseRecoveryPepperOldIds } from "./env.ts";
 
@@ -69,11 +69,29 @@ function currentRecoveryPepperId(env: NodeJS.ProcessEnv): string {
   return value;
 }
 
+/** Contenu identique après décodage canonique, sans laisser les octets en mémoire. */
+function sameKeyMaterial(left: string, right: string): boolean {
+  const decodedLeft = decodeValidatedKey(left);
+  const decodedRight = decodeValidatedKey(right);
+  if (decodedLeft === null || decodedRight === null) {
+    decodedLeft?.fill(0);
+    decodedRight?.fill(0);
+    return false;
+  }
+  try {
+    return sameKeyBytes(decodedLeft, decodedRight);
+  } finally {
+    decodedLeft.fill(0);
+    decodedRight.fill(0);
+  }
+}
+
 /** Chaque id de RECOVERY_PEPPER_OLD_IDS, validé par readSecretFile(..., "key"). */
 export function loadOldRecoveryPeppers(
   env: NodeJS.ProcessEnv,
   kek: string,
   hmacPepper: string,
+  recoveryPepper: string,
 ): { ok: true; peppers: Record<string, string> } | { ok: false; message: string } {
   const parsed = parseRecoveryPepperOldIds(currentRecoveryPepperId(env), env.RECOVERY_PEPPER_OLD_IDS);
   if (!parsed.ok) {
@@ -88,6 +106,14 @@ export function loadOldRecoveryPeppers(
     }
     if (peppersMatchKek(kek, hmacPepper, result.value)) {
       return { ok: false, message: "refus de démarrer : poivre" };
+    }
+    if (sameKeyMaterial(recoveryPepper, result.value)) {
+      return { ok: false, message: "refus de démarrer : poivre" };
+    }
+    for (const accepted of Object.values(peppers)) {
+      if (sameKeyMaterial(accepted, result.value)) {
+        return { ok: false, message: "refus de démarrer : poivre" };
+      }
     }
     peppers[id] = result.value;
   }
@@ -107,7 +133,7 @@ export function loadSecrets(env: NodeJS.ProcessEnv): SecretsResult {
   if (peppersMatchKek(secrets.kek, secrets.hmacPepper, secrets.recoveryPepper)) {
     return { ok: false, message: "refus de démarrer : poivre" };
   }
-  const old = loadOldRecoveryPeppers(env, secrets.kek, secrets.hmacPepper);
+  const old = loadOldRecoveryPeppers(env, secrets.kek, secrets.hmacPepper, secrets.recoveryPepper);
   if (!old.ok) {
     return old;
   }

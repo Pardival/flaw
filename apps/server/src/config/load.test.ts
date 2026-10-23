@@ -286,6 +286,60 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
     }
   });
 
+  it("refuse deux poivres de secours au contenu identique", () => {
+    const set = validSet();
+    const env = writeSecrets(set);
+    const directory = dirname(env.RECOVERY_PEPPER_FILE ?? "");
+    writeFileSync(join(directory, "recovery_pepper_pep-A"), set.recoveryPepper);
+    chmodSync(join(directory, "recovery_pepper_pep-A"), 0o600);
+    const sameAsCurrent = loadSecrets({
+      ...env,
+      RECOVERY_PEPPER_ID: "pep-B",
+      RECOVERY_PEPPER_OLD_IDS: "pep-A",
+    });
+    expect(sameAsCurrent.ok).toBe(false);
+    if (!sameAsCurrent.ok) {
+      expect(sameAsCurrent.message).toBe("refus de démarrer : poivre");
+      expect(sameAsCurrent.message).not.toContain(set.recoveryPepper);
+    }
+    const healthz = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("../platform/healthz.ts", import.meta.url))],
+      {
+        env: {
+          PATH: process.env.PATH ?? "",
+          ...env,
+          PORT: "0",
+          RECOVERY_PEPPER_ID: "pep-B",
+          RECOVERY_PEPPER_OLD_IDS: "pep-A",
+        },
+        encoding: "utf8",
+        timeout: 8_000,
+      },
+    );
+    expect(healthz.status).toBe(1);
+    expect(healthz.stderr).toBe("refus de démarrer : poivre\n");
+    expect(healthz.stderr).not.toContain(set.recoveryPepper);
+
+    const shared = validKey();
+    const pairEnv = writeSecrets(validSet());
+    const pairDir = dirname(pairEnv.RECOVERY_PEPPER_FILE ?? "");
+    writeFileSync(join(pairDir, "recovery_pepper_pep-A"), shared);
+    writeFileSync(join(pairDir, "recovery_pepper_pep-C"), `${shared}\n`);
+    chmodSync(join(pairDir, "recovery_pepper_pep-A"), 0o600);
+    chmodSync(join(pairDir, "recovery_pepper_pep-C"), 0o600);
+    const sameOld = loadSecrets({
+      ...pairEnv,
+      RECOVERY_PEPPER_ID: "pep-B",
+      RECOVERY_PEPPER_OLD_IDS: "pep-A, pep-C",
+    });
+    expect(sameOld.ok).toBe(false);
+    if (!sameOld.ok) {
+      expect(sameOld.message).toBe("refus de démarrer : poivre");
+      expect(sameOld.message).not.toContain(shared);
+    }
+  });
+
   it("refuse des ids anciens en double, vides ou égaux au poivre courant", () => {
     for (const raw of ["pep-B", "pep-A,pep-A", "pep-A, pep-A", "../pep", "pep-A,", ",pep-A"]) {
       const result = loadConfig({ RECOVERY_PEPPER_ID: "pep-B", RECOVERY_PEPPER_OLD_IDS: raw });
