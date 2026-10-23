@@ -50,6 +50,13 @@
       "when": 1761000000000,
       "tag": "0006_kek_retired",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1761100000000,
+      "tag": "0007_dek_revoked_guard",
+      "breakpoints": true
     }
   ]
 }

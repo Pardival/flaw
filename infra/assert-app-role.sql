@@ -183,4 +183,21 @@ WHERE r.rolname = 'flaw_owner'
       FROM aclexplode(d.defaclacl) AS x
       WHERE x.grantee = 0 AND x.privilege_type = 'EXECUTE'
     )
-  );
+  )
+UNION ALL
+SELECT 'declencheur user_keys revoked'
+WHERE NOT EXISTS (
+  SELECT 1
+  FROM pg_trigger t
+  JOIN pg_class c ON c.oid = t.tgrelid
+  JOIN pg_namespace n ON n.oid = c.relnamespace
+  JOIN pg_proc p ON p.oid = t.tgfoid
+  WHERE n.nspname = 'flaw'
+    AND c.relname = 'user_keys'
+    AND NOT t.tgisinternal
+    AND p.proname = 'user_keys_keep_revoked'
+    AND (t.tgtype & 4) <> 0
+    AND (t.tgtype & 8) <> 0
+    AND (t.tgtype & 16) <> 0
+    AND (t.tgtype & 2) <> 0
+);

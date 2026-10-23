@@ -1,6 +1,6 @@
 /**
  * flaw-admin : create-user, reset-password, disable-mfa, revoke-sessions,
- * rotate-kek, check-roles, replay-erasures.
+ * revoke-dek, rotate-kek, check-roles, replay-erasures.
  * Le mot de passe provisoire sort une seule fois sur stdout, jamais dans le journal.
  * replay-erasures est exposée ici ; sa logique et ses alertes relèvent de T-051.
  * Les alertes de check-roles relèvent de T-007.
@@ -12,11 +12,12 @@ import type { Writable } from "node:stream";
 import { checkRoles } from "../admin/check-roles.ts";
 import { openAuth } from "../auth/service.ts";
 import { ARGON_TARGET } from "../auth/password.ts";
-import { insertAudit } from "../auth/store.ts";
+import { findAccount, insertAudit, type Sql } from "../auth/store.ts";
 import { decodeValidatedKey, loadKekFile, sameKeyBytes } from "../crypto/kek.ts";
 import { loadConfig, type LoadResult } from "../config/load.ts";
 import { writeSecurityLog } from "../platform/security-log.ts";
 import { alertAdmin } from "./alert.ts";
+import { revokeDek } from "./revoke-dek.ts";
 import { rotateAllDeks } from "./rotate-kek.ts";
 
 type Io = {
@@ -81,6 +82,22 @@ function rotateSuccessMessage(newId: string): string {
   ].join("\n");
 }
 
+async function auditFailure(sql: Sql, action: string, email: string | null): Promise<void> {
+  let userId: string | null = null;
+  if (email !== null) {
+    const account = await findAccount(sql, email.normalize("NFC").trim().toLowerCase());
+    userId = account?.user_id ?? null;
+  }
+  if (userId === null) {
+    const any = await sql.query<{ id: string }>("SELECT id FROM flaw.users LIMIT 1");
+    userId = any.rows[0]?.id ?? null;
+  }
+  if (userId === null) {
+    return;
+  }
+  await insertAudit(sql, userId, action, "erreur");
+}
+
 function poolFor(loaded: Ready, port: number): Pool {
   return new Pool({
     host: loaded.config.DATABASE_HOST,
@@ -117,10 +134,23 @@ export async function main(options: Partial<Io> = {}): Promise<number> {
       action: "admin.replay_erasures",
     });
     stderr.write("non implémenté (T-051)\n");
+    try {
+      const pool = poolFor(loaded, port);
+      try {
+        await auditFailure(pool, "admin.replay_erasures", null);
+      } finally {
+        await pool.end();
+      }
+    } catch {
+      // L'audit ne masque pas le code de sortie.
+    }
     return 1;
   }
   if (command === "rotate-kek") {
     return runRotate(loaded, port, argv, env, stdout, stderr);
+  }
+  if (command === "revoke-dek") {
+    return runRevokeDek(loaded, port, argv, stdout, stderr);
   }
   if (
     command !== "create-user" &&
@@ -184,6 +214,11 @@ export async function main(options: Partial<Io> = {}): Promise<number> {
         userAgent: null,
         action,
       });
+      try {
+        await auditFailure(pool, action, email);
+      } catch {
+        // L'audit ne masque pas le code de sortie.
+      }
       const message = error instanceof Error ? error.message : "echec";
       stderr.write(`${message}\n`);
       return 1;
@@ -214,6 +249,11 @@ async function runCheckRoles(loaded: Ready, port: number, stdout: Writable, stde
     if (ecarts.length === 0) {
       stdout.write("rôles conformes\n");
       return 0;
+    }
+    try {
+      await auditFailure(client, "admin.check_roles", null);
+    } catch {
+      // L'audit ne masque pas le code de sortie.
     }
     for (const ecart of ecarts) {
       stderr.write(`${ecart}\n`);
@@ -246,7 +286,16 @@ async function runRotate(
   const oldLoaded = loadKekFile(oldFile);
   const newLoaded = loadKekFile(newFile);
   if (!oldLoaded.ok || !newLoaded.ok) {
+    if (oldLoaded.ok) {
+      oldLoaded.kek.fill(0);
+    }
+    if (newLoaded.ok) {
+      newLoaded.kek.fill(0);
+    }
     stderr.write("refus de démarrer : kek\n");
+    if (!newLoaded.ok && newLoaded.message.includes("lisible par tous")) {
+      stderr.write("la nouvelle KEK doit être en mode 0400\n");
+    }
     return 1;
   }
   if (keysConflict(oldLoaded.kek, newLoaded.kek, loaded.secrets.hmacPepper, loaded.secrets.recoveryPepper)) {
@@ -279,12 +328,90 @@ async function runRotate(
       userAgent: null,
       action: "admin.rotate_kek",
     });
+    try {
+      await auditFailure(pool, "admin.rotate_kek", null);
+    } catch {
+      // L'audit ne masque pas le code de sortie.
+    }
     const message = error instanceof Error ? error.message : "echec";
     stderr.write(`${message}\n`);
     return 1;
   } finally {
     oldLoaded.kek.fill(0);
     newLoaded.kek.fill(0);
+    await pool.end();
+  }
+}
+
+async function runRevokeDek(
+  loaded: Ready,
+  port: number,
+  argv: readonly string[],
+  stdout: Writable,
+  stderr: Writable,
+): Promise<number> {
+  const email = flag(argv, "--email");
+  const dekId = flag(argv, "--dek-id");
+  if (email === null || dekId === null) {
+    stderr.write("requête invalide\n");
+    return 1;
+  }
+  const pool = poolFor(loaded, port);
+  try {
+    const account = await findAccount(pool, email.normalize("NFC").trim().toLowerCase());
+    if (account === null) {
+      writeSecurityLog(stderr, {
+        type: "admin_action",
+        result: "echec",
+        ip: null,
+        userAgent: null,
+        action: "admin.revoke_dek",
+      });
+      try {
+        await auditFailure(pool, "admin.revoke_dek", null);
+      } catch {
+        // L'audit ne masque pas le code de sortie.
+      }
+      stderr.write("compte introuvable\n");
+      return 1;
+    }
+    const revoked = await revokeDek(pool, account.user_id, dekId, stderr);
+    if (!revoked) {
+      writeSecurityLog(stderr, {
+        type: "admin_action",
+        result: "echec",
+        ip: null,
+        userAgent: null,
+        action: "admin.revoke_dek",
+      });
+      try {
+        await auditFailure(pool, "admin.revoke_dek", email);
+      } catch {
+        // L'audit ne masque pas le code de sortie.
+      }
+      stderr.write("dek introuvable\n");
+      return 1;
+    }
+    await alertAdmin(loaded.config.ALERT_WEBHOOK_URL, "admin.revoke_dek");
+    stdout.write("dek révoquée\n");
+    return 0;
+  } catch (error) {
+    writeSecurityLog(stderr, {
+      type: "admin_action",
+      result: "echec",
+      ip: null,
+      userAgent: null,
+      action: "admin.revoke_dek",
+    });
+    try {
+      await auditFailure(pool, "admin.revoke_dek", email);
+    } catch {
+      // L'audit ne masque pas le code de sortie.
+    }
+    const message = error instanceof Error ? error.message : "echec";
+    stderr.write(`${message}\n`);
+    return 1;
+  } finally {
     await pool.end();
   }
 }

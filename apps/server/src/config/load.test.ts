@@ -224,4 +224,32 @@ describe("configuration", () => {
       expect(enabled.config.bearerEnabled).toBe(true);
     }
   });
+
+  it("refuse TRUE, 1 et yes pour FLAW_AUTH_BEARER_ENABLED", () => {
+    for (const value of ["TRUE", "1", "yes"]) {
+      const result = loadConfig({ FLAW_AUTH_BEARER_ENABLED: value });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.message).toBe("refus de démarrer : configuration invalide");
+      }
+    }
+  });
+
+  it("n'accepte une alerte que vide ou en https", () => {
+    const http = loadConfig({ ALERT_WEBHOOK_URL: "http://alerts.example/hook" });
+    expect(http.ok).toBe(false);
+    if (!http.ok) {
+      expect(http.message).toBe("refus de démarrer : configuration invalide");
+    }
+    const env = writeSecrets(validSet());
+    const https = loadConfig({
+      ...env,
+      NODE_ENV: "production",
+      LOG_LEVEL: "info",
+      ALERT_WEBHOOK_URL: "https://alerts.example/hook",
+    });
+    expect(https.ok).toBe(true);
+    const empty = loadConfig({ ...env, NODE_ENV: "production", LOG_LEVEL: "info", ALERT_WEBHOOK_URL: "" });
+    expect(empty.ok).toBe(true);
+  });
 });

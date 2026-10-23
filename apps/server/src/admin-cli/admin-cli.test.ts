@@ -6,7 +6,8 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { chmodSync, copyFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:http";
+import { execFileSync } from "node:child_process";
+import { createServer, type Server } from "node:https";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { PassThrough } from "node:stream";
@@ -42,6 +43,7 @@ import { decodeBase32, hotp, recoveryCodeHmac, totpStep } from "../auth/mfa.ts";
 import { ARGON_FLOOR } from "../auth/password.ts";
 import { openAuth } from "../auth/service.ts";
 import {
+  claimTotpStep,
   consumeRecoveryCode,
   deleteVerificationsByValue,
   findActiveUserKey,
@@ -414,11 +416,40 @@ describe("flaw-admin et session restreinte", () => {
     };
   }
 
+  let previousTls: string | undefined;
+
   beforeAll(async () => {
+    previousTls = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
     secrets.kek = validKey();
     secrets.recoveryPepper = validKey();
     secrets.hmacPepper = validKey();
-    webhookServer = createServer((request, response) => {
+    const certDir = mkdtempSync(join(tmpdir(), "flaw-webhook-"));
+    execFileSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "rsa:2048",
+        "-keyout",
+        join(certDir, "key.pem"),
+        "-out",
+        join(certDir, "cert.pem"),
+        "-days",
+        "1",
+        "-nodes",
+        "-subj",
+        "/CN=127.0.0.1",
+      ],
+      { stdio: "ignore" },
+    );
+    webhookServer = createServer(
+      {
+        key: readFileSync(join(certDir, "key.pem")),
+        cert: readFileSync(join(certDir, "cert.pem")),
+      },
+      (request, response) => {
       const chunks: Buffer[] = [];
       request.on("data", (chunk: Buffer) => {
         chunks.push(chunk);
@@ -428,7 +459,8 @@ describe("flaw-admin et session restreinte", () => {
         response.writeHead(204);
         response.end();
       });
-    });
+    },
+    );
     await new Promise<void>((resolve) => {
       webhookServer.listen(0, "127.0.0.1", resolve);
     });
@@ -436,7 +468,7 @@ describe("flaw-admin et session restreinte", () => {
     if (address === null || typeof address === "string") {
       throw new Error("webhook");
     }
-    webhook = `http://127.0.0.1:${address.port}/alerte`;
+    webhook = `https://127.0.0.1:${address.port}/alerte`;
 
     const removed = docker(["rm", "-fv", container]);
     expect([0, 1]).toContain(removed.status);
@@ -548,6 +580,11 @@ describe("flaw-admin et session restreinte", () => {
   }, 180_000);
 
   afterAll(async () => {
+    if (previousTls === undefined) {
+      delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    } else {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousTls;
+    }
     process.stdout.write(`DB_TESTS_EXECUTED[${dbTestsLabel}]=${dbTests}\n`);
     await Promise.all(apps.map((app) => app.close()));
     await pool?.end().catch(() => undefined);
@@ -1068,7 +1105,7 @@ describe("flaw-admin et session restreinte", () => {
     });
     await pool.query("DELETE FROM flaw.auth_factors WHERE owner_id = $1", [ready.userId]);
     await pool.query("DELETE FROM flaw.recovery_codes WHERE user_id = $1", [ready.userId]);
-    await pool.query("DELETE FROM flaw.user_keys WHERE owner_id = $1", [ready.userId]);
+    await pool.query("DELETE FROM flaw.user_keys WHERE owner_id = $1 AND status <> 'revoked'", [ready.userId]);
     expect((await floorAuth().enroll(ready.userId, true)).kind).toBe("forbidden");
     const freshKek = decodeValidatedKey(newMaterial);
     if (freshKek === null) {
@@ -1102,6 +1139,15 @@ describe("flaw-admin et session restreinte", () => {
     const sameBytes = await run(["rotate-kek", "--kek-id", "kek-2026-12", "--new-kek-file", padded]);
     expect(sameBytes.code).toBe(1);
     expect(sameBytes.stderr).toContain("refus de démarrer : kek");
+    expect(existsSync(kekFile)).toBe(true);
+
+    const world = join(secretDir, "rotate-world");
+    writeFileSync(world, `${validKey()}\n`);
+    chmodSync(world, 0o644);
+    const readable = await run(["rotate-kek", "--kek-id", "kek-2026-13", "--new-kek-file", world]);
+    expect(readable.code).toBe(1);
+    expect(readable.stderr).toContain("refus de démarrer : kek");
+    expect(readable.stderr).toContain("0400");
     expect(existsSync(kekFile)).toBe(true);
 
     const created = await floorAuth().createUser(nextEmail(), nextIp());
@@ -1302,18 +1348,12 @@ describe("flaw-admin et session restreinte", () => {
   }, 120_000);
 
   dbTest("le même pas TOTP envoyé en parallèle n'est accepté qu'une fois (Q-015)", async () => {
-    const email = nextEmail();
-    const ready = await readyToEnroll(email);
-    const enrolled = await enroll(ready.app, ready.cookie);
-    expect(enrolled.statusCode).toBe(200);
-    const secret = (enrolled.json() as { secret: string }).secret;
-    const confirmed = await verify(ready.app, ready.cookie, totpAt(secret, now()));
-    expect(confirmed.statusCode).toBe(200);
-    const code = totpAt(secret, now(), 1);
+    const identifier = randomBytes(32).toString("hex");
+    const expires = new Date(now().getTime() + 60_000);
     const results = await Promise.all(
-      Array.from({ length: 8 }, () => sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, totp: code })),
+      Array.from({ length: 8 }, () => claimTotpStep(pool, identifier, 1000, expires)),
     );
-    expect(results.filter((response) => response.statusCode === 200)).toHaveLength(1);
+    expect(results.filter((value) => value === true)).toHaveLength(1);
   });
 
   dbTest("reset-password annule tout si le provisoire est refusé (m6)", async () => {
@@ -1352,5 +1392,99 @@ describe("flaw-admin et session restreinte", () => {
     expect(log).toContain("admin.dek_revoked");
     const audits = await listAuditEvents(pool, ready.userId);
     expect(audits.map((row) => row.event_type)).toContain("admin.dek_revoked");
+  });
+
+  dbTest("create-user n'inscrit rien si le provisoire est refusé (m6)", async () => {
+    const before = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM flaw.users");
+    await expect(floorAuth().createUser(nextEmail(), nextIp(), "court")).rejects.toThrow(/mot de passe refusé/);
+    const after = await pool.query<{ n: number }>("SELECT count(*)::int AS n FROM flaw.users");
+    expect(after.rows[0]?.n).toBe(before.rows[0]?.n);
+  });
+
+  dbTest("revoke-dek révoque la DEK depuis la CLI (m2)", async () => {
+    const email = nextEmail();
+    const created = await floorAuth().createUser(email, nextIp());
+    const dekId = randomUUID();
+    await insertUserKey(pool, {
+      id: dekId,
+      userId: created.userId,
+      wrappedCt: randomBytes(8),
+      wrappedNonce: randomBytes(8),
+      kekId: KEK_ID,
+      encVersion: 1,
+    });
+    const result = await run(["revoke-dek", "--email", email, "--dek-id", dekId]);
+    expect(result.code, result.stderr).toBe(0);
+    expect(result.stdout).toContain("dek révoquée");
+    expect(result.stderr).toContain("admin.revoke_dek");
+    const status = await pool.query<{ status: string }>("SELECT status FROM flaw.user_keys WHERE id = $1", [dekId]);
+    expect(status.rows[0]?.status).toBe("revoked");
+    expect(alerts).toContain("admin.revoke_dek");
+  });
+
+  dbTest("une DEK revoked ne peut pas être supprimée puis réinsérée (m2)", async () => {
+    const created = await floorAuth().createUser(nextEmail(), nextIp());
+    const dekId = randomUUID();
+    await pool.query(
+      `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+       VALUES ($1, $2, $3, $4, $5, 1, 'active')`,
+      [dekId, created.userId, randomBytes(8), randomBytes(8), KEK_ID],
+    );
+    await pool.query("UPDATE flaw.user_keys SET status = 'revoked' WHERE id = $1", [dekId]);
+    await expect(pool.query("DELETE FROM flaw.user_keys WHERE id = $1", [dekId])).rejects.toThrow(/dek revoked/);
+    await expect(
+      pool.query(
+        `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+         VALUES ($1, $2, $3, $4, $5, 1, 'active')`,
+        [dekId, created.userId, randomBytes(8), randomBytes(8), KEK_ID],
+      ),
+    ).rejects.toThrow(/dek revoked/);
+    const row = await pool.query<{ status: string }>("SELECT status FROM flaw.user_keys WHERE id = $1", [dekId]);
+    expect(row.rows[0]?.status).toBe("revoked");
+  });
+
+  dbTest("un échec de commande écrit l'audit (f6)", async () => {
+    const created = await floorAuth().createUser(nextEmail(), nextIp());
+    const failed = await run(["replay-erasures"]);
+    expect(failed.code).toBe(1);
+    expect(failed.stderr).toContain("admin.replay_erasures");
+    const audits = await listAuditEvents(pool, created.userId);
+    expect(audits.some((row) => row.event_type === "admin.replay_erasures" && row.result === "erreur")).toBe(true);
+  });
+
+  dbTest("mfa/verify journalise l'adresse du client (SEC-LOG-08)", async () => {
+    const email = nextEmail();
+    const ready = await readyToEnroll(email);
+    const enrolled = await enroll(ready.app, ready.cookie);
+    expect(enrolled.statusCode).toBe(200);
+    const secret = (enrolled.json() as { secret: string }).secret;
+    let log = "";
+    const stream = new PassThrough();
+    stream.on("data", (chunk: Buffer) => {
+      log += chunk.toString("utf8");
+    });
+    const app = track(buildApp(config(), { ...appOptions(), logStream: stream }));
+    const signed = await sign(app, email, NEW_PASSWORD);
+    expect(signed.statusCode).toBe(200);
+    const mark = log.length;
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/api/auth/mfa/verify",
+      remoteAddress: "172.31.250.10",
+      headers: {
+        "content-type": "application/json",
+        origin: ORIGIN,
+        cookie: cookiePair(setCookie(signed.headers)),
+        "user-agent": CHROME,
+        "x-real-ip": "203.0.113.44",
+      },
+      payload: JSON.stringify({ code: totpAt(secret, now()) }),
+    });
+    expect(confirmed.statusCode).toBe(200);
+    const slice = log.slice(mark);
+    expect(slice).toContain("203.0.113.44");
+    expect(slice).toContain("login_success");
+    expect(slice).toContain("session_created");
+    expect(slice).not.toContain("127.0.0.1");
   });
 });

@@ -99,12 +99,28 @@ type SessionContext = {
   restricted: boolean;
 };
 
-const resolvers = new WeakMap<FastifyInstance, (token: string) => Promise<boolean>>();
+type TokenGate = {
+  cidr: string;
+  limited: (ip: string) => Promise<{ retryAfter: number } | null>;
+  noteInvalid: (ip: string) => Promise<{ retryAfter: number } | null>;
+  resolve: (token: string) => Promise<boolean>;
+  deny: (ip: string, userAgent: string | null) => void;
+};
+
+const gates = new WeakMap<FastifyInstance, TokenGate>();
 const bearerFlags = new WeakMap<FastifyInstance, boolean>();
+
+export type AnonymousDecision =
+  | { kind: "anonymous" }
+  | { kind: "present" }
+  | { kind: "limited"; retryAfter: number };
 
 export function queryTokenPresent(request: FastifyRequest): boolean {
   const query = request.query;
-  return query !== null && typeof query === "object" && Object.prototype.hasOwnProperty.call(query, "token");
+  if (query === null || typeof query !== "object") {
+    return false;
+  }
+  return Object.keys(query).some((key) => key.toLowerCase() === "token");
 }
 
 const sessions = new WeakMap<FastifyRequest, SessionContext>();
@@ -113,21 +129,36 @@ export function sessionOf(request: FastifyRequest): SessionContext | undefined {
   return sessions.get(request);
 }
 
-export async function anonymousRequest(app: FastifyInstance, request: FastifyRequest): Promise<boolean> {
+export async function anonymousRequest(app: FastifyInstance, request: FastifyRequest): Promise<AnonymousDecision> {
   if (queryTokenPresent(request)) {
-    return true;
+    return { kind: "anonymous" };
   }
   const cookie = readCookie(headerValue(request.headers.cookie), SESSION_COOKIE);
   const bearer = bearerFlags.get(app) === true ? readBearer(headerValue(request.headers.authorization)) : undefined;
+  const gate = gates.get(app);
+  if (cookie !== undefined && bearer !== undefined && cookie !== bearer) {
+    if (gate !== undefined) {
+      gate.deny(clientIp(request, gate.cidr), headerValue(request.headers["user-agent"]) ?? null);
+    }
+    return { kind: "anonymous" };
+  }
   const token = cookie ?? bearer;
-  if (token === undefined) {
-    return true;
+  if (token === undefined || gate === undefined) {
+    return { kind: "anonymous" };
   }
-  const resolve = resolvers.get(app);
-  if (resolve === undefined) {
-    return true;
+  const ip = clientIp(request, gate.cidr);
+  const limited = await gate.limited(ip);
+  if (limited !== null) {
+    return { kind: "limited", retryAfter: limited.retryAfter };
   }
-  return !(await resolve(token));
+  if (!(await gate.resolve(token))) {
+    const noted = await gate.noteInvalid(ip);
+    if (noted !== null) {
+      return { kind: "limited", retryAfter: noted.retryAfter };
+    }
+    return { kind: "anonymous" };
+  }
+  return { kind: "present" };
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {
@@ -235,11 +266,25 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
         })
       : null;
 
-  resolvers.set(app, async (token) => {
-    if (auth === null) {
-      return false;
-    }
-    return (await auth.resolve(token)) !== null;
+  gates.set(app, {
+    cidr: config.TRUSTED_PROXY_CIDR,
+    limited: async (ip) => (auth === null ? null : auth.invalidTokenLimited(ip)),
+    noteInvalid: async (ip) => (auth === null ? null : auth.noteInvalidToken(ip)),
+    resolve: async (token) => {
+      if (auth === null) {
+        return false;
+      }
+      return (await auth.resolve(token)) !== null;
+    },
+    deny: (ip, userAgent) => {
+      writeSecurityLog(stream, {
+        type: "authorization_denied",
+        result: "echec",
+        userId: null,
+        ip,
+        userAgent,
+      });
+    },
   });
 
   app.addContentTypeParser(
@@ -272,11 +317,26 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (isPublic) {
       return undefined;
     }
+    if (cookie !== undefined && bearer !== undefined && cookie !== bearer) {
+      writeSecurityLog(stream, {
+        type: "authorization_denied",
+        result: "echec",
+        userId: null,
+        ip: clientIp(request, config.TRUSTED_PROXY_CIDR),
+        userAgent: headerValue(request.headers["user-agent"]) ?? null,
+      });
+      return sendUnauthorized(reply);
+    }
     if (cookie === undefined && bearer === undefined) {
       return sendUnauthorized(reply);
     }
     if (auth === null) {
       return sendProblem(reply, 500);
+    }
+    const ip = clientIp(request, config.TRUSTED_PROXY_CIDR);
+    const ahead = await auth.invalidTokenLimited(ip);
+    if (ahead !== null) {
+      return sendMessage(reply, 429, TOO_MANY, ahead.retryAfter);
     }
     const token = cookie ?? bearer;
     const session = await auth.resolve(token);
@@ -286,6 +346,10 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
         if (blocked !== null) {
           return sendMessage(reply, 429, TOO_MANY, blocked.retryAfter);
         }
+      }
+      const noted = await auth.noteInvalidToken(ip);
+      if (noted !== null) {
+        return sendMessage(reply, 429, TOO_MANY, noted.retryAfter);
       }
       return sendUnauthorized(reply);
     }

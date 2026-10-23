@@ -7,6 +7,7 @@ const ALERTED = new Set([
   "admin.reset_password",
   "admin.disable_mfa",
   "admin.revoke_sessions",
+  "admin.revoke_dek",
   "admin.rotate_kek",
 ]);
 
