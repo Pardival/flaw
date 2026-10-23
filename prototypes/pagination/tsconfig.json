@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "ignoreDeprecations": "6.0",
+    "lib": ["ES2024", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "baseUrl": ".",
+    "paths": {
+      "prosemirror-model": ["./node_modules/prosemirror-model/dist/index.d.ts"],
+      "parse5": ["./node_modules/parse5/dist/index.d.ts"]
+    },
+    "types": []
+  },
+  "include": ["src"]
+}

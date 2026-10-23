@@ -1,0 +1,7 @@
+# Fichier lu quand l'installation n'ignore pas le workspace local.
+# `pnpm install --ignore-workspace` ne le lit pas : les versions sont épinglées
+# à des publications de plus de 7 jours, et aucune n'a de script de build.
+minimumReleaseAge: 10080
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 525600
+blockExoticSubdeps: true
