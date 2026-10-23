@@ -57,18 +57,29 @@ describe("session restreinte et OpenAPI", () => {
     expect(RESTRICTED_TTL_MS).toBe(15 * 60 * 1000);
     const operations = openApiOperations(openapi).map((op) => `${op.method} ${op.path}`).sort();
     expect(operations).toEqual([
-      "DELETE /api/v1/documents/{id}",
+      "DELETE /api/v1/documents/{documentId}",
+      "DELETE /api/v1/me",
       "DELETE /api/v1/me/sessions",
       "DELETE /api/v1/me/sessions/{sessionId}",
       "GET /api/v1/documents",
-      "GET /api/v1/documents/{id}",
+      "GET /api/v1/documents/{documentId}",
+      "GET /api/v1/documents/{documentId}/content",
+      "GET /api/v1/documents/{documentId}/versions",
       "GET /api/v1/healthz",
       "GET /api/v1/me",
+      "GET /api/v1/me/preferences",
       "GET /api/v1/me/sessions",
-      "PATCH /api/v1/documents/{id}",
-      "POST /api/v1/documents/{id}/export",
-      "POST /api/v1/documents/{id}/sync",
-      "PUT /api/v1/documents/{id}",
+      "GET /api/v1/stats/daily",
+      "PATCH /api/v1/documents/{documentId}",
+      "PATCH /api/v1/me/preferences",
+      "POST /api/v1/documents",
+      "POST /api/v1/documents/{documentId}/exports",
+      "POST /api/v1/documents/{documentId}/restore",
+      "POST /api/v1/documents/{documentId}/sync",
+      "POST /api/v1/documents/{documentId}/versions",
+      "POST /api/v1/documents/{documentId}/versions/{versionId}/restore",
+      "POST /api/v1/me/export",
+      "PUT /api/v1/stats/daily/{day}/devices/{deviceId}",
     ]);
     for (const op of openApiOperations(openapi)) {
       const isPublic = op.method === "GET" && op.path === "/api/v1/healthz";

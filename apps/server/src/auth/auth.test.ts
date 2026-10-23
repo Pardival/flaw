@@ -1341,7 +1341,7 @@ describe("authentification sur PostgreSQL", () => {
     const cookie = cookiePair(setCookie(signed.headers));
     const listed = await app.inject({ method: "GET", url: "/api/v1/documents", headers: { cookie } });
     expect(listed.statusCode).toBe(200);
-    expect(listed.json()).toEqual({ documents: [{ id: documentA }] });
+    expect(listed.json()).toMatchObject({ items: [{ id: documentA }], nextCursor: null });
     expect(await documentExists(userA, documentA)).toBe(true);
     const again = await app.inject({ method: "GET", url: "/api/v1/documents", headers: { cookie } });
     expect(again.statusCode).toBe(200);
@@ -1799,7 +1799,20 @@ describe("authentification sur PostgreSQL", () => {
       headers: { cookie: cookiePair(setCookie(signed.headers)), origin: ORIGIN },
     });
     expect(removed.statusCode).toBe(204);
-    expect(await documentExists(userId, documentId)).toBe(false);
+    expect(await documentExists(userId, documentId)).toBe(true);
+    const trashed = await app.inject({
+      method: "GET",
+      url: `/api/v1/documents/${documentId}`,
+      headers: { cookie: cookiePair(setCookie(signed.headers)) },
+    });
+    expect(trashed.statusCode).toBe(200);
+    expect((trashed.json() as { deletedAt: string | null }).deletedAt).not.toBeNull();
+    const live = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents",
+      headers: { cookie: cookiePair(setCookie(signed.headers)) },
+    });
+    expect((live.json() as { items: Array<{ id: string }> }).items.some((item) => item.id === documentId)).toBe(false);
     await app.close();
   });
 

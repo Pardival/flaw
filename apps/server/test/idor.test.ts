@@ -458,8 +458,8 @@ describe("anti-IDOR sur PostgreSQL", () => {
     expect(listA.statusCode).toBe(200);
     expect(listB.statusCode).toBe(200);
     expect(listA.headers["cache-control"]).toBe("no-store");
-    expect(listA.json()).toEqual({ documents: [{ id: first }, { id: second }] });
-    expect(listB.json()).toEqual({ documents: [{ id: own }] });
+    expect(listA.json()).toMatchObject({ items: [{ id: second }, { id: first }], nextCursor: null });
+    expect(listB.json()).toMatchObject({ items: [{ id: own }], nextCursor: null });
     const viaLayer = await listOwnedDocuments(pool, { userId: userB.userId, role: "user" });
     expect(viaLayer).toEqual([own]);
   });
@@ -518,23 +518,39 @@ describe("anti-IDOR sur PostgreSQL", () => {
     const documentA = await insertDocument(userA, userA.dekId, new Date("2026-03-01T00:00:00.000Z"));
     const read = await call("GET", `/api/v1/documents/${documentA}`, userA.cookie);
     expect(read.statusCode).toBe(200);
-    expect(read.json()).toEqual({ id: documentA });
+    expect(read.json()).toMatchObject({ id: documentA, fontFamily: "serif" });
     expect(read.headers["cache-control"]).toBe("no-store");
     const put = await call("PUT", `/api/v1/documents/${documentA}`, userA.cookie, JSON.stringify({ font: "sans" }));
-    expect(put.statusCode).toBe(204);
+    expect(put.statusCode).toBe(404);
     expect(put.headers["cache-control"]).toBe("no-store");
-    expect((await stored(userA, documentA)).row?.font).toBe("sans");
-    const patch = await call("PATCH", `/api/v1/documents/${documentA}`, userA.cookie, JSON.stringify({ font: "mono" }));
-    expect(patch.statusCode).toBe(204);
+    expect((await stored(userA, documentA)).row?.font).toBe("serif");
+    const patch = await call(
+      "PATCH",
+      `/api/v1/documents/${documentA}`,
+      userA.cookie,
+      JSON.stringify({ fontFamily: "mono" }),
+    );
+    expect(patch.statusCode).toBe(200);
     expect((await stored(userA, documentA)).row?.font).toBe("mono");
-    const sync = await call("POST", `/api/v1/documents/${documentA}/sync`, userA.cookie, "{}");
-    expect(sync.statusCode).toBe(204);
+    const sync = await app.inject({
+      method: "POST",
+      url: `/api/v1/documents/${documentA}/sync`,
+      remoteAddress: "172.31.250.10",
+      headers: {
+        cookie: userA.cookie,
+        origin: ORIGIN,
+        "content-type": "application/json",
+        "x-flaw-schema-version": "1",
+      },
+      payload: "{}",
+    });
+    expect(sync.statusCode).toBe(200);
     expect((await stored(userA, documentA)).updates).toBe(0);
     const exported = await call("POST", `/api/v1/documents/${documentA}/export`, userA.cookie, "{}");
-    expect(exported.statusCode).toBe(204);
+    expect(exported.statusCode).toBe(404);
     expect(await exportDocument(pool, userA, documentA)).toBe(ACCESS_GRANTED);
     expect(await syncDocument(pool, userA, documentA)).toBe(ACCESS_GRANTED);
-    const removed = await call("DELETE", `/api/v1/documents/${documentA}`, userA.cookie, "{}");
+    const removed = await call("DELETE", `/api/v1/documents/${documentA}?permanent=true`, userA.cookie, "{}");
     expect(removed.statusCode).toBe(204);
     const gone = await call("GET", `/api/v1/documents/${documentA}`, userA.cookie);
     const missing = await call("GET", `/api/v1/documents/${MISSING}`, userA.cookie);
@@ -561,7 +577,7 @@ describe("anti-IDOR sur PostgreSQL", () => {
     expect(await readDocument(pool, admin, own)).toEqual({ ok: true, id: own });
     expect(await readDocument(pool, admin, documentA)).toBe(ACCESS_DENIED);
     const list = await call("GET", "/api/v1/documents", admin.cookie);
-    expect(list.json()).toEqual({ documents: [{ id: own }] });
+    expect(list.json()).toMatchObject({ items: [{ id: own }], nextCursor: null });
     for (const attack of ATTACKS) {
       const foreign = await call(attack.method, attack.url(documentA), admin.cookie, attack.payload);
       const missing = await call(attack.method, attack.url(MISSING), admin.cookie, attack.payload);
@@ -575,7 +591,7 @@ describe("anti-IDOR sur PostgreSQL", () => {
     const userA = await createAccount("user");
     const userB = await createAccount("user");
     const documentA = await insertDocument(userA, userA.dekId, new Date("2026-05-01T00:00:00.000Z"));
-    const forged = JSON.stringify({ font: "sans", owner_id: userA.userId, id: userB.userId });
+    const forged = JSON.stringify({ fontFamily: "sans", owner_id: userA.userId, id: userB.userId });
     const denied = await call("PATCH", `/api/v1/documents/${documentA}`, userB.cookie, forged);
     expect(denied.statusCode).toBe(404);
     expect(denied.json()).toEqual(problem(404));
@@ -586,13 +602,13 @@ describe("anti-IDOR sur PostgreSQL", () => {
       "PATCH",
       `/api/v1/documents/${documentA}`,
       userA.cookie,
-      JSON.stringify({ font: "sans", owner_id: userB.userId, id: MISSING }),
+      JSON.stringify({ fontFamily: "sans", owner_id: userB.userId, id: MISSING }),
     );
-    expect(accepted.statusCode).toBe(204);
+    expect(accepted.statusCode).toBe(200);
     const after = await stored(userA, documentA);
     expect(after.row?.font).toBe("sans");
     expect(after.row?.owner_id).toBe(userA.userId);
     const still = await call("GET", `/api/v1/documents/${documentA}`, userA.cookie);
-    expect(still.json()).toEqual({ id: documentA });
+    expect(still.json()).toMatchObject({ id: documentA, fontFamily: "sans" });
   });
 });

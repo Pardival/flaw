@@ -296,9 +296,10 @@ describe("T-052 contrat", () => {
     expect(contract.components.securitySchemes.sessionCookie.name).toBe("__Secure-flaw.session_token");
     const alternatives = [{ sessionCookie: [] }, { bearerAuth: [] }];
     const paths = document.paths as Record<string, Record<string, { security?: unknown }>>;
-    expect(paths["/api/v1/me"]?.get?.security).toEqual(alternatives);
-    expect(paths["/api/v1/documents"]?.get?.security).toEqual(alternatives);
-    expect(paths["/api/v1/documents/{id}"]?.delete?.security).toEqual(alternatives);
+    const inherited = (document as { security?: unknown }).security;
+    expect(paths["/api/v1/me"]?.get?.security ?? inherited).toEqual(alternatives);
+    expect(paths["/api/v1/documents"]?.get?.security ?? inherited).toEqual(alternatives);
+    expect(paths["/api/v1/documents/{documentId}"]?.delete?.security ?? inherited).toEqual(alternatives);
     expect(paths["/api/v1/healthz"]?.get?.security).toEqual([]);
   });
 
