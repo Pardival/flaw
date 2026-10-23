@@ -1,0 +1,37 @@
+/**
+ * Catalogue français des écrans D-001, D-002, D-004 et D-042.
+ * T-055 migrera ces clés vers i18next. Aucun composant ne duplique ces phrases.
+ */
+
+export const messages = {
+  loading: "Chargement…",
+  pending: "Envoi…",
+  connexionTitle: "Connexion",
+  emailLabel: "E-mail",
+  passwordLabel: "Mot de passe",
+  passwordHint: (min: number) => `${min} caractères minimum`,
+  rememberLabel: "Rester connecté",
+  rememberHint: "Session fermée après 30 jours d'inactivité, 90 jours au maximum.",
+  submitSignIn: "Connexion",
+  forgotAction: "Mot de passe oublié ?",
+  credentialError: "Identifiant ou mot de passe incorrect.",
+  forgotTitle: "Mot de passe oublié ?",
+  forgotBody:
+    "Aucun e-mail n'est envoyé. L'administrateur fournit un mot de passe provisoire (commande serveur).",
+  backToSignIn: "Retour à la connexion",
+  newPasswordTitle: "Nouveau mot de passe",
+  newPasswordIntro: "Le mot de passe provisoire doit être remplacé.",
+  currentPasswordLabel: "Mot de passe provisoire",
+  newPasswordLabel: "Nouveau mot de passe",
+  passwordCounter: (count: number, min: number) => `${count} caractères sur ${min} minimum`,
+  submitChange: "Enregistrer le mot de passe",
+  passwordRejected: "Mot de passe refusé.",
+  currentPasswordWrong: "Mot de passe provisoire incorrect.",
+  reconnectTitle: "Reconnexion nécessaire",
+  reconnectBody: "La session a expiré. Vous pouvez continuer d'écrire.",
+  reconnectAction: "Se reconnecter",
+  tooMany: "Trop de tentatives.",
+  invalidRequest: "Requête invalide.",
+  network: "Connexion au serveur impossible.",
+  mfaRequired: "Code d'authentification requis.",
+};
