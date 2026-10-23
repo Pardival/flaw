@@ -349,6 +349,26 @@ describe("politique et fichiers (hors base)", () => {
     await app.close();
   });
 
+  it("n'expose pas de route WebSocket (f7, SEC-AUTH-06)", () => {
+    const serverRoot = join(root, "apps/server/src");
+    const files: string[] = [];
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+          files.push(path);
+        }
+      }
+    };
+    walk(serverRoot);
+    const source = files.map((path) => readFileSync(path, "utf8")).join("\n");
+    expect(source).not.toMatch(/@fastify\/websocket|new WebSocket|websocket\(/);
+  });
+
   it("refuse Token et TOKEN, y compris sur la santé et une route inconnue", async () => {
     const app = buildApp(config());
     for (const url of [

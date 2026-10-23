@@ -292,8 +292,11 @@ async function runRotate(
       newLoaded.kek.fill(0);
     }
     stderr.write("refus de démarrer : kek\n");
-    if (!newLoaded.ok && newLoaded.message.includes("lisible par tous")) {
-      stderr.write("la nouvelle KEK doit être en mode 0400\n");
+    if (!newLoaded.ok) {
+      stderr.write("fichier de nouvelle KEK mal préparé\n");
+      if (newLoaded.message.includes("lisible par tous")) {
+        stderr.write("la nouvelle KEK doit être en mode 0400\n");
+      }
     }
     return 1;
   }

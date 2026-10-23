@@ -2,7 +2,7 @@
  * TOTP RFC 6238 (HMAC-SHA-1, 6 chiffres, pas de 30 s, fenêtre ±1).
  * Périmètre T-008 (Q-015) : ce module et ses routes restent ici.
  * A-012 (ARC-SUM 0.4.18) : le rejeu d'un même pas est refusé.
- * Codes de secours 80 bits, base32, HMAC-SHA-256 (AC-063 à AC-066).
+ * Codes de secours 80 bits, alphabet base32 RFC 4648 (pas Crockford), HMAC-SHA-256 (AC-063 à AC-066).
  * Le secret TOTP est chiffré sous la DEK. Le code de secours n'est jamais stocké :
  * seul son HMAC l'est. rotate-kek ne touche pas ces HMAC.
  */
@@ -103,7 +103,7 @@ export function decodeBase32(text: string): Uint8Array | null {
   return Uint8Array.from(out);
 }
 
-/** 16 caractères base32 (80 bits), groupés XXXX-XXXX-XXXX-XXXX. */
+/** 16 caractères base32 RFC 4648 (A–Z et 2–7, pas Crockford), 80 bits, groupés XXXX-XXXX-XXXX-XXXX. */
 export function recoveryCode(): string {
   let raw = "";
   for (let index = 0; index < 16; index += 1) {

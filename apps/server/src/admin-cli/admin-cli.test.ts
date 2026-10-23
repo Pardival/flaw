@@ -1147,7 +1147,8 @@ describe("flaw-admin et session restreinte", () => {
     const readable = await run(["rotate-kek", "--kek-id", "kek-2026-13", "--new-kek-file", world]);
     expect(readable.code).toBe(1);
     expect(readable.stderr).toContain("refus de démarrer : kek");
-    expect(readable.stderr).toContain("0400");
+    expect(readable.stderr).toContain("fichier de nouvelle KEK mal préparé");
+    expect(readable.stderr).toContain("la nouvelle KEK doit être en mode 0400");
     expect(existsSync(kekFile)).toBe(true);
 
     const created = await floorAuth().createUser(nextEmail(), nextIp());
@@ -1347,13 +1348,15 @@ describe("flaw-admin et session restreinte", () => {
     expect(signed.json()).toEqual(problem(429, TOO_MANY));
   }, 120_000);
 
-  dbTest("le même pas TOTP envoyé en parallèle n'est accepté qu'une fois (Q-015)", async () => {
-    const identifier = randomBytes(32).toString("hex");
+  dbTest("le même pas TOTP rejoué 5 fois par 8 en parallèle n'est accepté qu'une fois (AC-064)", async () => {
     const expires = new Date(now().getTime() + 60_000);
-    const results = await Promise.all(
-      Array.from({ length: 8 }, () => claimTotpStep(pool, identifier, 1000, expires)),
-    );
-    expect(results.filter((value) => value === true)).toHaveLength(1);
+    for (let trial = 0; trial < 5; trial += 1) {
+      const identifier = randomBytes(32).toString("hex");
+      const results = await Promise.all(
+        Array.from({ length: 8 }, () => claimTotpStep(pool, identifier, 1000, expires)),
+      );
+      expect(results.filter((value) => value === true)).toHaveLength(1);
+    }
   });
 
   dbTest("reset-password annule tout si le provisoire est refusé (m6)", async () => {
