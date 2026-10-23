@@ -42,10 +42,13 @@ describe("polices auto-hébergées", () => {
     expect(packageJson).not.toMatch(/"i18next"\s*:\s*"[\^~]/);
     expect(packageJson).not.toMatch(/"react-i18next"\s*:\s*"[\^~]/);
     expect(JSON.parse(packageJson).dependencies).toEqual({
+      dexie: "4.4.6",
       i18next: "26.4.7",
       react: "19.3.1",
       "react-dom": "19.3.1",
       "react-i18next": "17.0.20",
+      "y-indexeddb": "9.0.12",
+      yjs: "13.6.33",
     });
 
     const files = [...walk(webRoot), ...walk(fontRoot)].filter((path) => !path.endsWith(`${join("theme", "fonts.ts")}`));
