@@ -2,9 +2,13 @@
   "name": "@flaw/schema",
   "private": true,
   "version": "0.0.0",
-  "description": "Placeholder schémas partagés (A-019).",
+  "description": "Schéma ProseMirror unique des quatre modes (A-018, T-015).",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "parse5": "8.0.1",
+    "prosemirror-model": "1.25.12"
   }
 }
