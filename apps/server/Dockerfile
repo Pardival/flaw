@@ -28,6 +28,7 @@ COPY --from=build /out/ /app/
 COPY --from=build /src/apps/server/package.json /app/apps/server/package.json
 COPY --from=build /src/apps/server/src /app/apps/server/src
 COPY --from=build /src/apps/server/drizzle /app/apps/server/drizzle
+COPY --from=build /src/apps/server/openapi /app/apps/server/openapi
 # Le schéma est du TypeScript. Node refuse de le charger sous node_modules.
 COPY --from=build /src/packages/schema/package.json /app/packages/schema/package.json
 COPY --from=build /src/packages/schema/src /app/packages/schema/src
@@ -44,7 +45,7 @@ RUN dep_nm="$(dirname "$(dirname "$(readlink -f /app/node_modules/@flaw/schema)"
   && chmod 444 /app/infra/droits-flaw.sql /app/infra/assert-app-role.sql \
   && chmod -R a-w /app \
   && chmod -R a+rX /app \
-  && node --input-type=module -e "import('pg').then(() => import('@flaw/schema/src/index.ts')).then((schema) => { if (typeof schema.documentFromJson !== 'function') process.exit(1); }).then(() => import('drizzle-orm')).then(() => import('@flaw/crypto')).then(async (crypto) => { if (typeof crypto.wrapDek !== 'function') process.exit(1); const { createRequire } = await import('node:module'); const argon2 = createRequire(import.meta.url)('@node-rs/argon2'); const material = 'construction-argon2id'; const hashed = await argon2.hash(material, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 }); if (!hashed.startsWith('\$argon2id\$') || !(await argon2.verify(hashed, material)) || (await argon2.verify(hashed, 'autre-mot'))) process.exit(1); }).catch((error) => { console.error(error); process.exit(1); })"
+  && node --input-type=module -e "import('pg').then(() => import('@flaw/schema/src/index.ts')).then((schema) => { if (typeof schema.documentFromJson !== 'function') process.exit(1); }).then(() => import('./apps/server/src/platform/openapi.ts')).then((openapi) => { const doc = openapi.buildOpenApiDocument(); if (doc.paths['/api/v1/healthz'] === undefined) process.exit(1); }).then(() => import('drizzle-orm')).then(() => import('@flaw/crypto')).then(async (crypto) => { if (typeof crypto.wrapDek !== 'function') process.exit(1); const { createRequire } = await import('node:module'); const argon2 = createRequire(import.meta.url)('@node-rs/argon2'); const material = 'construction-argon2id'; const hashed = await argon2.hash(material, { algorithm: 2, memoryCost: 19456, timeCost: 2, parallelism: 1 }); if (!hashed.startsWith('\$argon2id\$') || !(await argon2.verify(hashed, material)) || (await argon2.verify(hashed, 'autre-mot'))) process.exit(1); }).catch((error) => { console.error(error); process.exit(1); })"
 
 USER 10001:10001
 ENV NODE_ENV=production
