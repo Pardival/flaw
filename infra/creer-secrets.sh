@@ -10,6 +10,7 @@
 #   better_auth_secret  app (10001)                    10001:10001   400
 #   flaw_kek            app (10001)                    10001:10001   400
 #   recovery_pepper     app (10001)                    10001:10001   400
+#   recovery_pepper_<id> app (10001) — un fichier par id de RECOVERY_PEPPER_OLD_IDS
 #   hmac_pepper         app (10001)                    10001:10001   400
 #
 # Usage (depuis infra/) :
@@ -31,6 +32,78 @@ better_auth_secret 10001:10001 400 b64_48
 flaw_kek 10001:10001 400 kek
 recovery_pepper 10001:10001 400 kek
 hmac_pepper 10001:10001 400 kek'
+
+read_dotenv() {
+  key=$1
+  file=$2
+  value=
+  [ -f "$file" ] || return 0
+  prefix="${key}="
+  export_prefix="export ${key}="
+  while IFS= read -r line || [ -n "$line" ]; do
+    case $line in
+      "$export_prefix"*) value=${line#"$export_prefix"} ;;
+      "$prefix"*) value=${line#"$prefix"} ;;
+    esac
+  done < "$file"
+  case $value in
+    \"*\") value=${value#\"}; value=${value%\"} ;;
+  esac
+  cr=$(printf '\r')
+  case $value in
+    *"$cr") value=${value%"$cr"} ;;
+  esac
+  printf '%s' "$value"
+}
+
+reject_pepper_id() {
+  echo "identifiant de poivre refusé" >&2
+  exit 1
+}
+
+if [ -z "${RECOVERY_PEPPER_OLD_IDS+x}" ]; then
+  RECOVERY_PEPPER_OLD_IDS=$(read_dotenv RECOVERY_PEPPER_OLD_IDS "$_here/.env")
+fi
+if [ -z "${RECOVERY_PEPPER_ID+x}" ]; then
+  RECOVERY_PEPPER_ID=$(read_dotenv RECOVERY_PEPPER_ID "$_here/.env")
+fi
+if [ -z "$RECOVERY_PEPPER_ID" ]; then
+  RECOVERY_PEPPER_ID=pep-2026-10
+fi
+
+seen=" "
+rest=$RECOVERY_PEPPER_OLD_IDS
+while [ -n "$rest" ]; do
+  id=${rest%%,*}
+  if [ "$id" = "$rest" ]; then
+    rest=
+  else
+    rest=${rest#*,}
+  fi
+  while :; do
+    case $id in
+      " "*) id=${id# } ;;
+      *" ") id=${id% } ;;
+      *) break ;;
+    esac
+  done
+  [ -n "$id" ] || reject_pepper_id
+  [ "${#id}" -le 64 ] || reject_pepper_id
+  case $id in
+    *[!A-Za-z0-9._-]*) reject_pepper_id ;;
+  esac
+  case $id in
+    [A-Za-z0-9]*) ;;
+    *) reject_pepper_id ;;
+  esac
+  [ "$id" = "$RECOVERY_PEPPER_ID" ] && reject_pepper_id
+  case $seen in
+    *" $id "*) reject_pepper_id ;;
+  esac
+  seen="$seen$id "
+  SPEC="$SPEC
+recovery_pepper_${id} 10001:10001 400 kek"
+done
 
 gen() {
   kind=$1
@@ -102,4 +175,13 @@ printf 'Empreinte recovery_pepper : %s\n' "$(base64 -d "$D/recovery_pepper" | sh
 printf 'Taille recovery_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/recovery_pepper" | wc -c | tr -d ' ')"
 printf 'Empreinte hmac_pepper : %s\n' "$(base64 -d "$D/hmac_pepper" | sha256sum | cut -c1-16)"
 printf 'Taille hmac_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/hmac_pepper" | wc -c | tr -d ' ')"
-echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper, hmac_pepper (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID, HMAC_PEPPER_ID)."
+echo "$SPEC" | while read -r n own mode g; do
+  case $n in
+    recovery_pepper_*)
+      printf 'Empreinte %s : %s\n' "$n" "$(base64 -d "$D/$n" | sha256sum | cut -c1-16)"
+      printf 'Taille %s décodée : %s octets (attendu 32)\n' "$n" "$(base64 -d "$D/$n" | wc -c | tr -d ' ')"
+      ;;
+  esac
+done
+echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper, hmac_pepper, chaque recovery_pepper_<id> (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID, RECOVERY_PEPPER_OLD_IDS, HMAC_PEPPER_ID)."
+echo "Conserver hors du serveur, avec la KEK et le mot de passe restic : gestionnaire de mots de passe et copie hors ligne."

@@ -23,6 +23,27 @@ const httpsUrl = z.string().refine((value) => {
   }
 });
 
+const PEPPER_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+export type OldPepperIds = { ok: true; ids: readonly string[] } | { ok: false };
+
+/** Ids uniques, différents de l'id courant, sûrs comme nom de fichier. */
+export function parseRecoveryPepperOldIds(currentId: string, raw: string | undefined): OldPepperIds {
+  const source = raw ?? "";
+  if (source.trim() === "") {
+    return { ok: true, ids: [] };
+  }
+  const ids: string[] = [];
+  for (const part of source.split(",")) {
+    const id = part.trim();
+    if (!PEPPER_ID.test(id) || id === currentId || ids.includes(id)) {
+      return { ok: false };
+    }
+    ids.push(id);
+  }
+  return { ok: true, ids };
+}
+
 export const publicEnvSchema = z
   .object({
     NODE_ENV: z.enum(["production", "development", "test"]).default("production"),
@@ -58,6 +79,13 @@ export const publicEnvSchema = z
         code: "custom",
         path: ["MAX_WS_MESSAGE_MB"],
         message: "plafond",
+      });
+    }
+    if (!parseRecoveryPepperOldIds(data.RECOVERY_PEPPER_ID, data.RECOVERY_PEPPER_OLD_IDS).ok) {
+      context.addIssue({
+        code: "custom",
+        path: ["RECOVERY_PEPPER_OLD_IDS"],
+        message: "poivre",
       });
     }
   });

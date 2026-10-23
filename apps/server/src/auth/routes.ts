@@ -5,6 +5,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 
+import { parseRecoveryPepperOldIds } from "../config/env.ts";
 import type { AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { resolvedClientIp } from "../platform/healthz.ts";
@@ -213,6 +214,29 @@ function credentialsFrom(body: unknown): unknown {
   };
 }
 
+function recoveryPepperMap(secrets: LoadedSecrets, config: AppConfig): Map<string, Uint8Array> {
+  const peppers = new Map<string, Uint8Array>();
+  const current = decodeValidatedKey(secrets.recoveryPepper);
+  if (current !== null) {
+    peppers.set(config.RECOVERY_PEPPER_ID, current);
+  }
+  const parsed = parseRecoveryPepperOldIds(config.RECOVERY_PEPPER_ID, config.RECOVERY_PEPPER_OLD_IDS);
+  if (!parsed.ok) {
+    return peppers;
+  }
+  for (const id of parsed.ids) {
+    const encoded = secrets.recoveryPepperOld?.[id];
+    if (encoded === undefined) {
+      continue;
+    }
+    const decoded = decodeValidatedKey(encoded);
+    if (decoded !== null) {
+      peppers.set(id, decoded);
+    }
+  }
+  return peppers;
+}
+
 function normalizeIdentifier(raw: string): string | null {
   const value = raw.normalize("NFC").trim().toLowerCase();
   if (value.length === 0 || value.length > 320) {
@@ -241,6 +265,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
           kekId: config.FLAW_KEK_ID,
           recoveryPepper: decodeValidatedKey(runtime.secrets.recoveryPepper) ?? undefined,
           recoveryPepperId: config.RECOVERY_PEPPER_ID,
+          recoveryPeppers: recoveryPepperMap(runtime.secrets, config),
         })
       : null;
 

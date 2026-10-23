@@ -1,14 +1,14 @@
 import { randomBytes } from "node:crypto";
 import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { loadConfig, secretsAreLoaded } from "./load.ts";
 import { loadSecrets } from "./secrets.ts";
-import { readSecretFile, validateKeyMaterial } from "../platform/healthz.ts";
+import { readSecretFile, validateKeyMaterial, validateSecret } from "../platform/healthz.ts";
 
 const HEX = "0123456789abcdef0123456789abcdef";
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
@@ -22,6 +22,16 @@ function validKey(): string {
     }
   }
   throw new Error("aucune clé de test");
+}
+
+function keyOfDecodedLength(bytes: number): string {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const encoded = randomBytes(bytes).toString("base64");
+    if (validateSecret(encoded) === null && validateKeyMaterial(encoded) === "kek") {
+      return encoded;
+    }
+  }
+  throw new Error("aucune clé de longueur refusée");
 }
 
 function writeSecrets(values: {
@@ -170,6 +180,119 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
     if (!result.ok) {
       expect(result.message).toBe("refus de démarrer : poivre");
       expect(result.message).not.toContain(pepper);
+    }
+  });
+
+  it("charge chaque ancien poivre par readSecretFile kind key et refuse les écarts", () => {
+    const source = readFileSync(fileURLToPath(new URL("./secrets.ts", import.meta.url)), "utf8");
+    expect(source).toContain('readSecretFile(join(directory, `recovery_pepper_${id}`), "key")');
+    expect(source).toContain("peppersMatchKek(kek, hmacPepper, result.value)");
+    const values = validSet();
+    const env = writeSecrets(values);
+    const directory = dirname(env.RECOVERY_PEPPER_FILE ?? "");
+    const pepperA = `${validKey()}\n`;
+    const pepperC = validKey();
+    writeFileSync(join(directory, "recovery_pepper_pep-A"), pepperA);
+    writeFileSync(join(directory, "recovery_pepper_pep-C"), pepperC);
+    chmodSync(join(directory, "recovery_pepper_pep-A"), 0o600);
+    chmodSync(join(directory, "recovery_pepper_pep-C"), 0o600);
+    const loaded = loadSecrets({
+      ...env,
+      RECOVERY_PEPPER_ID: "pep-B",
+      RECOVERY_PEPPER_OLD_IDS: "pep-A, pep-C",
+    });
+    expect(loaded.ok).toBe(true);
+    if (loaded.ok) {
+      expect(loaded.secrets.recoveryPepperOld["pep-A"]).toBe(pepperA.trim());
+      expect(loaded.secrets.recoveryPepperOld["pep-C"]).toBe(pepperC);
+    }
+
+    const missing = loadConfig({
+      ...env,
+      RECOVERY_PEPPER_ID: "pep-B",
+      RECOVERY_PEPPER_OLD_IDS: "pep-absent",
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) {
+      expect(missing.message).toMatch(/secret absent/);
+      expect(missing.message).not.toContain("pep-absent");
+    }
+    const healthz = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("../platform/healthz.ts", import.meta.url))],
+      {
+        env: {
+          PATH: process.env.PATH ?? "",
+          ...env,
+          PORT: "0",
+          RECOVERY_PEPPER_ID: "pep-B",
+          RECOVERY_PEPPER_OLD_IDS: "pep-absent",
+        },
+        encoding: "utf8",
+        timeout: 8_000,
+      },
+    );
+    expect(healthz.status).toBe(1);
+    expect(healthz.stderr).toMatch(/secret absent/);
+
+    for (const bytes of [31, 33]) {
+      const bad = keyOfDecodedLength(bytes);
+      const badEnv = writeSecrets(validSet());
+      const badDir = dirname(badEnv.RECOVERY_PEPPER_FILE ?? "");
+      writeFileSync(join(badDir, "recovery_pepper_pep-A"), bad);
+      chmodSync(join(badDir, "recovery_pepper_pep-A"), 0o600);
+      const refused = loadSecrets({
+        ...badEnv,
+        RECOVERY_PEPPER_ID: "pep-B",
+        RECOVERY_PEPPER_OLD_IDS: "pep-A",
+      });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) {
+        expect(refused.message).toMatch(/refus de démarrer : kek/);
+        expect(refused.message).not.toContain(bad);
+      }
+    }
+
+    for (const same of ["kek", "hmacPepper"] as const) {
+      const set = validSet();
+      const sameEnv = writeSecrets(set);
+      const sameDir = dirname(sameEnv.RECOVERY_PEPPER_FILE ?? "");
+      writeFileSync(join(sameDir, "recovery_pepper_pep-A"), set[same]);
+      chmodSync(join(sameDir, "recovery_pepper_pep-A"), 0o600);
+      const refused = loadSecrets({
+        ...sameEnv,
+        RECOVERY_PEPPER_ID: "pep-B",
+        RECOVERY_PEPPER_OLD_IDS: "pep-A",
+      });
+      expect(refused.ok).toBe(false);
+      if (!refused.ok) {
+        expect(refused.message).toBe("refus de démarrer : poivre");
+        expect(refused.message).not.toContain(set[same]);
+      }
+    }
+
+    const readableEnv = writeSecrets(validSet());
+    const readableDir = dirname(readableEnv.RECOVERY_PEPPER_FILE ?? "");
+    writeFileSync(join(readableDir, "recovery_pepper_pep-A"), validKey());
+    chmodSync(join(readableDir, "recovery_pepper_pep-A"), 0o644);
+    const readable = loadSecrets({
+      ...readableEnv,
+      RECOVERY_PEPPER_ID: "pep-B",
+      RECOVERY_PEPPER_OLD_IDS: "pep-A",
+    });
+    expect(readable.ok).toBe(false);
+    if (!readable.ok) {
+      expect(readable.message).toMatch(/lisible par tous/);
+    }
+  });
+
+  it("refuse des ids anciens en double, vides ou égaux au poivre courant", () => {
+    for (const raw of ["pep-B", "pep-A,pep-A", "pep-A, pep-A", "../pep", "pep-A,", ",pep-A"]) {
+      const result = loadConfig({ RECOVERY_PEPPER_ID: "pep-B", RECOVERY_PEPPER_OLD_IDS: raw });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.message).toBe("refus de démarrer : configuration invalide");
+      }
     }
   });
 

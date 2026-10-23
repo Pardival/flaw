@@ -56,7 +56,7 @@ jobs:
 
       # A-015 — openapi.json est généré depuis Zod et commité.
       # Référence : contrat architecte dérivé (api-contract-full). GET /me seulement :
-      # le reste du fichier décrit des routes non livrées. 403 mfa_required = T-009.
+      # le reste du fichier décrit des routes non livrées. 403 mfa_required est déclaré.
       # Aucun fichier d'exceptions.
       - name: oasdiff
         run: |
