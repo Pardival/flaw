@@ -1,6 +1,10 @@
 # Dépendances et builds
 node_modules/
 dist/
+# Le paquet local caniuse-lite (MIT) vit sous ce nom : browserslist importe
+# caniuse-lite/dist/unpacker/*. Ce n'est pas un artefact de build.
+!apps/web/vendor/caniuse-lite/dist/
+!apps/web/vendor/caniuse-lite/dist/**
 *.tsbuildinfo
 
 # Secrets (SEC-SECRET-01, SEC-SECRET-05)

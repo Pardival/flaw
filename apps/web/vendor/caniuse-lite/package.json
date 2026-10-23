@@ -1,0 +1,8 @@
+{
+  "name": "caniuse-lite",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Listes de versions de navigateurs pour le build Workbox. N'inclut pas la base caniuse.",
+  "main": "dist/unpacker/agents.js"
+}

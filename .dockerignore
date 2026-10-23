@@ -5,6 +5,9 @@
 **/.github
 **/node_modules
 **/dist
+# Même exception que .gitignore : données du paquet local, pas un build.
+!apps/web/vendor/caniuse-lite/dist
+!apps/web/vendor/caniuse-lite/dist/**
 **/*.tsbuildinfo
 .env
 .env.*
