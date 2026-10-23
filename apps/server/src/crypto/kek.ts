@@ -26,6 +26,14 @@ export function decodeValidatedKey(encoded: string): Uint8Array | null {
   }
 }
 
+/** Compare les octets déjà décodés, sans les effacer. */
+export function sameKeyBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return timingSafeEqual(left, right);
+}
+
 function sameKey(left: Uint8Array | null, right: Uint8Array | null): boolean {
   try {
     if (left === null || right === null || left.length !== right.length) {

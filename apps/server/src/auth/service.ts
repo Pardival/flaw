@@ -16,8 +16,8 @@ import {
 } from "@flaw/crypto";
 
 import type { SecurityEvent } from "../platform/security-log.ts";
-import { deviceLabel, summarizeDevice, type DeviceSummary } from "./device.ts";
-import { hashSessionToken, newSessionToken } from "./cookie.ts";
+import { deviceLabel, summarizeDevice } from "./device.ts";
+import { hashDeviceToken, hashSessionToken, newDeviceToken, newSessionToken } from "./cookie.ts";
 import { bucketHmac, hmacKey, ipHmac, subjectHmac, tempHmac } from "./hmac.ts";
 import { encodeBase32, matchTotp, recoveryCode, recoveryCodeHmac } from "./mfa.ts";
 import { RESTRICTED_TTL_MS } from "./restricted-session.ts";
@@ -62,23 +62,25 @@ import {
   insertTotpFactor,
   insertUserKey,
   invalidateRecoveryCodes,
-  liftRestriction,
-  purgeRateLimits,
-  recentRate,
-  rotateSession,
-  insertUser,
-  insertVerification,
+  kekMayEncrypt,
   listDevices,
   listDocuments,
   maxLockStage,
+  purgeRateLimits,
+  recentRate,
   revokeAllSessions,
   revokeOtherSessions,
   revokeSession,
+  rotateSession,
   setPassword,
   touchSession,
+  insertUser,
+  insertVerification,
+  claimTotpStep,
   upsertVerification,
   consumeRecoveryCode,
   type SessionRow,
+  type Sql,
   type TotpFactorRow,
 } from "./store.ts";
 
@@ -102,6 +104,7 @@ export type AuthDeps = {
   kekId?: string;
   recoveryPepper?: Uint8Array;
   recoveryPepperId?: string;
+  oldRecoveryPeppers?: readonly { id: string; pepper: Uint8Array }[];
 };
 
 export type SignInResult =
@@ -113,6 +116,7 @@ export type SignInResult =
       identifier: string;
       sessionId: string;
       restricted: boolean;
+      deviceToken?: string;
     }
   | { kind: "invalid" }
   | { kind: "mfa" }
@@ -126,6 +130,7 @@ type AttemptContext = {
   remember: boolean;
   totp?: string;
   recoveryCode?: string;
+  deviceToken?: string;
 };
 
 function sliceStart(now: Date): Date {
@@ -243,7 +248,25 @@ export function openAuth(deps: AuthDeps) {
       return issueSession(account.user_id, input, now, true);
     }
     const factor = await findTotpFactor(deps.pool, account.user_id);
-    if (factor !== null && !(await deviceIsTrusted(account.user_id, device, now))) {
+    const confirmed = factor !== null && (await totpIsConfirmed(account.user_id, now));
+    const presentsFactor = input.totp !== undefined || input.recoveryCode !== undefined;
+    if (!presentsFactor && (factor === null || !confirmed)) {
+      const pending = await findVerificationRow(deps.pool, enrollPendingId(account.user_id));
+      if (pending !== null && now.getTime() >= pending.expires_at.getTime()) {
+        return { kind: "invalid" };
+      }
+      if (pending !== null || factor !== null) {
+        await clearFailures(input.identifier);
+        return issueSession(account.user_id, input, now, true);
+      }
+      await clearFailures(input.identifier);
+      return issueSession(account.user_id, input, now, false);
+    }
+    if (factor === null) {
+      return { kind: "invalid" };
+    }
+    const trusted = confirmed && (await deviceIsTrusted(account.user_id, input.deviceToken, now));
+    if (!trusted) {
       if (input.totp !== undefined && input.recoveryCode !== undefined) {
         return { kind: "invalid" };
       }
@@ -293,10 +316,11 @@ export function openAuth(deps: AuthDeps) {
         });
         return { kind: "invalid" };
       }
-      await rememberStep(account.user_id, step, now);
-      await trustDevice(account.user_id, device, now);
+      await confirmTotp(deps.pool, account.user_id, now);
+      const deviceToken = await trustDevice(account.user_id, now);
       await clearFailures(input.identifier);
-      return issueSession(account.user_id, input, now, false);
+      const session = await issueSession(account.user_id, input, now, false);
+      return { ...session, deviceToken };
     }
     await clearFailures(input.identifier);
     return issueSession(account.user_id, input, now, false);
@@ -419,8 +443,40 @@ export function openAuth(deps: AuthDeps) {
     ]);
   }
 
-  function deviceId(userId: string, device: DeviceSummary): string {
-    return bucketHmac(key, `device|${userId}|${device.browser}|${device.os}`);
+  function enrollPendingId(userId: string): string {
+    return bucketHmac(key, `enroll-pending|${userId}`);
+  }
+
+  function totpConfirmedId(userId: string): string {
+    return bucketHmac(key, `totp-confirmed|${userId}`);
+  }
+
+  async function totpIsConfirmed(userId: string, now: Date): Promise<boolean> {
+    const row = await findVerificationRow(deps.pool, totpConfirmedId(userId));
+    return row !== null && now.getTime() < row.expires_at.getTime();
+  }
+
+  async function markEnrollmentDue(sql: Sql, userId: string, at: Date): Promise<void> {
+    await upsertVerification(sql, enrollPendingId(userId), "1", new Date(at.getTime() + TEMP_TTL_MS));
+  }
+
+  async function confirmTotp(sql: Sql, userId: string, at: Date): Promise<void> {
+    await upsertVerification(sql, totpConfirmedId(userId), "1", new Date(at.getTime() + 10 * 365 * DAY_MS));
+    await deleteVerification(sql, enrollPendingId(userId));
+  }
+
+  async function deviceIsTrusted(userId: string, token: string | undefined, now: Date): Promise<boolean> {
+    if (token === undefined) {
+      return false;
+    }
+    const row = await findVerificationRow(deps.pool, hashDeviceToken(token));
+    return row !== null && row.value_hash === userId && now.getTime() < row.expires_at.getTime();
+  }
+
+  async function trustDevice(userId: string, now: Date): Promise<string> {
+    const issued = newDeviceToken();
+    await upsertVerification(deps.pool, issued.hash, userId, new Date(now.getTime() + 90 * DAY_MS));
+    return issued.token;
   }
 
   function stepId(userId: string): string {
@@ -429,19 +485,6 @@ export function openAuth(deps: AuthDeps) {
 
   function reconfigureId(userId: string): string {
     return bucketHmac(key, `reconfigure|${userId}`);
-  }
-
-  async function deviceIsTrusted(userId: string, device: DeviceSummary, now: Date): Promise<boolean> {
-    const row = await findVerificationRow(deps.pool, deviceId(userId, device));
-    return row !== null && row.value_hash === userId && now.getTime() < row.expires_at.getTime();
-  }
-
-  async function trustDevice(userId: string, device: DeviceSummary, now: Date): Promise<void> {
-    await upsertVerification(deps.pool, deviceId(userId, device), userId, new Date(now.getTime() + 90 * DAY_MS));
-  }
-
-  async function rememberStep(userId: string, step: number, now: Date): Promise<void> {
-    await upsertVerification(deps.pool, stepId(userId), String(step), new Date(now.getTime() + 90 * DAY_MS));
   }
 
   async function lastStep(userId: string): Promise<number | null> {
@@ -503,21 +546,38 @@ export function openAuth(deps: AuthDeps) {
       return null;
     }
     try {
-      return matchTotp(secret, code, now, await lastStep(userId));
+      const step = matchTotp(secret, code, now, await lastStep(userId));
+      if (step === null) {
+        return null;
+      }
+      const claimed = await claimTotpStep(deps.pool, stepId(userId), step, new Date(now.getTime() + 90 * DAY_MS));
+      return claimed ? step : null;
     } finally {
       secret.fill(0);
     }
   }
 
   async function consumeRecovery(userId: string, code: string, now: Date): Promise<boolean> {
-    if (deps.recoveryPepper === undefined || deps.recoveryPepperId === undefined) {
+    const peppers: Array<{ id: string; pepper: Uint8Array }> = [];
+    if (deps.recoveryPepper !== undefined && deps.recoveryPepperId !== undefined) {
+      peppers.push({ id: deps.recoveryPepperId, pepper: deps.recoveryPepper });
+    }
+    for (const old of deps.oldRecoveryPeppers ?? []) {
+      peppers.push(old);
+    }
+    if (peppers.length === 0) {
       return false;
     }
-    const mac = recoveryCodeHmac(deps.recoveryPepper, deps.recoveryPepperId, userId, code);
-    if (mac === null) {
-      return false;
+    for (const item of peppers) {
+      const mac = recoveryCodeHmac(item.pepper, item.id, userId, code);
+      if (mac === null) {
+        return false;
+      }
+      if (await consumeRecoveryCode(deps.pool, userId, mac, now)) {
+        return true;
+      }
     }
-    return consumeRecoveryCode(deps.pool, userId, mac, now);
+    return false;
   }
 
   async function provisionalActive(userId: string, now: Date): Promise<boolean> {
@@ -607,19 +667,34 @@ export function openAuth(deps: AuthDeps) {
     return { kind: "ok" };
   }
 
-  async function issueProvisional(userId: string, at: Date, chosen?: string): Promise<string> {
+  async function issueProvisional(sql: Sql, userId: string, at: Date, chosen?: string): Promise<string> {
     const password = chosen ?? provisionalPassword();
     const assessed = assessPassword(password, Math.max(deps.minLength, 20));
     if (!assessed.ok) {
       throw new Error("mot de passe refusé");
     }
     const hashed = await hashPassword(assessed.password, deps.argon);
-    await setPassword(deps.pool, userId, hashed);
-    await deleteVerification(deps.pool, tempHmac(key, userId));
+    await setPassword(sql, userId, hashed);
+    await deleteVerification(sql, tempHmac(key, userId));
     const marker = createHash("sha256").update(randomBytes(32)).digest("hex");
-    await insertVerification(deps.pool, tempHmac(key, userId), marker, new Date(at.getTime() + TEMP_TTL_MS));
-    await insertAudit(deps.pool, userId, "password_reset_used", "ok");
+    await insertVerification(sql, tempHmac(key, userId), marker, new Date(at.getTime() + TEMP_TTL_MS));
+    await insertAudit(sql, userId, "password_reset_used", "ok");
     return assessed.password;
+  }
+
+  async function inTransaction<T>(run: (sql: Sql) => Promise<T>): Promise<T> {
+    const client = await deps.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const value = await run(client);
+      await client.query("COMMIT");
+      return value;
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   function requireIdentifier(identifier: string): string {
@@ -646,7 +721,9 @@ export function openAuth(deps: AuthDeps) {
     const userId = await insertUser(deps.pool);
     const placeholder = await hashPassword(provisionalPassword(), deps.argon);
     await insertAccount(deps.pool, userId, normalized, placeholder);
-    const password = await issueProvisional(userId, deps.now(), chosen);
+    const at = deps.now();
+    const password = await issueProvisional(deps.pool, userId, at, chosen);
+    await markEnrollmentDue(deps.pool, userId, at);
     await insertAudit(deps.pool, userId, "admin.create_user", "ok");
     adminEmit("admin.create_user", userId, ip);
     return { password, userId };
@@ -659,11 +736,15 @@ export function openAuth(deps: AuthDeps) {
       throw new Error("compte introuvable");
     }
     const now = deps.now();
-    await revokeAllSessions(deps.pool, account.user_id, now);
-    await deleteVerificationsByValue(deps.pool, account.user_id);
-    await deleteVerification(deps.pool, reconfigureId(account.user_id));
-    const password = await issueProvisional(account.user_id, now, chosen);
-    await insertAudit(deps.pool, account.user_id, "admin.reset_password", "ok");
+    const password = await inTransaction(async (sql) => {
+      await revokeAllSessions(sql, account.user_id, now);
+      await deleteVerificationsByValue(sql, account.user_id);
+      await deleteVerification(sql, reconfigureId(account.user_id));
+      const issued = await issueProvisional(sql, account.user_id, now, chosen);
+      await markEnrollmentDue(sql, account.user_id, now);
+      await insertAudit(sql, account.user_id, "admin.reset_password", "ok");
+      return issued;
+    });
     adminEmit("admin.reset_password", account.user_id, ip);
     emit({ type: "password_reset_used", result: "succes", userId: account.user_id, ip, userAgent: null });
     return password;
@@ -676,14 +757,19 @@ export function openAuth(deps: AuthDeps) {
       throw new Error("compte introuvable");
     }
     const now = deps.now();
-    await revokeAllSessions(deps.pool, account.user_id, now);
-    await deleteTotpFactors(deps.pool, account.user_id);
-    await deleteRecoveryCodes(deps.pool, account.user_id);
-    await deleteVerificationsByValue(deps.pool, account.user_id);
-    await deleteVerification(deps.pool, stepId(account.user_id));
-    await deleteVerification(deps.pool, reconfigureId(account.user_id));
-    const password = await issueProvisional(account.user_id, now, chosen);
-    await insertAudit(deps.pool, account.user_id, "admin.disable_mfa", "ok");
+    const password = await inTransaction(async (sql) => {
+      await revokeAllSessions(sql, account.user_id, now);
+      await deleteTotpFactors(sql, account.user_id);
+      await deleteRecoveryCodes(sql, account.user_id);
+      await deleteVerificationsByValue(sql, account.user_id);
+      await deleteVerification(sql, stepId(account.user_id));
+      await deleteVerification(sql, reconfigureId(account.user_id));
+      await deleteVerification(sql, totpConfirmedId(account.user_id));
+      const issued = await issueProvisional(sql, account.user_id, now, chosen);
+      await markEnrollmentDue(sql, account.user_id, now);
+      await insertAudit(sql, account.user_id, "admin.disable_mfa", "ok");
+      return issued;
+    });
     adminEmit("admin.disable_mfa", account.user_id, ip);
     emit({ type: "mfa_disabled", result: "succes", userId: account.user_id, ip, userAgent: null });
     return password;
@@ -726,6 +812,7 @@ export function openAuth(deps: AuthDeps) {
     const client = await deps.pool.connect();
     try {
       await client.query("BEGIN");
+      await deleteVerification(client, totpConfirmedId(userId));
       if (reconfigure) {
         await deleteTotpFactors(client, userId);
         await invalidateRecoveryCodes(client, userId, now);
@@ -745,6 +832,10 @@ export function openAuth(deps: AuthDeps) {
       } else {
         dek = generateDek();
         dekId = randomUUID();
+        if (!(await kekMayEncrypt(client, kekId))) {
+          await client.query("ROLLBACK");
+          return { kind: "forbidden" };
+        }
         const wrapped = wrapDek(kek, kekId, userId, dek);
         await insertUserKey(client, {
           id: dekId,
@@ -794,12 +885,27 @@ export function openAuth(deps: AuthDeps) {
     sessionId: string,
     code: string,
     userAgent: string | undefined,
-  ): Promise<{ kind: "ok"; maxAge: number | null } | { kind: "invalid" } | { kind: "forbidden" }> {
+  ): Promise<
+    | { kind: "ok"; token: string; maxAge: number | null; deviceToken: string }
+    | { kind: "invalid" }
+    | { kind: "forbidden" }
+    | { kind: "limited"; retryAfter: number }
+  > {
     const session = await findSessionById(deps.pool, sessionId);
     if (session === null || !session.restricted || session.revoked_at !== null) {
       return { kind: "forbidden" };
     }
+    const account = await findAccountByUser(deps.pool, userId);
+    if (account === null) {
+      return { kind: "forbidden" };
+    }
     const now = deps.now();
+    const lockBucket = bucketHmac(key, `acct-lock|${account.identifier}`);
+    const lockedUntil = await activeLock(deps.pool, lockBucket, now);
+    if (lockedUntil !== null) {
+      await revokeSession(deps.pool, sessionId, now);
+      return { kind: "limited", retryAfter: retrySeconds(lockedUntil, now) };
+    }
     if ((await provisionalActive(userId, now)) || (await reconfigureActive(userId, now))) {
       return { kind: "forbidden" };
     }
@@ -810,16 +916,30 @@ export function openAuth(deps: AuthDeps) {
     const step = await acceptTotp(userId, factor, code, now);
     if (step === null) {
       emit({ type: "mfa_failed", result: "echec", userId, sessionId, ip: null, userAgent: userAgent ?? null });
+      await registerFailure(account.identifier, now);
+      const locked = await activeLock(deps.pool, lockBucket, now);
+      if (locked !== null) {
+        await revokeSession(deps.pool, sessionId, now);
+        return { kind: "limited", retryAfter: retrySeconds(locked, now) };
+      }
       return { kind: "invalid" };
     }
-    await rememberStep(userId, step, now);
-    await trustDevice(userId, summarizeDevice(userAgent), now);
-    const bounds = boundsFor(session.remember, now);
-    await liftRestriction(deps.pool, sessionId, now, bounds.idle, bounds.absolute);
-    return {
-      kind: "ok",
-      maxAge: session.remember ? deps.maxDays * 24 * 60 * 60 : null,
-    };
+    await confirmTotp(deps.pool, userId, now);
+    const deviceToken = await trustDevice(userId, now);
+    await revokeSession(deps.pool, sessionId, now);
+    const elevated = await issueSession(
+      userId,
+      {
+        identifier: account.identifier,
+        password: "",
+        ip: "127.0.0.1",
+        userAgent,
+        remember: session.remember,
+      },
+      now,
+      false,
+    );
+    return { kind: "ok", token: elevated.token, maxAge: elevated.maxAge, deviceToken };
   }
 
   return {

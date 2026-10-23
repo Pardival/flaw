@@ -1,5 +1,6 @@
 /**
  * TOTP RFC 6238 (HMAC-SHA-1, 6 chiffres, pas de 30 s, fenêtre ±1).
+ * Périmètre T-008 (Q-015) : ce module et ses routes restent ici.
  * A-012 (ARC-SUM 0.4.18) : le rejeu d'un même pas est refusé.
  * Codes de secours 80 bits, base32, HMAC-SHA-256 (AC-063 à AC-066).
  * Le secret TOTP est chiffré sous la DEK. Le code de secours n'est jamais stocké :

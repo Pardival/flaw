@@ -557,14 +557,35 @@ export async function upsertVerification(
   valueHash: string,
   expiresAt: Date,
 ): Promise<void> {
-  const updated = await sql.query(
-    "UPDATE flaw.verifications SET value_hash = $2, expires_at = $3 WHERE identifier = $1",
+  await sql.query(
+    `INSERT INTO flaw.verifications (identifier, value_hash, expires_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (identifier) DO UPDATE
+     SET value_hash = EXCLUDED.value_hash, expires_at = EXCLUDED.expires_at`,
     [identifier, valueHash, expiresAt],
   );
-  if ((updated.rowCount ?? 0) > 0) {
-    return;
-  }
-  await insertVerification(sql, identifier, valueHash, expiresAt);
+}
+
+/** Pose le pas TOTP seulement s'il est strictement supérieur au pas déjà stocké. */
+export async function claimTotpStep(sql: Sql, identifier: string, step: number, expiresAt: Date): Promise<boolean> {
+  const result = await sql.query(
+    `INSERT INTO flaw.verifications (identifier, value_hash, expires_at)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (identifier) DO UPDATE
+     SET value_hash = EXCLUDED.value_hash, expires_at = EXCLUDED.expires_at
+     WHERE flaw.verifications.value_hash ~ '^[0-9]+$'
+       AND flaw.verifications.value_hash::numeric < EXCLUDED.value_hash::numeric
+     RETURNING identifier`,
+    [identifier, String(step), expiresAt],
+  );
+  return (result.rowCount ?? 0) === 1;
+}
+
+/** Une KEK absente du registre (avant toute rotation) ou `active` peut chiffrer. */
+export async function kekMayEncrypt(sql: Sql, kekId: string): Promise<boolean> {
+  const result = await sql.query<{ status: string }>("SELECT status FROM flaw.keks WHERE id = $1", [kekId]);
+  const status = result.rows[0]?.status;
+  return status === undefined || status === "active";
 }
 
 export async function deleteVerificationsByValue(sql: Sql, valueHash: string): Promise<void> {

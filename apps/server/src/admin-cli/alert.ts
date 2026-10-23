@@ -22,5 +22,6 @@ export async function alertAdmin(url: string, action: string): Promise<void> {
     method: "POST",
     headers: { "content-type": "text/plain; charset=utf-8" },
     body: action,
+    signal: AbortSignal.timeout(5000),
   }).catch(() => undefined);
 }

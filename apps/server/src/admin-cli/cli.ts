@@ -5,8 +5,6 @@
  * replay-erasures est exposée ici ; sa logique et ses alertes relèvent de T-051.
  * Les alertes de check-roles relèvent de T-007.
  */
-import { readFileSync } from "node:fs";
-import { timingSafeEqual } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { Client, Pool } from "pg";
 import type { Writable } from "node:stream";
@@ -15,11 +13,11 @@ import { checkRoles } from "../admin/check-roles.ts";
 import { openAuth } from "../auth/service.ts";
 import { ARGON_TARGET } from "../auth/password.ts";
 import { insertAudit } from "../auth/store.ts";
-import { loadKekFile, peppersMatchKek } from "../crypto/kek.ts";
+import { decodeValidatedKey, loadKekFile, sameKeyBytes } from "../crypto/kek.ts";
 import { loadConfig, type LoadResult } from "../config/load.ts";
 import { writeSecurityLog } from "../platform/security-log.ts";
 import { alertAdmin } from "./alert.ts";
-import { rotateAllDeks, shredFile } from "./rotate-kek.ts";
+import { rotateAllDeks } from "./rotate-kek.ts";
 
 type Io = {
   argv: readonly string[];
@@ -59,18 +57,28 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString("utf8").replace(/\r?\n$/u, "");
 }
 
-function sameMaterial(left: string, right: string): boolean {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
+function keysConflict(oldKek: Uint8Array, newKek: Uint8Array, hmacPepper: string, recoveryPepper: string): boolean {
+  const peppers = [hmacPepper, recoveryPepper].map((value) => decodeValidatedKey(value));
   try {
-    if (a.length !== b.length) {
-      return false;
+    if (sameKeyBytes(oldKek, newKek)) {
+      return true;
     }
-    return timingSafeEqual(a, b);
+    return peppers.some((pepper) => pepper !== null && sameKeyBytes(newKek, pepper));
   } finally {
-    a.fill(0);
-    b.fill(0);
+    for (const pepper of peppers) {
+      pepper?.fill(0);
+    }
   }
+}
+
+function rotateSuccessMessage(newId: string): string {
+  return [
+    "kek tournée",
+    "L'ancienne KEK a le statut retired : elle ne sert plus à chiffrer et reste disponible pour déchiffrer jusqu'à la fin de la rétention des sauvegardes. Aucun fichier n'a été supprimé.",
+    `Installez le nouveau secret à la place de flaw_kek, réglez FLAW_KEK_ID=${newId}, redémarrez l'application, puis vérifiez une connexion.`,
+    "La destruction planifiée de l'ancienne KEK est hors périmètre (T-042).",
+    "",
+  ].join("\n");
 }
 
 function poolFor(loaded: Ready, port: number): Pool {
@@ -103,13 +111,13 @@ export async function main(options: Partial<Io> = {}): Promise<number> {
   if (command === "replay-erasures") {
     writeSecurityLog(stderr, {
       type: "admin_action",
-      result: "succes",
+      result: "echec",
       ip: null,
       userAgent: null,
       action: "admin.replay_erasures",
     });
-    stdout.write("commande enregistrée\n");
-    return 0;
+    stderr.write("non implémenté (T-051)\n");
+    return 1;
   }
   if (command === "rotate-kek") {
     return runRotate(loaded, port, argv, env, stdout, stderr);
@@ -130,6 +138,14 @@ export async function main(options: Partial<Io> = {}): Promise<number> {
   }
   const chosen = argv.includes("--password-stdin") ? await readStdin() : undefined;
   const pool = poolFor(loaded, port);
+  const action =
+    command === "create-user"
+      ? "admin.create_user"
+      : command === "reset-password"
+        ? "admin.reset_password"
+        : command === "disable-mfa"
+          ? "admin.disable_mfa"
+          : "admin.revoke_sessions";
   try {
     const auth = openAuth({
       pool,
@@ -144,27 +160,34 @@ export async function main(options: Partial<Io> = {}): Promise<number> {
         writeSecurityLog(stderr, event);
       },
     });
-    if (command === "revoke-sessions") {
-      await auth.revokeSessions(email, "127.0.0.1");
-      await alertAdmin(loaded.config.ALERT_WEBHOOK_URL, "admin.revoke_sessions");
-      stdout.write("sessions révoquées\n");
+    try {
+      if (command === "revoke-sessions") {
+        await auth.revokeSessions(email, "127.0.0.1");
+        await alertAdmin(loaded.config.ALERT_WEBHOOK_URL, "admin.revoke_sessions");
+        stdout.write("sessions révoquées\n");
+        return 0;
+      }
+      const password =
+        command === "create-user"
+          ? (await auth.createUser(email, "127.0.0.1", chosen)).password
+          : command === "reset-password"
+            ? await auth.resetPassword(email, "127.0.0.1", chosen)
+            : await auth.disableMfa(email, "127.0.0.1", chosen);
+      await alertAdmin(loaded.config.ALERT_WEBHOOK_URL, action);
+      stdout.write(`${password}\n`);
       return 0;
+    } catch (error) {
+      writeSecurityLog(stderr, {
+        type: "admin_action",
+        result: "echec",
+        ip: null,
+        userAgent: null,
+        action,
+      });
+      const message = error instanceof Error ? error.message : "echec";
+      stderr.write(`${message}\n`);
+      return 1;
     }
-    const password =
-      command === "create-user"
-        ? (await auth.createUser(email, "127.0.0.1", chosen)).password
-        : command === "reset-password"
-          ? await auth.resetPassword(email, "127.0.0.1", chosen)
-          : await auth.disableMfa(email, "127.0.0.1", chosen);
-    const action =
-      command === "create-user"
-        ? "admin.create_user"
-        : command === "reset-password"
-          ? "admin.reset_password"
-          : "admin.disable_mfa";
-    await alertAdmin(loaded.config.ALERT_WEBHOOK_URL, action);
-    stdout.write(`${password}\n`);
-    return 0;
   } finally {
     await pool.end();
   }
@@ -226,12 +249,7 @@ async function runRotate(
     stderr.write("refus de démarrer : kek\n");
     return 1;
   }
-  const oldText = readFileSync(oldFile, "utf8").trim();
-  const newText = readFileSync(newFile, "utf8").trim();
-  if (
-    sameMaterial(oldText, newText) ||
-    peppersMatchKek(newText, loaded.secrets.hmacPepper, loaded.secrets.recoveryPepper)
-  ) {
+  if (keysConflict(oldLoaded.kek, newLoaded.kek, loaded.secrets.hmacPepper, loaded.secrets.recoveryPepper)) {
     oldLoaded.kek.fill(0);
     newLoaded.kek.fill(0);
     stderr.write("refus de démarrer : kek\n");
@@ -250,11 +268,17 @@ async function runRotate(
       userAgent: null,
       action: "admin.rotate_kek",
     });
-    shredFile(oldFile);
     await alertAdmin(loaded.config.ALERT_WEBHOOK_URL, "admin.rotate_kek");
-    stdout.write("kek tournée\n");
+    stdout.write(rotateSuccessMessage(newId));
     return 0;
   } catch (error) {
+    writeSecurityLog(stderr, {
+      type: "admin_action",
+      result: "echec",
+      ip: null,
+      userAgent: null,
+      action: "admin.rotate_kek",
+    });
     const message = error instanceof Error ? error.message : "echec";
     stderr.write(`${message}\n`);
     return 1;

@@ -13,7 +13,7 @@ import { writeSecurityLog, type SecurityEvent } from "../platform/security-log.t
 import type { Writable } from "node:stream";
 import type { Pool } from "pg";
 
-import { clearSessionCookie, readBearer, readCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
+import { clearSessionCookie, DEVICE_COOKIE, readBearer, readCookie, serializeDeviceCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
 import { LOGIN_HTML, AUTH_REQUIRED, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, INVALID_LOGIN, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
 import { ARGON_TARGET, type ArgonParams } from "./password.ts";
 import { restrictedAllows } from "./restricted-session.ts";
@@ -222,6 +222,10 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
           kekId: config.FLAW_KEK_ID,
           recoveryPepper: decodeValidatedKey(runtime.secrets.recoveryPepper) ?? undefined,
           recoveryPepperId: config.RECOVERY_PEPPER_ID,
+          oldRecoveryPeppers: (runtime.secrets.oldRecoveryPeppers ?? []).flatMap((item) => {
+            const pepper = decodeValidatedKey(item.value);
+            return pepper === null ? [] : [{ id: item.id, pepper }];
+          }),
         })
       : null;
 
@@ -330,6 +334,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       userAgent: headerValue(request.headers["user-agent"]),
       ...(parsed.data.totp === undefined ? {} : { totp: parsed.data.totp }),
       ...(parsed.data.recoveryCode === undefined ? {} : { recoveryCode: parsed.data.recoveryCode }),
+      deviceToken: readCookie(headerValue(request.headers.cookie), DEVICE_COOKIE),
     });
     if (result.kind === "limited") {
       return sendMessage(reply, 429, TOO_MANY, result.retryAfter);
@@ -340,7 +345,11 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (result.kind === "invalid") {
       return sendMessage(reply, 401, INVALID_LOGIN);
     }
-    reply.header("set-cookie", serializeSessionCookie(result.token, result.maxAge));
+    const cookies = [serializeSessionCookie(result.token, result.maxAge)];
+    if (result.deviceToken !== undefined) {
+      cookies.push(serializeDeviceCookie(result.deviceToken));
+    }
+    reply.header("set-cookie", cookies.length === 1 ? cookies[0]! : cookies);
     return { id: result.userId, identifier: result.identifier };
   });
 
@@ -421,10 +430,16 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (result.kind === "forbidden") {
       return sendMessage(reply, 403, ENROLL_REFUSED);
     }
+    if (result.kind === "limited") {
+      return sendMessage(reply, 429, TOO_MANY, result.retryAfter);
+    }
     if (result.kind === "invalid") {
       return sendMessage(reply, 401, INVALID_LOGIN);
     }
-    reply.header("set-cookie", serializeSessionCookie(current.token, result.maxAge));
+    reply.header("set-cookie", [
+      serializeSessionCookie(result.token, result.maxAge),
+      serializeDeviceCookie(result.deviceToken),
+    ]);
     return { ok: true as const };
   });
 

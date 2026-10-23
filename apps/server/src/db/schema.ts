@@ -1,7 +1,8 @@
 /**
  * Schéma Drizzle du schéma PostgreSQL `flaw` (T-005, ARC-SUM 0.4.16).
  *
- * 19 tables (ARC-SUM 0.4.16). La projection chiffrée est l'enveloppe
+ * 19 tables (ARC-SUM 0.4.16). 0006 ajoute `keks` hors de cette liste.
+ * La projection chiffrée est l'enveloppe
  * `projection_ct`. T-006 ajoute `label_ct` / `label_nonce` (nullables, appariés)
  * et `user_keys.status` (une seule DEK active par `owner_id`).
  * `user_keys.key_id` est l'identifiant de la KEK. Le `key_id` des contenus
@@ -151,6 +152,20 @@ export const userKeys = flaw.table(
   ],
 );
 
+/**
+ * Registre des KEK (0006), hors des 19 tables de 0000.
+ * `retired` ne chiffre plus. Le fichier de la clé reste pour le déchiffrement.
+ */
+export const keks = flaw.table(
+  "keks",
+  {
+    id: text("id").primaryKey(),
+    status: text("status").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [check("keks_status_check", sql`${table.status} in ('active', 'retired')`)],
+);
+
 /** identifier = HMAC-SHA256 poivré (hmac_pepper), hex 64. Pas de RLS. */
 export const verifications = flaw.table(
   "verifications",
@@ -164,6 +179,7 @@ export const verifications = flaw.table(
   (table) => [
     check("verifications_identifier_hmac", sql`${table.identifier} ~ '^[0-9a-f]{64}$'`),
     index("verifications_identifier_idx").on(table.identifier),
+    uniqueIndex("verifications_identifier_uidx").on(table.identifier),
   ],
 );
 
