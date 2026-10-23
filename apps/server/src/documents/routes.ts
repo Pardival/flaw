@@ -9,7 +9,7 @@ import type { AccessActor } from "../access/can.ts";
 import { isUuid } from "../access/sql.ts";
 import { sendProblem } from "../platform/problem.ts";
 import { buildOpenApiDocument } from "../platform/openapi.ts";
-import { SCHEMA_VERSION } from "@flaw/schema/src/index.ts";
+import { handleDocumentSync } from "../sync/route.ts";
 import {
   createDocument,
   deleteDocument,
@@ -17,7 +17,6 @@ import {
   listDocuments,
   readContent,
   restoreDocument,
-  touchSync,
   updateDocument,
   type DocumentView,
   type ListQuery,
@@ -388,16 +387,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
     if (ready === undefined) {
       return;
     }
-    const id = documentIdOf(request.params);
-    const allowed = await touchSync(ready.pool, ready.actor, id);
-    if (allowed !== true) {
-      return sendProblem(reply, problemStatus(allowed.status));
-    }
-    const version = headerOne(request.headers["x-flaw-schema-version"]);
-    if (version === undefined || Number(version) !== SCHEMA_VERSION || !/^\d+$/u.test(version)) {
-      return sendStatus(reply, 426);
-    }
-    return reply.code(200).header("content-type", "application/octet-stream").send(Buffer.alloc(0));
+    return handleDocumentSync(ready, request, reply);
   });
 
   try {

@@ -21,6 +21,7 @@ import { decodeValidatedKey } from "../crypto/kek.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
 import { problem } from "../platform/problem.ts";
+import { encodeSyncReply } from "../../../../packages/sync/src/index.ts";
 import { titledDocument } from "./prose.ts";
 
 const POSTGRES_IMAGE =
@@ -202,7 +203,7 @@ describe("documents sur PostgreSQL", () => {
     method: Method,
     url: string,
     cookie?: string,
-    payload?: string,
+    payload?: string | Buffer,
     headers: Record<string, string> = {},
   ) {
     const mutating = method !== "GET";
@@ -686,14 +687,18 @@ describe("documents sur PostgreSQL", () => {
     expect(legacy.statusCode).toBe(404);
     const future = await call("POST", `/api/v1/documents/${created.id}/exports`, user.cookie, "{}");
     expect(future.statusCode).toBe(404);
-    const early = await call("POST", `/api/v1/documents/${created.id}/sync`, user.cookie, "{}");
+    const frame = Buffer.from(encodeSyncReply(new Uint8Array(), new Uint8Array()));
+    const early = await call("POST", `/api/v1/documents/${created.id}/sync`, user.cookie, frame, {
+      "content-type": "application/octet-stream",
+    });
     expect(early.statusCode).toBe(426);
-    const synced = await call("POST", `/api/v1/documents/${created.id}/sync`, user.cookie, "{}", {
+    const synced = await call("POST", `/api/v1/documents/${created.id}/sync`, user.cookie, frame, {
+      "content-type": "application/octet-stream",
       "x-flaw-schema-version": "1",
     });
     expect(synced.statusCode).toBe(200);
     expect(synced.headers["content-type"]).toContain("application/octet-stream");
-    expect(synced.body).toBe("");
+    expect(synced.rawPayload.equals(frame)).toBe(true);
     const read = await call("GET", `/api/v1/documents/${created.id}`, user.cookie);
     expect(read.statusCode).toBe(200);
     const patched = await call(

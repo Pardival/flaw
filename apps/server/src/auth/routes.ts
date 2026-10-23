@@ -1,6 +1,7 @@
 /**
  * Routes /api/auth/*, /api/v1/me et garde d'authentification.
- * Les mutations par cookie exigent Origin (ou Sec-Fetch-Site: same-origin) et JSON.
+ * Les mutations par cookie exigent Origin (ou Sec-Fetch-Site: same-origin).
+ * Le corps est du JSON, sauf le repli de synchro (application/octet-stream).
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
@@ -185,7 +186,11 @@ function csrfOk(request: FastifyRequest, config: AppConfig): boolean {
     request.method === "POST" &&
     request.routeOptions.url === "/api/auth/sign-in" &&
     contentType.startsWith("application/x-www-form-urlencoded");
-  if (!json && !bareDelete && !formSignIn) {
+  const syncBytes =
+    request.method === "POST" &&
+    request.routeOptions.url === "/api/v1/documents/:documentId/sync" &&
+    contentType.startsWith("application/octet-stream");
+  if (!json && !bareDelete && !formSignIn && !syncBytes) {
     return false;
   }
   const allowed = allowedOrigins(config);
