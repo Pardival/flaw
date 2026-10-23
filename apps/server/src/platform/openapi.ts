@@ -4,6 +4,7 @@
  */
 import { z } from "zod";
 
+import { SESSION_COOKIE } from "../auth/cookie.ts";
 import { documentTitleSchema } from "./validation.ts";
 
 export const healthResponseSchema = z
@@ -108,6 +109,9 @@ function withNoStore<T extends Record<string, unknown>>(response: T): T & {
   };
 }
 
+/** Cookie ou Bearer : chaque objet du tableau est une alternative. */
+const sessionSecurity = [{ cookieAuth: [] }, { bearerAuth: [] }];
+
 const messageResponse = {
   description: "Message",
   content: {
@@ -149,6 +153,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         get: {
           operationId: "getMe",
           summary: "Profil de l'utilisateur connecté",
+          security: sessionSecurity,
           responses: {
             "200": withNoStore({
               description: "Profil",
@@ -166,6 +171,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         get: {
           operationId: "listDocuments",
           summary: "Documents du compte connecté",
+          security: sessionSecurity,
           responses: {
             "200": {
               description: "Documents",
@@ -183,6 +189,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
         delete: {
           operationId: "deleteDocument",
           summary: "Supprime un document du compte connecté",
+          security: sessionSecurity,
           parameters: [
             {
               name: "id",
@@ -201,6 +208,17 @@ export function buildOpenApiDocument(): Record<string, unknown> {
       },
     },
     components: {
+      securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: SESSION_COOKIE,
+        },
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+        },
+      },
       schemas: {
         Problem: jsonSchema(problemSchema),
         Unauthorized: jsonSchema(unauthorizedProblemSchema),

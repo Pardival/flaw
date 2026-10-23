@@ -77,6 +77,14 @@
       "get": {
         "operationId": "getMe",
         "summary": "Profil de l'utilisateur connecté",
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Profil",
@@ -168,6 +176,14 @@
       "get": {
         "operationId": "listDocuments",
         "summary": "Documents du compte connecté",
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "responses": {
           "200": {
             "description": "Documents",
@@ -219,6 +235,14 @@
       "delete": {
         "operationId": "deleteDocument",
         "summary": "Supprime un document du compte connecté",
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "bearerAuth": []
+          }
+        ],
         "parameters": [
           {
             "name": "id",
@@ -269,6 +293,17 @@
     }
   },
   "components": {
+    "securitySchemes": {
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "__Host-flaw_session"
+      },
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
     "schemas": {
       "Problem": {
         "type": "object",

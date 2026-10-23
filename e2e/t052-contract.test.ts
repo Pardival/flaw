@@ -203,6 +203,15 @@ describe("T-052 contrat", () => {
     expect(contract.paths["/api/v1/me"]).toEqual(
       (document.paths as { "/api/v1/me": unknown })["/api/v1/me"],
     );
+    const schemes = (document.components as { securitySchemes: Record<string, unknown> }).securitySchemes;
+    expect(schemes.cookieAuth).toEqual({ type: "apiKey", in: "cookie", name: "__Host-flaw_session" });
+    expect(schemes.bearerAuth).toEqual({ type: "http", scheme: "bearer" });
+    const alternatives = [{ cookieAuth: [] }, { bearerAuth: [] }];
+    const paths = document.paths as Record<string, Record<string, { security?: unknown }>>;
+    expect(paths["/api/v1/me"]?.get?.security).toEqual(alternatives);
+    expect(paths["/api/v1/documents"]?.get?.security).toEqual(alternatives);
+    expect(paths["/api/v1/documents/{id}"]?.delete?.security).toEqual(alternatives);
+    expect(paths["/api/v1/healthz"]?.get?.security).toEqual([]);
   });
 
   it("étend la règle Semgrep aux mutations de verifications", () => {
