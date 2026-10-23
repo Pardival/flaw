@@ -10,7 +10,7 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { Client, Pool } from "pg";
 import { z } from "zod";
 
-import { anonymousRequest, queryTokenPresent, registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
+import { anonymousRequest, registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
 import { assertPasswordMinLength } from "./auth/password.ts";
 import { holdSecrets, loadConfig, type AppConfig } from "./config/load.ts";
 import type { LoadedSecrets } from "./config/secrets.ts";
@@ -171,7 +171,8 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
   });
 
   app.setNotFoundHandler(async (request, reply) => {
-    if (queryTokenPresent(request) || (await anonymousRequest(app, request))) {
+    const decision = await anonymousRequest(app, request);
+    if (decision.kind === "anonymous") {
       return sendProblem(reply, 401);
     }
     return sendProblem(reply, 404);

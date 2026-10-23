@@ -14,6 +14,15 @@ const httpUrl = z.string().refine((value) => {
   }
 });
 
+const httpsUrl = z.string().refine((value) => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:";
+  } catch {
+    return false;
+  }
+});
+
 export const publicEnvSchema = z
   .object({
     NODE_ENV: z.enum(["production", "development", "test"]).default("production"),
@@ -41,7 +50,7 @@ export const publicEnvSchema = z
     EXPORT_MAX_RSS_MB: z.coerce.number().int().min(1).default(900),
     PASSWORD_MIN_LENGTH: z.coerce.number().int().min(8).default(15),
     SNAPSHOT_RETENTION_DAYS: z.coerce.number().int().min(1).default(30),
-    ALERT_WEBHOOK_URL: z.union([z.literal(""), httpUrl]).default(""),
+    ALERT_WEBHOOK_URL: z.union([z.literal(""), httpsUrl]).default(""),
   })
   .superRefine((data, context) => {
     if (data.MAX_WS_MESSAGE_MB > data.MAX_DOCUMENT_SIZE_MB) {

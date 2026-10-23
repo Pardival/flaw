@@ -258,12 +258,11 @@ export function openAuth(deps: AuthDeps) {
       if (pending !== null && now.getTime() >= pending.expires_at.getTime()) {
         return { kind: "invalid" };
       }
-      if (pending !== null || factor !== null) {
-        await clearFailures(input.identifier);
-        return issueSession(account.user_id, input, now, true);
+      if (factor === null && pending === null) {
+        return { kind: "invalid" };
       }
       await clearFailures(input.identifier);
-      return issueSession(account.user_id, input, now, false);
+      return issueSession(account.user_id, input, now, true);
     }
     if (factor === null) {
       return { kind: "invalid" };
@@ -643,6 +642,7 @@ export function openAuth(deps: AuthDeps) {
     const hashed = await hashPassword(assessed.password, deps.argon);
     await setPassword(deps.pool, userId, hashed);
     await deleteVerification(deps.pool, tempHmac(key, userId));
+    await deleteVerificationsByValue(deps.pool, userId);
     await revokeOtherSessions(deps.pool, userId, sessionId, now);
     const issued = newSessionToken();
     await rotateSession(deps.pool, sessionId, issued.hash, now);
@@ -726,18 +726,21 @@ export function openAuth(deps: AuthDeps) {
     chosen?: string,
   ): Promise<{ password: string; userId: string }> {
     const normalized = requireIdentifier(identifier);
-    if ((await countUsers(deps.pool)) > 0) {
-      throw new Error("un seul compte");
-    }
-    const userId = await insertUser(deps.pool);
-    const placeholder = await hashPassword(provisionalPassword(), deps.argon);
-    await insertAccount(deps.pool, userId, normalized, placeholder);
     const at = deps.now();
-    const password = await issueProvisional(deps.pool, userId, at, chosen);
-    await markEnrollmentDue(deps.pool, userId, at);
-    await insertAudit(deps.pool, userId, "admin.create_user", "ok");
-    adminEmit("admin.create_user", userId, ip);
-    return { password, userId };
+    const created = await inTransaction(async (sql) => {
+      if ((await countUsers(sql)) > 0) {
+        throw new Error("un seul compte");
+      }
+      const userId = await insertUser(sql);
+      const placeholder = await hashPassword(provisionalPassword(), deps.argon);
+      await insertAccount(sql, userId, normalized, placeholder);
+      const password = await issueProvisional(sql, userId, at, chosen);
+      await markEnrollmentDue(sql, userId, at);
+      await insertAudit(sql, userId, "admin.create_user", "ok");
+      return { password, userId };
+    });
+    adminEmit("admin.create_user", created.userId, ip);
+    return created;
   }
 
   async function resetPassword(identifier: string, ip: string, chosen?: string): Promise<string> {
@@ -801,6 +804,8 @@ export function openAuth(deps: AuthDeps) {
   async function enroll(
     userId: string,
     restricted: boolean,
+    ip?: string,
+    userAgent?: string,
   ): Promise<{ kind: "ok"; secret: string; codes: string[] } | { kind: "forbidden" }> {
     const kek = deps.kek;
     const kekId = deps.kekId;
@@ -879,7 +884,7 @@ export function openAuth(deps: AuthDeps) {
       }
       await insertAudit(client, userId, "mfa_enabled", "ok");
       await client.query("COMMIT");
-      emit({ type: "mfa_enabled", result: "succes", userId, ip: null, userAgent: null });
+      emit({ type: "mfa_enabled", result: "succes", userId, ip: ip ?? null, userAgent: userAgent ?? null });
       return { kind: "ok", secret: encodeBase32(secret), codes };
     } catch {
       await client.query("ROLLBACK");
@@ -958,7 +963,7 @@ export function openAuth(deps: AuthDeps) {
       {
         identifier: account.identifier,
         password: "",
-        ip: "127.0.0.1",
+        ip,
         userAgent,
         remember: session.remember,
       },
@@ -1014,6 +1019,26 @@ export function openAuth(deps: AuthDeps) {
         lastActivity: row.last_activity_at.toISOString(),
         current: row.id === currentSessionId,
       }));
+    },
+    async invalidTokenLimited(ip: string): Promise<{ retryAfter: number } | null> {
+      const now = deps.now();
+      const bucket = bucketHmac(key, `token-401|${ip}`);
+      await purgeRateLimits(deps.pool, windowSince(now));
+      const recent = await recentRate(deps.pool, bucket, windowSince(now), now);
+      if (recent.hits <= 20) {
+        return null;
+      }
+      const oldest = recent.oldest ?? sliceStart(now);
+      emit({ type: "rate_limited", result: "echec", ip, userAgent: null });
+      return { retryAfter: retrySeconds(new Date(oldest.getTime() + WINDOW_MS), now) };
+    },
+    async noteInvalidToken(ip: string): Promise<{ retryAfter: number } | null> {
+      const hit = await noteHit(bucketHmac(key, `token-401|${ip}`), deps.now());
+      if (hit.hits <= 20) {
+        return null;
+      }
+      emit({ type: "rate_limited", result: "echec", ip, userAgent: null });
+      return { retryAfter: hit.retryAfter };
     },
     async mfaVerifyBlocked(token: string): Promise<{ retryAfter: number } | null> {
       const row = await findSession(deps.pool, hashSessionToken(token));

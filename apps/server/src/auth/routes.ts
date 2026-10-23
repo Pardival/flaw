@@ -99,12 +99,21 @@ type SessionContext = {
   restricted: boolean;
 };
 
-const resolvers = new WeakMap<FastifyInstance, (token: string) => Promise<boolean>>();
+type TokenGate = {
+  resolve: (token: string) => Promise<boolean>;
+};
+
+const gates = new WeakMap<FastifyInstance, TokenGate>();
 const bearerFlags = new WeakMap<FastifyInstance, boolean>();
+
+export type AnonymousDecision = { kind: "anonymous" } | { kind: "present" };
 
 export function queryTokenPresent(request: FastifyRequest): boolean {
   const query = request.query;
-  return query !== null && typeof query === "object" && Object.prototype.hasOwnProperty.call(query, "token");
+  if (query === null || typeof query !== "object") {
+    return false;
+  }
+  return Object.keys(query).some((key) => key.toLowerCase() === "token");
 }
 
 const sessions = new WeakMap<FastifyRequest, SessionContext>();
@@ -113,21 +122,21 @@ export function sessionOf(request: FastifyRequest): SessionContext | undefined {
   return sessions.get(request);
 }
 
-export async function anonymousRequest(app: FastifyInstance, request: FastifyRequest): Promise<boolean> {
+export async function anonymousRequest(app: FastifyInstance, request: FastifyRequest): Promise<AnonymousDecision> {
   if (queryTokenPresent(request)) {
-    return true;
+    return { kind: "anonymous" };
   }
   const cookie = readCookie(headerValue(request.headers.cookie), SESSION_COOKIE);
   const bearer = bearerFlags.get(app) === true ? readBearer(headerValue(request.headers.authorization)) : undefined;
+  if (cookie !== undefined && bearer !== undefined && cookie !== bearer) {
+    return { kind: "anonymous" };
+  }
   const token = cookie ?? bearer;
-  if (token === undefined) {
-    return true;
+  const gate = gates.get(app);
+  if (token === undefined || gate === undefined || !(await gate.resolve(token))) {
+    return { kind: "anonymous" };
   }
-  const resolve = resolvers.get(app);
-  if (resolve === undefined) {
-    return true;
-  }
-  return !(await resolve(token));
+  return { kind: "present" };
 }
 
 function headerValue(value: string | string[] | undefined): string | undefined {
@@ -235,11 +244,13 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
         })
       : null;
 
-  resolvers.set(app, async (token) => {
-    if (auth === null) {
-      return false;
-    }
-    return (await auth.resolve(token)) !== null;
+  gates.set(app, {
+    resolve: async (token) => {
+      if (auth === null) {
+        return false;
+      }
+      return (await auth.resolve(token)) !== null;
+    },
   });
 
   app.addContentTypeParser(
@@ -272,11 +283,26 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (isPublic) {
       return undefined;
     }
+    if (cookie !== undefined && bearer !== undefined && cookie !== bearer) {
+      writeSecurityLog(stream, {
+        type: "authorization_denied",
+        result: "echec",
+        userId: null,
+        ip: clientIp(request, config.TRUSTED_PROXY_CIDR),
+        userAgent: headerValue(request.headers["user-agent"]) ?? null,
+      });
+      return sendUnauthorized(reply);
+    }
     if (cookie === undefined && bearer === undefined) {
       return sendUnauthorized(reply);
     }
     if (auth === null) {
       return sendProblem(reply, 500);
+    }
+    const ip = clientIp(request, config.TRUSTED_PROXY_CIDR);
+    const ahead = await auth.invalidTokenLimited(ip);
+    if (ahead !== null) {
+      return sendMessage(reply, 429, TOO_MANY, ahead.retryAfter);
     }
     const token = cookie ?? bearer;
     const session = await auth.resolve(token);
@@ -286,6 +312,10 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
         if (blocked !== null) {
           return sendMessage(reply, 429, TOO_MANY, blocked.retryAfter);
         }
+      }
+      const noted = await auth.noteInvalidToken(ip);
+      if (noted !== null) {
+        return sendMessage(reply, 429, TOO_MANY, noted.retryAfter);
       }
       return sendUnauthorized(reply);
     }
@@ -421,7 +451,12 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (auth === null || current === undefined) {
       return sendUnauthorized(reply);
     }
-    const result = await auth.enroll(current.userId, current.restricted);
+    const result = await auth.enroll(
+      current.userId,
+      current.restricted,
+      clientIp(request, config.TRUSTED_PROXY_CIDR),
+      headerValue(request.headers["user-agent"]),
+    );
     if (result.kind === "forbidden") {
       return sendMessage(reply, 403, ENROLL_REFUSED);
     }

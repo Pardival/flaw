@@ -21,12 +21,13 @@ import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
 import { problem } from "../platform/problem.ts";
 import { checkRoles } from "../admin/check-roles.ts";
-import { hashSessionToken, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
-import { summarizeDevice } from "./device.ts";
+import { DEVICE_COOKIE, hashSessionToken, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
+import { issueDeviceSecret, summarizeDevice } from "./device.ts";
 import { bucketHmac, hmacKey, subjectHmac, tempHmac } from "./hmac.ts";
 import {
   FORGOT_MESSAGE,
   LOGIN_HTML,
+  MFA_REQUIRED,
   RESTRICTED,
   ORIGIN_REJECTED,
   PASSWORD_REJECTED,
@@ -347,6 +348,42 @@ describe("politique et fichiers (hors base)", () => {
     }
     await app.close();
   });
+
+  it("n'expose pas de route WebSocket (f7, SEC-AUTH-06)", () => {
+    const serverRoot = join(root, "apps/server/src");
+    const files: string[] = [];
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const path = join(directory, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+          files.push(path);
+        }
+      }
+    };
+    walk(serverRoot);
+    const source = files.map((path) => readFileSync(path, "utf8")).join("\n");
+    expect(source).not.toMatch(/@fastify\/websocket|new WebSocket|websocket\(/);
+  });
+
+  it("refuse Token et TOKEN, y compris sur la santé et une route inconnue", async () => {
+    const app = buildApp(config());
+    for (const url of [
+      "/api/v1/healthz?Token=x",
+      "/api/v1/healthz?TOKEN=x",
+      "/api/v1/absent?Token=x",
+      "/api/v1/absent?TOKEN=x",
+    ]) {
+      const response = await app.inject({ method: "GET", url });
+      expect(response.statusCode, url).toBe(401);
+      expect(response.headers["content-type"]).toContain("application/problem+json");
+      expect(response.json()).toEqual(problem(401));
+    }
+    await app.close();
+  });
 });
 
 describe("authentification sur PostgreSQL", () => {
@@ -384,6 +421,8 @@ describe("authentification sur PostgreSQL", () => {
     };
   }
 
+  const devices = new Map<string, string>();
+
   async function sign(
     app: ReturnType<typeof buildApp>,
     identifier: string,
@@ -392,6 +431,18 @@ describe("authentification sur PostgreSQL", () => {
     remember?: boolean,
     headers: Record<string, string> = {},
   ) {
+    const device = devices.get(identifier);
+    const extraCookie = headers.cookie;
+    const deviceCookie =
+      device !== undefined && (extraCookie === undefined || !extraCookie.includes(`${DEVICE_COOKIE}=`))
+        ? `${DEVICE_COOKIE}=${device}`
+        : undefined;
+    const cookie =
+      extraCookie !== undefined && deviceCookie !== undefined
+        ? `${extraCookie}; ${deviceCookie}`
+        : (extraCookie ?? deviceCookie);
+    const rest = { ...headers };
+    delete rest.cookie;
     return app.inject({
       method: "POST",
       url: "/api/auth/sign-in",
@@ -400,7 +451,8 @@ describe("authentification sur PostgreSQL", () => {
         "content-type": "application/json",
         origin: ORIGIN,
         "x-real-ip": ip,
-        ...headers,
+        ...rest,
+        ...(cookie === undefined ? {} : { cookie }),
       },
       payload: JSON.stringify({
         identifier,
@@ -421,20 +473,45 @@ describe("authentification sur PostgreSQL", () => {
       "INSERT INTO flaw.accounts (owner_id, provider_id, account_id, password_hash) VALUES ($1, 'credential', $2, $3)",
       [id, email, passwordHash],
     );
+    const dekId = crypto.randomUUID();
+    await pool.query(
+      `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+       VALUES ($1, $2, $3, $4, 'kek-2026-10', 1, 'active')`,
+      [dekId, id, Buffer.from([1]), Buffer.from([2])],
+    );
+    await pool.query(
+      `INSERT INTO flaw.auth_factors (id, owner_id, kind, secret_ct, secret_nonce, key_id, enc_version)
+       VALUES ($1, $2, 'totp', $3, $4, $5, 1)`,
+      [crypto.randomUUID(), id, Buffer.from([1]), Buffer.from([2]), dekId],
+    );
+    const mac = hmacKey(pepper, "pep-hmac-2026-10");
+    const far = new Date(clock.ms + 10 * 365 * 24 * 60 * 60 * 1000);
+    await pool.query(
+      "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, '1', $2)",
+      [bucketHmac(mac, `totp-confirmed|${id}`), far],
+    );
+    const issued = issueDeviceSecret();
+    await pool.query(
+      "INSERT INTO flaw.verifications (identifier, value_hash, expires_at) VALUES ($1, $2, $3)",
+      [issued.hash, id, far],
+    );
+    devices.set(email, issued.token);
     return id;
   }
 
   async function seedDocument(ownerId: string): Promise<string> {
     const id = crypto.randomUUID();
+    const existing = await pool.query<{ id: string }>(
+      "SELECT id FROM flaw.user_keys WHERE owner_id = $1 AND status = 'active'",
+      [ownerId],
+    );
+    const dekId = existing.rows[0]?.id;
+    if (dekId === undefined) {
+      throw new Error("dek absente");
+    }
     const client = await pool.connect();
     try {
-      const dekId = crypto.randomUUID();
       await client.query("BEGIN");
-      await client.query(
-        `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version)
-         VALUES ($1, $2, $3, $4, 'kek-2026-10', 1)`,
-        [dekId, ownerId, Buffer.from([1]), Buffer.from([2])],
-      );
       await client.query("SELECT set_config('app.user_id', $1, true)", [ownerId]);
       await client.query(
         `INSERT INTO flaw.documents (
@@ -1364,7 +1441,7 @@ describe("authentification sur PostgreSQL", () => {
       role: "user",
       locale: "fr",
       timeZone: "UTC",
-      mfaEnrolled: false,
+      mfaEnrolled: true,
       passwordMustChange: false,
     });
     expect(me.headers["cache-control"]).toBe("no-store");
@@ -1405,7 +1482,9 @@ describe("authentification sur PostgreSQL", () => {
     });
     expect(accepted.statusCode).toBe(200);
     const relog = await sign(app, email, emoji, nextIp(), true);
-    expect(relog.statusCode).toBe(200);
+    expect(relog.statusCode).toBe(401);
+    expect(relog.headers["content-type"]).toContain("application/problem+json");
+    expect(relog.json()).toEqual(problem(401, MFA_REQUIRED));
     await app.close();
   });
 
@@ -1631,7 +1710,7 @@ describe("authentification sur PostgreSQL", () => {
       role: "user",
       locale: "fr",
       timeZone: "UTC",
-      mfaEnrolled: false,
+      mfaEnrolled: true,
       passwordMustChange: false,
     });
     expect(me.headers["cache-control"]).toBe("no-store");
@@ -1667,11 +1746,16 @@ describe("authentification sur PostgreSQL", () => {
       payload: `identifier=${encodeURIComponent(email)}&password=${encodeURIComponent(PASSWORD)}`,
     });
     expect(denied.statusCode).toBe(403);
+    const device = devices.get(email);
     const accepted = await app.inject({
       method: "POST",
       url: "/api/auth/sign-in",
       remoteAddress: "172.31.250.10",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: ORIGIN },
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        origin: ORIGIN,
+        ...(device === undefined ? {} : { cookie: `${DEVICE_COOKIE}=${device}` }),
+      },
       payload: `identifier=${encodeURIComponent(email)}&password=${encodeURIComponent(PASSWORD)}`,
     });
     expect(accepted.statusCode).toBe(200);
@@ -1748,6 +1832,206 @@ describe("authentification sur PostgreSQL", () => {
     expect(anonymous.headers["content-type"]).toContain("application/problem+json");
     expect(anonymous.json()).toEqual(problem(401));
     expect(anonymous.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
+  dbTest("un compte sans facteur ni marqueur d'enrôlement ne se connecte pas (R4)", async () => {
+    const email = nextEmail();
+    const passwordHash = await hashPassword(PASSWORD, ARGON_FLOOR);
+    const inserted = await pool.query<{ id: string }>("INSERT INTO flaw.users (role) VALUES ('user') RETURNING id");
+    const id = inserted.rows[0]?.id;
+    if (id === undefined) {
+      throw new Error("utilisateur absent");
+    }
+    await pool.query(
+      "INSERT INTO flaw.accounts (owner_id, provider_id, account_id, password_hash) VALUES ($1, 'credential', $2, $3)",
+      [id, email, passwordHash],
+    );
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp());
+    expect(signed.statusCode).toBe(401);
+    expect(signed.headers["content-type"]).toContain("application/problem+json");
+    expect(signed.json()).toEqual(problem(401));
+    expect(signed.headers["set-cookie"]).toBeUndefined();
+    const sessions = await pool.query<{ n: number }>(
+      "SELECT count(*)::int AS n FROM flaw.sessions WHERE owner_id = $1",
+      [id],
+    );
+    expect(sessions.rows[0]?.n).toBe(0);
+    await app.close();
+  });
+
+  dbTest("refuse un cookie et un Bearer d'identités différentes", async () => {
+    const emailA = nextEmail();
+    const emailB = nextEmail();
+    await seedUser(emailA, PASSWORD);
+    await seedUser(emailB, PASSWORD);
+    const app = buildApp(config({ FLAW_AUTH_BEARER_ENABLED: "true", bearerEnabled: true }), appOptions());
+    const signedA = await sign(app, emailA, PASSWORD, nextIp());
+    const signedB = await sign(app, emailB, PASSWORD, nextIp());
+    const tokenA = tokenOf(setCookie(signedA.headers));
+    const tokenB = tokenOf(setCookie(signedB.headers));
+    const mark = logMark();
+    const conflict = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: `${SESSION_COOKIE}=${tokenA}`, authorization: `Bearer ${tokenB}` },
+    });
+    expect(conflict.statusCode).toBe(401);
+    expect(conflict.headers["content-type"]).toContain("application/problem+json");
+    expect(conflict.json()).toEqual(problem(401));
+    const tail = logText.slice(mark);
+    expect(tail).toContain("authorization_denied");
+    expect(tail).not.toContain(tokenA);
+    expect(tail).not.toContain(tokenB);
+    const same = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: `${SESSION_COOKIE}=${tokenA}`, authorization: `Bearer ${tokenA}` },
+    });
+    expect(same.statusCode).toBe(200);
+    await app.close();
+  });
+
+  dbTest("limite les jetons invalides par adresse", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const ip = nextIp();
+    const signed = await sign(app, email, PASSWORD, ip);
+    const token = tokenOf(setCookie(signed.headers));
+    const before = await pool.query<{ last_activity_at: Date }>(
+      "SELECT last_activity_at FROM flaw.sessions WHERE token_hash = $1",
+      [hashSessionToken(token)],
+    );
+    let limited: Awaited<ReturnType<typeof app.inject>> | undefined;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      limited = await app.inject({
+        method: "GET",
+        url: "/api/v1/me",
+        remoteAddress: "172.31.250.10",
+        headers: {
+          cookie: `${SESSION_COOKIE}=${randomBytes(24).toString("base64url")}`,
+          "x-real-ip": ip,
+        },
+      });
+      if (limited.statusCode === 429) {
+        break;
+      }
+    }
+    expect(limited?.statusCode).toBe(429);
+    expect(limited?.headers["content-type"]).toContain("application/problem+json");
+    expect(limited?.json()).toEqual(problem(429, TOO_MANY));
+    expect(limited?.headers["retry-after"]).toBeDefined();
+    clock.ms += 1000;
+    const blocked = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      remoteAddress: "172.31.250.10",
+      headers: { cookie: `${SESSION_COOKIE}=${token}`, "x-real-ip": ip },
+    });
+    expect(blocked.statusCode).toBe(429);
+    const after = await pool.query<{ last_activity_at: Date }>(
+      "SELECT last_activity_at FROM flaw.sessions WHERE token_hash = $1",
+      [hashSessionToken(token)],
+    );
+    expect(after.rows[0]?.last_activity_at.getTime()).toBe(before.rows[0]?.last_activity_at.getTime());
+    const other = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      remoteAddress: "172.31.250.10",
+      headers: { cookie: `${SESSION_COOKIE}=${token}`, "x-real-ip": nextIp() },
+    });
+    expect(other.statusCode).toBe(200);
+    const unknown = await app.inject({
+      method: "GET",
+      url: "/api/v1/inconnu",
+      remoteAddress: "172.31.250.10",
+      headers: {
+        cookie: `${SESSION_COOKIE}=${randomBytes(24).toString("base64url")}`,
+        "x-real-ip": ip,
+      },
+    });
+    expect(unknown.statusCode).toBe(429);
+    expect(unknown.json()).toEqual(problem(429, TOO_MANY));
+    await app.close();
+  });
+
+  dbTest("ignore un Bearer valide quand le drapeau est éteint", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp());
+    const token = tokenOf(setCookie(signed.headers));
+    const before = await pool.query<{ last_activity_at: Date }>(
+      "SELECT last_activity_at FROM flaw.sessions WHERE token_hash = $1",
+      [hashSessionToken(token)],
+    );
+    clock.ms += 1000;
+    const anonymous = await app.inject({ method: "GET", url: "/api/v1/inconnu" });
+    const bearer = await app.inject({
+      method: "GET",
+      url: "/api/v1/inconnu",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(bearer.statusCode).toBe(401);
+    expect(bearer.headers["content-type"]).toContain("application/problem+json");
+    expect(bearer.json()).toEqual(anonymous.json());
+    expect(bearer.json()).toEqual(problem(401));
+    const after = await pool.query<{ last_activity_at: Date }>(
+      "SELECT last_activity_at FROM flaw.sessions WHERE token_hash = $1",
+      [hashSessionToken(token)],
+    );
+    expect(after.rows[0]?.last_activity_at.getTime()).toBe(before.rows[0]?.last_activity_at.getTime());
+    await app.close();
+  });
+
+  dbTest("un cookie valide et un Bearer étranger sur une route inconnue restent un 404 (Q-019)", async () => {
+    const emailA = nextEmail();
+    const emailB = nextEmail();
+    await seedUser(emailA, PASSWORD);
+    await seedUser(emailB, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signedA = await sign(app, emailA, PASSWORD, nextIp());
+    const signedB = await sign(app, emailB, PASSWORD, nextIp());
+    const tokenA = tokenOf(setCookie(signedA.headers));
+    const tokenB = tokenOf(setCookie(signedB.headers));
+    const missing = await app.inject({
+      method: "GET",
+      url: "/api/v1/inconnu",
+      headers: {
+        cookie: `${SESSION_COOKIE}=${tokenA}`,
+        authorization: `Bearer ${tokenB}`,
+      },
+    });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.headers["content-type"]).toContain("application/problem+json");
+    expect(missing.json()).toEqual(problem(404));
+    await app.close();
+  });
+
+  dbTest("un changement de mot de passe révoque l'appareil de confiance", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp());
+    const changed = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      remoteAddress: "172.31.250.10",
+      headers: {
+        cookie: cookiePair(setCookie(signed.headers)),
+        origin: ORIGIN,
+        "content-type": "application/json",
+        "x-real-ip": nextIp(),
+      },
+      payload: JSON.stringify({ currentPassword: PASSWORD, newPassword: "phrase-nouvelle-ok" }),
+    });
+    expect(changed.statusCode).toBe(200);
+    const relog = await sign(app, email, "phrase-nouvelle-ok", nextIp());
+    expect(relog.statusCode).toBe(401);
+    expect(relog.headers["content-type"]).toContain("application/problem+json");
+    expect(relog.json()).toEqual(problem(401, MFA_REQUIRED));
     await app.close();
   });
 });

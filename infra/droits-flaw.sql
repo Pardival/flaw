@@ -128,7 +128,6 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
   flaw.verifications,
   flaw.auth_factors,
   flaw.recovery_codes,
-  flaw.user_keys,
   flaw.user_preferences,
   flaw.daily_progress,
   flaw.rate_limits,
@@ -142,6 +141,8 @@ GRANT SELECT ON TABLE flaw.erasure_log TO flaw_app;
 GRANT SELECT, INSERT ON TABLE flaw.erasure_outbox, flaw.erasure_journal_head TO flaw_app;
 GRANT INSERT ON TABLE flaw.auth_events TO flaw_app;
 GRANT SELECT, INSERT, UPDATE ON TABLE flaw.keks TO flaw_app;
+GRANT SELECT, INSERT, UPDATE ON TABLE flaw.user_keys TO flaw_app;
+REVOKE DELETE ON TABLE flaw.user_keys FROM flaw_app;
 
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA flaw TO flaw_app;
 GRANT EXECUTE ON FUNCTION flaw.purge_journaux() TO flaw_app;
