@@ -20,7 +20,7 @@ import type { LoadedSecrets } from "../config/secrets.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
-import { problem } from "../platform/problem.ts";
+import { mfaRequiredProblem, problem } from "../platform/problem.ts";
 import { checkRoles } from "../admin/check-roles.ts";
 import { DEVICE_COOKIE, hashSessionToken, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
 import { issueDeviceSecret, summarizeDevice } from "./device.ts";
@@ -56,6 +56,32 @@ const ORIGIN = "https://flaw.test";
 const PASSWORD = "phrase-secrete-ok";
 const TRACKERS = ["google-analytics", "googletagmanager", "segment.io", "plausible.io", "doubleclick.net"];
 const root = fileURLToPath(new URL("../../../../", import.meta.url));
+
+function mfaRequiredFromContract(): ReturnType<typeof mfaRequiredProblem> {
+  const contract = JSON.parse(
+    readFileSync(join(root, "apps/server/openapi/api-contract-0.4.18-derive-t052.json"), "utf8"),
+  ) as {
+    components: {
+      responses: {
+        MfaRequired: {
+          description: string;
+          content: { "application/problem+json": { schema: { $ref: string } } };
+        };
+      };
+      schemas: { Problem: { properties: { type: { format: string }; status: { type: string } } } };
+    };
+  };
+  const response = contract.components.responses.MfaRequired;
+  expect(response.content["application/problem+json"].schema.$ref).toBe("#/components/schemas/Problem");
+  expect(response.description).toContain("mfa_required");
+  expect(contract.components.schemas.Problem.properties.type.format).toBe("uri");
+  const body = mfaRequiredProblem();
+  expect(body.code).toBe("mfa_required");
+  expect(body.type.endsWith("/mfa_required")).toBe(true);
+  expect(body.status).toBe(403);
+  expect(problem(403, RESTRICTED)).not.toEqual(body);
+  return body;
+}
 const dbTestsLabel = basename(fileURLToPath(import.meta.url));
 const cliPath = fileURLToPath(new URL("../admin/cli.ts", import.meta.url));
 const container = `flaw-t007-auth-${process.pid}`;
@@ -1827,7 +1853,8 @@ describe("authentification sur PostgreSQL", () => {
     });
     expect(restricted.statusCode).toBe(403);
     expect(restricted.headers["content-type"]).toContain("application/problem+json");
-    expect(restricted.json()).toEqual(problem(403, RESTRICTED));
+    expect(restricted.json()).toEqual(mfaRequiredFromContract());
+    expect(restricted.json()).not.toEqual(problem(403, RESTRICTED));
     expect(restricted.headers["cache-control"]).toBe("no-store");
     const anonymous = await app.inject({ method: "GET", url: "/api/v1/me" });
     expect(anonymous.statusCode).toBe(401);
@@ -1852,7 +1879,8 @@ describe("authentification sur PostgreSQL", () => {
     expect(response.statusCode).toBe(403);
     expect(response.headers["content-type"]).toContain("application/problem+json");
     expect(response.headers["cache-control"]).toBe("no-store");
-    expect(response.json()).toEqual(problem(403, RESTRICTED));
+    expect(response.json()).toEqual(mfaRequiredFromContract());
+    expect(response.json()).not.toEqual(problem(403, RESTRICTED));
     const full = await sign(app, email, created.password, nextIp());
     expect((await floorAuth().profile(created.userId))?.mfaEnrolled).toBe(false);
     expect(full.statusCode).toBe(200);

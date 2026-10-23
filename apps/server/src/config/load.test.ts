@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -337,6 +337,74 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
     if (!sameOld.ok) {
       expect(sameOld.message).toBe("refus de démarrer : poivre");
       expect(sameOld.message).not.toContain(shared);
+    }
+  });
+
+  it("refuse le démarrage si un ancien poivre déclaré est absent", () => {
+    const env = writeSecrets(validSet());
+    const missing = loadSecrets({
+      ...env,
+      RECOVERY_PEPPER_ID: "pep-B",
+      RECOVERY_PEPPER_OLD_IDS: "pep-A",
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) {
+      expect(missing.message).toBe("refus de démarrer : secret absent");
+      expect(missing.message).not.toContain("pep-A");
+    }
+    const healthz = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL("../platform/healthz.ts", import.meta.url))],
+      {
+        env: {
+          PATH: process.env.PATH ?? "",
+          ...env,
+          PORT: "0",
+          RECOVERY_PEPPER_ID: "pep-B",
+          RECOVERY_PEPPER_OLD_IDS: "pep-A",
+        },
+        encoding: "utf8",
+        timeout: 8_000,
+      },
+    );
+    expect(healthz.status).toBe(1);
+    expect(healthz.stderr).toBe("refus de démarrer : secret absent\n");
+    expect(healthz.stderr).not.toContain("pep-A");
+  });
+
+  it("creer-secrets.sh ne crée aucun fichier recovery_pepper_<id>", () => {
+    const directory = mkdtempSync(join(tmpdir(), "flaw-creer-"));
+    try {
+      mkdirSync(join(directory, "initdb"));
+      copyFileSync(join(root, "infra/creer-secrets.sh"), join(directory, "creer-secrets.sh"));
+      copyFileSync(join(root, "infra/initdb/secret-valide.inc"), join(directory, "initdb/secret-valide.inc"));
+      chmodSync(join(directory, "creer-secrets.sh"), 0o755);
+      const secrets = join(directory, "secrets");
+      const run = () => spawnSync(
+        "sudo",
+        ["-n", "env", "-u", "RECOVERY_PEPPER_ID", "-u", "RECOVERY_PEPPER_OLD_IDS", `SECRETS_DIR=${secrets}`, "sh", "creer-secrets.sh"],
+        { cwd: directory, encoding: "utf8" },
+      );
+      writeFileSync(join(directory, ".env"), "RECOVERY_PEPPER_ID=pep-B\nRECOVERY_PEPPER_OLD_IDS=pep-A,pep-A\n");
+      const rejected = run();
+      expect(rejected.status).toBe(1);
+      expect(rejected.stderr).toContain("identifiant de poivre refusé");
+      expect(rejected.stderr).not.toContain("pep-A");
+      writeFileSync(
+        join(directory, ".env"),
+        'RECOVERY_PEPPER_ID=pep-B\nRECOVERY_PEPPER_OLD_IDS="pep-A, pep-C"\n',
+      );
+      const created = run();
+      expect(created.status, created.stderr).toBe(0);
+      const listed = spawnSync("sudo", ["-n", "ls", "-1", secrets], { encoding: "utf8" });
+      expect(listed.status, listed.stderr).toBe(0);
+      const names = listed.stdout.split("\n").filter((name) => name.length > 0);
+      expect(names).toContain("recovery_pepper");
+      expect(names.filter((name) => name.startsWith("recovery_pepper_"))).toEqual([]);
+      expect(created.stdout).not.toContain("recovery_pepper_pep-A");
+      expect(created.stdout).not.toContain("recovery_pepper_pep-C");
+    } finally {
+      spawnSync("sudo", ["-n", "rm", "-rf", directory]);
     }
   });
 

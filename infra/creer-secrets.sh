@@ -10,7 +10,7 @@
 #   better_auth_secret  app (10001)                    10001:10001   400
 #   flaw_kek            app (10001)                    10001:10001   400
 #   recovery_pepper     app (10001)                    10001:10001   400
-#   recovery_pepper_<id> app (10001) — un fichier par id de RECOVERY_PEPPER_OLD_IDS
+#   recovery_pepper_<id> n'est ni généré ni repris : étape manuelle de rotation
 #   hmac_pepper         app (10001)                    10001:10001   400
 #
 # Usage (depuis infra/) :
@@ -101,8 +101,6 @@ while [ -n "$rest" ]; do
     *" $id "*) reject_pepper_id ;;
   esac
   seen="$seen$id "
-  SPEC="$SPEC
-recovery_pepper_${id} 10001:10001 400 kek"
 done
 
 gen() {
@@ -175,13 +173,12 @@ printf 'Empreinte recovery_pepper : %s\n' "$(base64 -d "$D/recovery_pepper" | sh
 printf 'Taille recovery_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/recovery_pepper" | wc -c | tr -d ' ')"
 printf 'Empreinte hmac_pepper : %s\n' "$(base64 -d "$D/hmac_pepper" | sha256sum | cut -c1-16)"
 printf 'Taille hmac_pepper décodée : %s octets (attendu 32)\n' "$(base64 -d "$D/hmac_pepper" | wc -c | tr -d ' ')"
-echo "$SPEC" | while read -r n own mode g; do
-  case $n in
-    recovery_pepper_*)
-      printf 'Empreinte %s : %s\n' "$n" "$(base64 -d "$D/$n" | sha256sum | cut -c1-16)"
-      printf 'Taille %s décodée : %s octets (attendu 32)\n' "$n" "$(base64 -d "$D/$n" | wc -c | tr -d ' ')"
-      ;;
-  esac
+for k in "$D"/recovery_pepper_*; do
+  [ -e "$k" ] || continue
+  n=$(basename "$k")
+  printf 'Empreinte %s : %s\n' "$n" "$(base64 -d "$k" | sha256sum | cut -c1-16)"
+  printf 'Taille %s décodée : %s octets (attendu 32)\n' "$n" "$(base64 -d "$k" | wc -c | tr -d ' ')"
 done
-echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper, hmac_pepper, chaque recovery_pepper_<id> (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID, RECOVERY_PEPPER_OLD_IDS, HMAC_PEPPER_ID)."
+echo "À COPIER dans le gestionnaire : flaw_kek, recovery_pepper, hmac_pepper, chaque recovery_pepper_<id> posé à la main (+ empreintes, FLAW_KEK_ID, RECOVERY_PEPPER_ID, RECOVERY_PEPPER_OLD_IDS, HMAC_PEPPER_ID)."
+echo "Les anciens poivres ne sont pas générés : renommer le fichier à la main, sinon le serveur refuse de démarrer."
 echo "Conserver hors du serveur, avec la KEK et le mot de passe restic : gestionnaire de mots de passe et copie hors ligne."

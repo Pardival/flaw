@@ -9,7 +9,7 @@ import { parseRecoveryPepperOldIds } from "../config/env.ts";
 import type { AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { resolvedClientIp } from "../platform/healthz.ts";
-import { sendProblem } from "../platform/problem.ts";
+import { sendMfaRequired, sendProblem } from "../platform/problem.ts";
 import { writeSecurityLog, type SecurityEvent } from "../platform/security-log.ts";
 import type { Writable } from "node:stream";
 import type { Pool } from "pg";
@@ -345,6 +345,9 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return sendUnauthorized(reply);
     }
     if (session.restricted && !restrictedAllows(request.method, pattern ?? "")) {
+      if (request.method === "GET" && pattern === "/api/v1/me") {
+        return sendMfaRequired(reply);
+      }
       return sendMessage(reply, 403, RESTRICTED);
     }
     sessions.set(request, {
