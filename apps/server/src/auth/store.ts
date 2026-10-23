@@ -26,6 +26,7 @@ export type SessionRow = {
   revoked_at: Date | null;
   remember: boolean;
   created_at: Date;
+  restricted: boolean;
 };
 
 export type AuditRow = {
@@ -37,6 +38,9 @@ export type AuditRow = {
 };
 
 const ABSENT_USER = "00000000-0000-0000-0000-000000000000";
+
+/** Ancre de l'escalade de verrouillage. La purge des compteurs ne l'efface pas. */
+export const LOCK_STAGE_ANCHOR = new Date("9999-12-31T00:00:00.000Z");
 
 export async function withOwner<T>(pool: Pool, userId: string, run: (sql: Sql) => Promise<T>): Promise<T> {
   const client: PoolClient = await pool.connect();
@@ -124,13 +128,14 @@ export async function insertSession(
     browser: string;
     os: string;
     remember: boolean;
+    restricted: boolean;
   },
 ): Promise<string> {
   const result = await sql.query<{ id: string }>(
     `INSERT INTO flaw.sessions (
        owner_id, token_hash, expires_at, created_at, last_activity_at,
-       absolute_expires_at, browser, os, remember
-     ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8)
+       absolute_expires_at, browser, os, remember, restricted
+     ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       input.userId,
@@ -141,6 +146,7 @@ export async function insertSession(
       input.browser,
       input.os,
       input.remember,
+      input.restricted,
     ],
   );
   const id = result.rows[0]?.id;
@@ -150,10 +156,21 @@ export async function insertSession(
   return id;
 }
 
+export async function findSessionById(sql: Sql, sessionId: string): Promise<SessionRow | null> {
+  const result = await sql.query<SessionRow>(
+    `SELECT id, owner_id, expires_at, absolute_expires_at, last_activity_at,
+            revoked_at, remember, created_at, restricted
+     FROM flaw.sessions
+     WHERE id = $1`,
+    [sessionId],
+  );
+  return result.rows[0] ?? null;
+}
+
 export async function findSession(sql: Sql, tokenHash: Buffer): Promise<SessionRow | null> {
   const result = await sql.query<SessionRow>(
     `SELECT id, owner_id, expires_at, absolute_expires_at, last_activity_at,
-            revoked_at, remember, created_at
+            revoked_at, remember, created_at, restricted
      FROM flaw.sessions
      WHERE token_hash = $1`,
     [tokenHash],
@@ -278,10 +295,10 @@ export async function bumpRate(sql: Sql, bucket: string, windowStart: Date): Pro
 export async function activeLock(sql: Sql, bucket: string, now: Date): Promise<Date | null> {
   const result = await sql.query<{ window_start: Date }>(
     `SELECT window_start FROM flaw.rate_limits
-     WHERE bucket = $1 AND window_start > $2
+     WHERE bucket = $1 AND window_start > $2 AND window_start < $3
      ORDER BY window_start DESC
      LIMIT 1`,
-    [bucket, now],
+    [bucket, now, LOCK_STAGE_ANCHOR],
   );
   return result.rows[0]?.window_start ?? null;
 }
@@ -295,11 +312,22 @@ export async function maxLockStage(sql: Sql, bucket: string): Promise<number> {
 }
 
 export async function insertLock(sql: Sql, bucket: string, until: Date, stage: number): Promise<void> {
+  const inserted = await sql.query(
+    `INSERT INTO flaw.rate_limits (bucket, window_start, hits)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (bucket, window_start) DO NOTHING
+     RETURNING hits`,
+    [bucket, until, stage],
+  );
+  if ((inserted.rowCount ?? 0) === 0) {
+    return;
+  }
   await sql.query(
     `INSERT INTO flaw.rate_limits (bucket, window_start, hits)
      VALUES ($1, $2, $3)
-     ON CONFLICT (bucket, window_start) DO NOTHING`,
-    [bucket, until, stage],
+     ON CONFLICT (bucket, window_start)
+     DO UPDATE SET hits = GREATEST(flaw.rate_limits.hits, EXCLUDED.hits)`,
+    [bucket, LOCK_STAGE_ANCHOR, stage],
   );
 }
 
@@ -357,4 +385,188 @@ export async function deleteDocument(pool: Pool, userId: string, documentId: str
 
 export function absentUserId(): string {
   return ABSENT_USER;
+}
+
+export async function liftRestriction(
+  sql: Sql,
+  sessionId: string,
+  activity: Date,
+  expiresAt: Date,
+  absoluteExpiresAt: Date,
+): Promise<void> {
+  await sql.query(
+    `UPDATE flaw.sessions
+     SET restricted = false, last_activity_at = $2, expires_at = $3, absolute_expires_at = $4
+     WHERE id = $1 AND revoked_at IS NULL`,
+    [sessionId, activity, expiresAt, absoluteExpiresAt],
+  );
+}
+
+export type TotpFactorRow = {
+  id: string;
+  secret_ct: Buffer;
+  secret_nonce: Buffer;
+  key_id: string;
+  enc_version: number;
+};
+
+export async function findTotpFactor(sql: Sql, userId: string): Promise<TotpFactorRow | null> {
+  const result = await sql.query<TotpFactorRow>(
+    `SELECT id, secret_ct, secret_nonce, key_id, enc_version
+     FROM flaw.auth_factors
+     WHERE owner_id = $1 AND kind = 'totp'
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function insertTotpFactor(
+  sql: Sql,
+  input: {
+    id: string;
+    userId: string;
+    secretCt: Uint8Array;
+    secretNonce: Uint8Array;
+    dekId: string;
+    encVersion: number;
+  },
+): Promise<void> {
+  await sql.query(
+    `INSERT INTO flaw.auth_factors (
+       id, owner_id, kind, secret_ct, secret_nonce, key_id, enc_version
+     ) VALUES ($1, $2, 'totp', $3, $4, $5, $6)`,
+    [input.id, input.userId, Buffer.from(input.secretCt), Buffer.from(input.secretNonce), input.dekId, input.encVersion],
+  );
+}
+
+export async function deleteTotpFactors(sql: Sql, userId: string): Promise<void> {
+  await sql.query("DELETE FROM flaw.auth_factors WHERE owner_id = $1 AND kind = 'totp'", [userId]);
+}
+
+export async function insertRecoveryCode(sql: Sql, userId: string, pepperId: string, codeHmac: Buffer): Promise<void> {
+  await sql.query(
+    "INSERT INTO flaw.recovery_codes (user_id, pepper_id, code_hmac) VALUES ($1, $2, $3)",
+    [userId, pepperId, codeHmac],
+  );
+}
+
+export async function consumeRecoveryCode(sql: Sql, userId: string, codeHmac: Buffer, at: Date): Promise<boolean> {
+  const result = await sql.query(
+    `UPDATE flaw.recovery_codes
+     SET used_at = $3
+     WHERE user_id = $1 AND code_hmac = $2 AND used_at IS NULL
+     RETURNING id`,
+    [userId, codeHmac, at],
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function invalidateRecoveryCodes(sql: Sql, userId: string, at: Date): Promise<void> {
+  await sql.query(
+    "UPDATE flaw.recovery_codes SET used_at = $2 WHERE user_id = $1 AND used_at IS NULL",
+    [userId, at],
+  );
+}
+
+export async function listRecoveryHmacs(sql: Sql, userId: string): Promise<Buffer[]> {
+  const result = await sql.query<{ code_hmac: Buffer }>(
+    "SELECT code_hmac FROM flaw.recovery_codes WHERE user_id = $1 ORDER BY created_at",
+    [userId],
+  );
+  return result.rows.map((row) => row.code_hmac);
+}
+
+export async function deleteRecoveryCodes(sql: Sql, userId: string): Promise<void> {
+  await sql.query("DELETE FROM flaw.recovery_codes WHERE user_id = $1", [userId]);
+}
+
+export type UserKeyRow = {
+  id: string;
+  owner_id: string;
+  wrapped_ct: Buffer;
+  wrapped_nonce: Buffer;
+  key_id: string;
+  enc_version: number;
+  status: string;
+};
+
+export async function findUserKey(sql: Sql, userId: string, dekId: string): Promise<UserKeyRow | null> {
+  const result = await sql.query<UserKeyRow>(
+    `SELECT id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status
+     FROM flaw.user_keys
+     WHERE owner_id = $1 AND id = $2`,
+    [userId, dekId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function findActiveUserKey(sql: Sql, userId: string): Promise<UserKeyRow | null> {
+  const result = await sql.query<UserKeyRow>(
+    `SELECT id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status
+     FROM flaw.user_keys
+     WHERE owner_id = $1 AND status = 'active'`,
+    [userId],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function insertUserKey(
+  sql: Sql,
+  input: {
+    id: string;
+    userId: string;
+    wrappedCt: Uint8Array;
+    wrappedNonce: Uint8Array;
+    kekId: string;
+    encVersion: number;
+  },
+): Promise<void> {
+  await sql.query(
+    `INSERT INTO flaw.user_keys (id, owner_id, wrapped_ct, wrapped_nonce, key_id, enc_version, status)
+     VALUES ($1, $2, $3, $4, $5, $6, 'active')`,
+    [
+      input.id,
+      input.userId,
+      Buffer.from(input.wrappedCt),
+      Buffer.from(input.wrappedNonce),
+      input.kekId,
+      input.encVersion,
+    ],
+  );
+}
+
+export async function findVerificationRow(
+  sql: Sql,
+  identifier: string,
+): Promise<{ value_hash: string; expires_at: Date } | null> {
+  const result = await sql.query<{ value_hash: string; expires_at: Date }>(
+    `SELECT value_hash, expires_at FROM flaw.verifications
+     WHERE identifier = $1
+     ORDER BY expires_at DESC
+     LIMIT 1`,
+    [identifier],
+  );
+  return result.rows[0] ?? null;
+}
+
+export async function upsertVerification(
+  sql: Sql,
+  identifier: string,
+  valueHash: string,
+  expiresAt: Date,
+): Promise<void> {
+  const updated = await sql.query(
+    "UPDATE flaw.verifications SET value_hash = $2, expires_at = $3 WHERE identifier = $1",
+    [identifier, valueHash, expiresAt],
+  );
+  if ((updated.rowCount ?? 0) > 0) {
+    return;
+  }
+  await insertVerification(sql, identifier, valueHash, expiresAt);
+}
+
+export async function deleteVerificationsByValue(sql: Sql, valueHash: string): Promise<void> {
+  await sql.query("DELETE FROM flaw.verifications WHERE value_hash = $1", [valueHash]);
 }

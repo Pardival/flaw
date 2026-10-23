@@ -28,6 +28,28 @@ export const SECURITY_EVENTS = [
 
 export type SecurityEventType = (typeof SECURITY_EVENTS)[number];
 
+export const ADMIN_ACTIONS = [
+  "admin.create_user",
+  "admin.reset_password",
+  "admin.disable_mfa",
+  "admin.revoke_sessions",
+  "admin.rotate_kek",
+  "admin.revoke_dek",
+  "admin.check_roles",
+  "admin.replay_erasures",
+] as const;
+
+export type AdminAction = (typeof ADMIN_ACTIONS)[number];
+
+const ADMIN_ACTION_SET = new Set<string>(ADMIN_ACTIONS);
+
+export function adminAction(value: string | undefined): AdminAction | undefined {
+  if (value !== undefined && ADMIN_ACTION_SET.has(value)) {
+    return value as AdminAction;
+  }
+  return undefined;
+}
+
 export type SecurityEvent = {
   type: SecurityEventType;
   userId?: string | null;
@@ -35,6 +57,7 @@ export type SecurityEvent = {
   ip?: string | null;
   userAgent?: string | null;
   result: "succes" | "echec";
+  action?: string;
 };
 
 const SENSITIVE_KEY =
@@ -73,6 +96,7 @@ export function redact(value: unknown): unknown {
 }
 
 export function securityRecord(event: SecurityEvent, now: Date = new Date()): Record<string, unknown> {
+  const action = adminAction(event.action);
   return redact({
     ts: now.toISOString(),
     type: event.type,
@@ -81,6 +105,7 @@ export function securityRecord(event: SecurityEvent, now: Date = new Date()): Re
     ip: event.ip ?? null,
     user_agent: summarizeUserAgent(event.userAgent),
     result: event.result,
+    ...(action === undefined ? {} : { action }),
   }) as Record<string, unknown>;
 }
 

@@ -117,6 +117,7 @@ export const sessions = flaw.table(
     browser: text("browser").notNull().default("inconnu"),
     os: text("os").notNull().default("inconnu"),
     remember: boolean("remember").notNull().default(false),
+    restricted: boolean("restricted").notNull().default(false),
     createdAt: createdAt(),
   },
   (table) => [
@@ -145,7 +146,7 @@ export const userKeys = flaw.table(
   (table) => [
     index("user_keys_owner_id_idx").on(table.ownerId),
     unique("user_keys_id_owner_uidx").on(table.id, table.ownerId),
-    check("user_keys_status_check", sql`${table.status} in ('active', 'retired')`),
+    check("user_keys_status_check", sql`${table.status} in ('active', 'retired', 'revoked')`),
     uniqueIndex("user_keys_one_active_uidx").on(table.ownerId).where(sql`${table.status} = 'active'`),
   ],
 );

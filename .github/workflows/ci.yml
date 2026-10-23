@@ -64,9 +64,9 @@ jobs:
           echo "43a4e328e2d13ba1552d760aa68d2485c75c5621f309f6ff64ae895188345247  /tmp/oasdiff.tar.gz" | sha256sum -c -
           tar -xzf /tmp/oasdiff.tar.gz -C "$HOME/.local/bin" oasdiff
           git fetch --depth=1 origin main
+          # Contrat d'API courant du dépôt (openapi.json sur main). Aucune exception.
           git show FETCH_HEAD:openapi.json > /tmp/openapi.base.json
-          # Q-013 — la seule rupture acceptée est le retrait de clientIp sur healthz (ci/oasdiff-err-ignore.txt).
-          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR --err-ignore ci/oasdiff-err-ignore.txt /tmp/openapi.base.json openapi.json
+          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR /tmp/openapi.base.json openapi.json
 
       - name: Licences
         run: pnpm licenses:check

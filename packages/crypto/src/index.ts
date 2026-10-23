@@ -18,6 +18,7 @@ export {
   COLUMN,
   contentAad,
   dekAad,
+  dekResolvable,
   generateDek,
   openContent,
   sealContent,

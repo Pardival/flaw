@@ -78,13 +78,16 @@ describe("seuil DB par fichier", () => {
         join(dir, "db", "suite.test.ts"),
         `const env = "${passwordMarker}";\n${migrationCall}\n`,
       );
+      const imageOnly = "postgres:" + "18.6-alpine";
+      writeFileSync(join(dir, "db", "awk.test.ts"), `const image = "${imageOnly}";\n`);
+      const runArg = '["' + "run" + '"';
       writeFileSync(
-        join(dir, "db", "awk.test.ts"),
-        'const image = "postgres:18.6-alpine";\n',
+        join(dir, "db", "lance.test.ts"),
+        `spawnSync("docker", ${runArg}, "--name", "db", "${imageOnly}"]);\n`,
       );
       const discovered = discoverHarnessFiles(dir);
       expect(discovered.duplicates).toEqual([]);
-      expect(discovered.files).toEqual(["suite.test.ts"]);
+      expect(discovered.files).toEqual(["lance.test.ts", "suite.test.ts"]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -97,7 +100,8 @@ describe("seuil DB par fichier", () => {
     const discovered = discoverHarnessFiles(repo);
     expect(discovered.duplicates).toEqual([]);
     expect(discovered.files).toEqual(Object.keys(committed.files).sort());
-    expect(committed.files["auth.test.ts"]).toBeGreaterThanOrEqual(29);
+    expect(committed.files["auth.test.ts"]).toBeGreaterThanOrEqual(30);
     expect(committed.files["rls.test.ts"]).toBeGreaterThanOrEqual(12);
+    expect(committed.files["admin-cli.test.ts"]).toBeGreaterThanOrEqual(14);
   });
 });

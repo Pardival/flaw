@@ -36,7 +36,17 @@ export const COLUMN = {
 const COLUMN_VALUES = new Set<string>(Object.values(COLUMN));
 
 export type ContentColumn = (typeof COLUMN)[keyof typeof COLUMN];
-export type KeyStatus = "active" | "retired";
+/**
+ * Q-011 — `revoked` est une révocation explicite (migration additive).
+ * `retired` reste résoluble (contenu historique). `revoked` refuse la résolution.
+ * Le déballage KEK (rotation) ne consulte pas ce statut : une DEK révoquée
+ * est ré-enveloppée, puis la résolution continue de la refuser.
+ */
+export type KeyStatus = "active" | "retired" | "revoked";
+
+export function dekResolvable(status: KeyStatus): boolean {
+  return status === "active" || status === "retired";
+}
 
 export type ContentBinding = {
   ownerId: string;
