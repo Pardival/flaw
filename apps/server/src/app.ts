@@ -135,10 +135,16 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
       return undefined;
     }
     const record = body as Record<string, unknown>;
+    const routeUrl = request.routeOptions.url ?? "";
+    const documentRoute = routeUrl === "/api/v1/documents" || routeUrl.startsWith("/api/v1/documents/");
+    const keepClientId = request.method === "POST" && routeUrl === "/api/v1/documents";
     for (const key of SERVER_ASSIGNED_KEYS) {
+      if (keepClientId && key === "id") {
+        continue;
+      }
       delete record[key];
     }
-    if ("title" in record && !documentTitleSchema.safeParse(record.title).success) {
+    if (!documentRoute && "title" in record && !documentTitleSchema.safeParse(record.title).success) {
       return sendProblem(reply, 400);
     }
     return undefined;

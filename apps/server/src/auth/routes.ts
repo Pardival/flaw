@@ -14,7 +14,7 @@ import { writeSecurityLog, type SecurityEvent } from "../platform/security-log.t
 import type { Writable } from "node:stream";
 import type { Pool } from "pg";
 
-import { registerContentRoutes } from "../access/rest.ts";
+import { registerContentRoutes } from "../documents/routes.ts";
 import type { AccessActor } from "../access/can.ts";
 import { clearSessionCookie, DEVICE_COOKIE, readBearer, readCookie, serializeDeviceCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
 import { LOGIN_HTML, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
@@ -40,12 +40,13 @@ export const PROTECTED_ROUTES = [
   { method: "DELETE", url: "/api/v1/me/sessions/:sessionId", auth: true },
   { method: "GET", url: "/api/v1/me", auth: true },
   { method: "GET", url: "/api/v1/documents", auth: true },
-  { method: "GET", url: "/api/v1/documents/:id", auth: true },
-  { method: "PUT", url: "/api/v1/documents/:id", auth: true },
-  { method: "PATCH", url: "/api/v1/documents/:id", auth: true },
-  { method: "DELETE", url: "/api/v1/documents/:id", auth: true },
-  { method: "POST", url: "/api/v1/documents/:id/sync", auth: true },
-  { method: "POST", url: "/api/v1/documents/:id/export", auth: true },
+  { method: "POST", url: "/api/v1/documents", auth: true },
+  { method: "GET", url: "/api/v1/documents/:documentId", auth: true },
+  { method: "PATCH", url: "/api/v1/documents/:documentId", auth: true },
+  { method: "DELETE", url: "/api/v1/documents/:documentId", auth: true },
+  { method: "POST", url: "/api/v1/documents/:documentId/restore", auth: true },
+  { method: "GET", url: "/api/v1/documents/:documentId/content", auth: true },
+  { method: "POST", url: "/api/v1/documents/:documentId/sync", auth: true },
   { method: "POST", url: "/api/auth/mfa/enroll", auth: true },
   { method: "POST", url: "/api/auth/mfa/verify", auth: true },
 ] as const;
@@ -606,6 +607,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
 
   registerContentRoutes(app, {
     pool: () => runtime.pool,
+    kek: () => (runtime.secrets === undefined ? undefined : (decodeValidatedKey(runtime.secrets.kek) ?? undefined)),
     actor: async (request): Promise<AccessActor | undefined> => {
       const current = sessionOf(request);
       if (current === undefined || runtime.pool === undefined) {

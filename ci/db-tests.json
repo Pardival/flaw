@@ -4,6 +4,7 @@
     "auth.test.ts": 45,
     "rls.test.ts": 12,
     "admin-cli.test.ts": 27,
-    "idor.test.ts": 6
+    "idor.test.ts": 6,
+    "documents.test.ts": 8
   }
 }
