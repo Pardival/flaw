@@ -1,11 +1,8 @@
 /**
- * Catalogue français des écrans D-003, D-005, D-006 et D-007.
- * T-055 migrera ces clés vers i18next. Aucun composant ne duplique ces phrases.
- * v1 : la clé TOTP est en clair et le lien otpauth:// ouvre l'application.
- * Le code visuel viendra après la v1.
+ * Ressources i18next des écrans D-003, D-005, D-006 et D-007.
+ * Français par défaut. v1 : la clé TOTP est en clair et le lien otpauth:// ouvre l'application.
  */
-
-export const messages = {
+export const mfa = {
   loading: "Chargement…",
   pending: "Envoi…",
   challengeTitle: "Code d'authentification",

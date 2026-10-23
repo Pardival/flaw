@@ -4,11 +4,12 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
+import { account } from "../../i18n/fr/account.ts";
+import { t } from "../../i18n/i18n.ts";
 import type { AuthClient } from "../api.ts";
 import { PASSWORD_MIN_LENGTH } from "../policy.ts";
 import { AccountSettings } from "./AccountSettings.tsx";
 import { parseSessions } from "./account.ts";
-import { messages } from "./messages.fr.ts";
 import { AccountSettingsScreen, type AccountSettingsScreenProps } from "./screen.tsx";
 
 const CURRENT = "11111111-1111-4111-8111-111111111111";
@@ -76,24 +77,24 @@ describe("écran D-008", () => {
   it("affiche type, navigateur, système, dernière activité et « Cet appareil »", () => {
     const page = screen();
     expect(page).toContain('data-screen="reglages-compte"');
-    expect(page).toContain(messages.title);
-    expect(page).toContain(messages.passwordTitle);
-    expect(page).toContain(messages.passwordHint(PASSWORD_MIN_LENGTH));
-    expect(page).toContain(messages.mfaActive);
-    expect(messages.mfaActive).toBe("Activée · Obligatoire");
-    expect(page).toContain(messages.changeDevice);
-    expect(page).toContain(messages.regenerateCodes);
-    expect(page).toContain(messages.devicesTitle);
-    expect(page).toContain(messages.deviceType.desktop);
+    expect(page).toContain(t("account:title"));
+    expect(page).toContain(t("account:passwordTitle"));
+    expect(page).toContain(t("account:passwordHint", { min: PASSWORD_MIN_LENGTH }));
+    expect(page).toContain(t("account:mfaActive"));
+    expect(t("account:mfaActive")).toBe("Activée · Obligatoire");
+    expect(page).toContain(t("account:changeDevice"));
+    expect(page).toContain(t("account:regenerateCodes"));
+    expect(page).toContain(t("account:devicesTitle"));
+    expect(page).toContain(t("account:deviceType.desktop"));
     expect(page).toContain("Firefox");
     expect(page).toContain("Linux");
-    expect(page).toContain(messages.deviceType.phone);
+    expect(page).toContain(t("account:deviceType.phone"));
     expect(page).toContain("Safari");
     expect(page).toContain("iOS");
     expect(page).toContain("23/10/2026 15:04");
     expect(page).toContain("23/10/2026 12:00");
-    expect(page).toContain(messages.thisDevice);
-    expect(page).toContain(messages.revokeOthers);
+    expect(page).toContain(t("account:thisDevice"));
+    expect(page).toContain(t("account:revokeOthers"));
     expect(page).not.toContain("203.0.113.50");
     expect(page).not.toContain("Lyon");
     expect(page).not.toContain("France");
@@ -103,65 +104,65 @@ describe("écran D-008", () => {
     expect(page).not.toContain("ada@exemple.fr");
 
     const current = page.slice(page.indexOf(`data-session="${CURRENT}"`), page.indexOf(`data-session="${OTHER}"`));
-    expect(current).toContain(messages.thisDevice);
-    expect(current).toContain(messages.signOut);
-    expect(current).not.toContain(messages.revoke);
+    expect(current).toContain(t("account:thisDevice"));
+    expect(current).toContain(t("account:signOut"));
+    expect(current).not.toContain(t("account:revoke"));
     const other = page.slice(page.indexOf(`data-session="${OTHER}"`));
-    expect(other).toContain(messages.revoke);
-    expect(other).not.toContain(messages.thisDevice);
+    expect(other).toContain(t("account:revoke"));
+    expect(other).not.toContain(t("account:thisDevice"));
   });
 
   it("n'offre pas de désactivation et réserve les actions 2FA à une activation", () => {
     const enrolled = screen();
-    expect(enrolled).toContain(messages.mfaActive);
+    expect(enrolled).toContain(t("account:mfaActive"));
     expect(enrolled.toLowerCase()).not.toContain("désactiv");
     expect(enrolled.toLowerCase()).not.toContain("desactiv");
     const plain = screen({ mfaEnrolled: false });
-    expect(plain).toContain(messages.mfaObligatory);
-    expect(plain).not.toContain(messages.mfaActive);
-    expect(plain).not.toContain(messages.changeDevice);
-    expect(plain).not.toContain(messages.regenerateCodes);
+    expect(plain).toContain(t("account:mfaObligatory"));
+    expect(plain).not.toContain(t("account:mfaActive"));
+    expect(plain).not.toContain(t("account:changeDevice"));
+    expect(plain).not.toContain(t("account:regenerateCodes"));
     expect(plain.toLowerCase()).not.toContain("désactiv");
   });
 
   it("compte les caractères du nouveau mot de passe et demande la ré-authentification", () => {
     const page = screen({ initialNewPassword: "123456789012", pending: true });
     expect(page).toContain("12 caractères sur 15 minimum");
-    expect(page).toContain(messages.pending);
+    expect(page).toContain(t("account:pending"));
 
     const asking = screen({ reauth: true, mfaEnrolled: true });
-    expect(asking).toContain(messages.reauthTitle);
-    expect(asking).toContain(messages.reauthBody);
-    expect(asking).toContain(messages.reauthTotpLabel);
-    expect(asking).toContain(messages.rememberLabel);
-    expect(asking).toContain(messages.rememberHint);
+    expect(asking).toContain(t("account:reauthTitle"));
+    expect(asking).toContain(t("account:reauthBody"));
+    expect(asking).toContain(t("account:reauthTotpLabel"));
+    expect(asking).toContain(t("account:rememberLabel"));
+    expect(asking).toContain(t("account:rememberHint"));
     expect(asking).toContain('id="account-reauth-totp"');
 
     const passwordOnly = screen({ reauth: true, mfaEnrolled: false });
-    expect(passwordOnly).toContain(messages.reauthBodyPassword);
+    expect(passwordOnly).toContain(t("account:reauthBodyPassword"));
     expect(passwordOnly).not.toContain('id="account-reauth-totp"');
   });
 
   it("cache les appareils pendant le chargement, après la déconnexion et sans session", () => {
     const loading = screen({ phase: "loading", sessions: [] });
-    expect(loading).toContain(messages.loading);
-    expect(loading).not.toContain(messages.thisDevice);
-    expect(loading).not.toContain(messages.passwordTitle);
+    expect(loading).toContain(t("account:loading"));
+    expect(loading).not.toContain(t("account:thisDevice"));
+    expect(loading).not.toContain(t("account:passwordTitle"));
     expect(loading).not.toContain("Firefox");
 
     const signedOut = screen({ phase: "signed_out" });
-    expect(signedOut).toContain(messages.signedOut);
+    expect(signedOut).toContain(t("account:signedOut"));
     expect(signedOut).not.toContain("Firefox");
 
     const blocked = screen({ phase: "blocked", notice: "unauthorized", sessions: [] });
-    expect(blocked).toContain(messages.unauthorized);
+    expect(blocked).toContain(t("account:unauthorized"));
     expect(blocked).not.toContain('id="account-current-password"');
 
     const empty = screen({ sessions: [], sessionsKnown: true });
-    expect(empty).toContain(messages.emptyDevices);
+    expect(empty).toContain(t("account:emptyDevices"));
     const unknown = screen({ sessions: [], sessionsKnown: false, notice: "network" });
-    expect(unknown).toContain(messages.network);
-    expect(unknown).not.toContain(messages.emptyDevices);
+    expect(unknown).toContain(t("account:network"));
+    expect(unknown).not.toContain(t("account:emptyDevices"));
   });
 
   it("n'écrit pas les phrases ni les adresses dans les composants", () => {
@@ -179,7 +180,7 @@ describe("écran D-008", () => {
     expect(view).not.toContain("fetch(");
     expect(view).not.toContain("/api/");
     expect(view).not.toContain("email");
-    const catalogue = JSON.stringify(messages);
+    const catalogue = JSON.stringify(account);
     expect(catalogue.toLowerCase()).not.toContain("désactiv");
     expect(catalogue).not.toContain("new_login");
     expect(catalogue).not.toContain("Lyon");
@@ -199,8 +200,8 @@ describe("conteneur", () => {
       me: () => pending.then(() => ({ ok: false, status: 0, kind: "network", retryAfter: null })),
     };
     const page = html(<AccountSettings client={client} />);
-    expect(page).toContain(messages.loading);
-    expect(page).not.toContain(messages.thisDevice);
+    expect(page).toContain(t("account:loading"));
+    expect(page).not.toContain(t("account:thisDevice"));
     expect(page).not.toContain("Désactiver");
   });
 });

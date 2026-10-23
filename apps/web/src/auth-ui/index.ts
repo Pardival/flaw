@@ -25,5 +25,3 @@ export type {
   MeProfile,
   PasswordChange,
 } from "./api.ts";
-
-export { messages } from "./messages.fr.ts";

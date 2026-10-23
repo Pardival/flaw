@@ -12,7 +12,7 @@ import {
   submitTotpCode,
   verifyEnrollmentCode,
 } from "./flow.ts";
-import { messages } from "./messages.fr.ts";
+import { t } from "../../i18n/i18n.ts";
 import {
   activationPhase,
   challengePhase,
@@ -101,8 +101,8 @@ export function MfaScreens({
       return undefined;
     }
     let cancelled = false;
-    const label = enrollmentAccount(accountLabelRef.current, credentialsRef.current, messages.accountFallback);
-    void enrollOnce(api, label, messages.issuer).then((outcome) => {
+    const label = enrollmentAccount(accountLabelRef.current, credentialsRef.current, t("mfa:accountFallback"));
+    void enrollOnce(api, label, t("mfa:issuer")).then((outcome) => {
       if (cancelled || !alive.current) {
         return;
       }
@@ -144,7 +144,7 @@ export function MfaScreens({
   }
 
   function labelNow(): string {
-    return enrollmentAccount(accountLabelRef.current, credentialsRef.current, messages.accountFallback);
+    return enrollmentAccount(accountLabelRef.current, credentialsRef.current, t("mfa:accountFallback"));
   }
 
   const notice =
@@ -246,7 +246,7 @@ export function MfaScreens({
           },
           onReconfigure: () => {
             void run(async () => {
-              const outcome = await enrollFresh(api, labelNow(), messages.issuer);
+              const outcome = await enrollFresh(api, labelNow(), t("mfa:issuer"));
               if (!alive.current) {
                 return;
               }

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { messages } from "../theme/messages.fr.ts";
+import { t } from "../i18n/i18n.ts";
 import {
   POINTER_WAKE_PX,
   chromeStaysHidden,
@@ -74,7 +74,7 @@ describe("mise en page", () => {
     expect(desk).toContain('data-chrome-hidden="false"');
     expect(desk).toContain('data-format="novel_13x20"');
     expect(desk).toContain('class="theme-toggle"');
-    expect(desk).toContain(messages.themeToDark);
+    expect(desk).toContain(t("theme:themeToDark"));
     expect(desk).not.toContain("style=");
     const blank = html(
       <Shell mode="blank" pageFocused>

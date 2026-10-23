@@ -30,7 +30,7 @@ import {
   sessionView,
   type AccountSession,
 } from "./account.ts";
-import { messages } from "./messages.fr.ts";
+import { t } from "../../i18n/i18n.ts";
 
 const CURRENT = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
@@ -142,7 +142,7 @@ describe("liste des appareils", () => {
     expect(sessionView(current as AccountSession, "UTC")).toEqual({
       id: CURRENT,
       current: true,
-      typeLabel: messages.deviceType.desktop,
+      typeLabel: t("account:deviceType.desktop"),
       browser: "Firefox",
       os: "Linux",
       lastActivity: "23/10/2026 15:04",
@@ -170,8 +170,8 @@ describe("liste des appareils", () => {
       },
     ]);
     expect(sessions?.[0]).toMatchObject({ browser: "Firefox", os: "macOS", deviceType: null });
-    expect(sessions?.[1]).toMatchObject({ browser: messages.unknownValue, os: messages.unknownValue });
-    expect(sessionView(sessions?.[1] as AccountSession, "UTC").typeLabel).toBe(messages.deviceType.unknown);
+    expect(sessions?.[1]).toMatchObject({ browser: t("account:unknownValue"), os: t("account:unknownValue") });
+    expect(sessionView(sessions?.[1] as AccountSession, "UTC").typeLabel).toBe(t("account:deviceType.unknown"));
   });
 
   it("écarte un identifiant qui n'est pas un uuid et un corps qui n'est pas une liste", () => {

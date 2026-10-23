@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { MfaScreens } from "./MfaScreens.tsx";
-import { messages } from "./messages.fr.ts";
+import { t } from "../../i18n/i18n.ts";
 import { groupSecret, otpauthUri } from "./policy.ts";
 import { Activation2faScreen, Connexion2faScreen, ConnexionCodeSecoursScreen, Reconfigurer2faScreen } from "./screens.tsx";
 
@@ -14,7 +14,7 @@ function html(node: ReactNode): string {
 }
 
 const secret = "A".repeat(32);
-const otpauth = otpauthUri(secret, "ada@exemple.fr", messages.issuer) ?? "";
+const otpauth = otpauthUri(secret, "ada@exemple.fr", t("mfa:issuer")) ?? "";
 
 function recoveryCode(index: number): string {
   const char = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"[index] ?? "A";
@@ -37,12 +37,12 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
       </MfaScreens>,
     );
     expect(page).toContain('data-screen="connexion-2fa"');
-    expect(page).toContain(messages.challengeTitle);
-    expect(page).toContain(messages.challengeIntro);
-    expect(page).toContain(messages.totpLabel);
+    expect(page).toContain(t("mfa:challengeTitle"));
+    expect(page).toContain(t("mfa:challengeIntro"));
+    expect(page).toContain(t("mfa:totpLabel"));
     expect(page).toContain('inputMode="numeric"');
     expect(page).toContain('autoComplete="one-time-code"');
-    expect(page).toContain(messages.useRecovery);
+    expect(page).toContain(t("mfa:useRecovery"));
     expect(page).not.toContain(password);
     expect(page).not.toContain("texte secret");
     expect(page).not.toContain("href=");
@@ -55,10 +55,10 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
       <ConnexionCodeSecoursScreen notice="rejected" pending={false} onSubmit={() => undefined} onBack={() => undefined} />,
     );
     expect(page).toContain('data-screen="connexion-code-secours"');
-    expect(page).toContain(messages.recoveryHint);
+    expect(page).toContain(t("mfa:recoveryHint"));
     expect(page).toContain("XXXX-XXXX-XXXX-XXXX");
-    expect(page).toContain(messages.codeRejected);
-    expect(page).toContain(messages.backToTotp);
+    expect(page).toContain(t("mfa:codeRejected"));
+    expect(page).toContain(t("mfa:backToTotp"));
     expect(page).not.toContain("href=");
   });
 
@@ -74,12 +74,12 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
       />,
     );
     expect(page).toContain('data-screen="activation-2fa"');
-    expect(page).toContain(messages.activationTitle);
-    expect(page).toContain(messages.secretLabel);
+    expect(page).toContain(t("mfa:activationTitle"));
+    expect(page).toContain(t("mfa:secretLabel"));
     expect(page).toContain(groupSecret(secret));
     expect(page).toContain(`href="${otpauth}"`);
-    expect(page).toContain(messages.openApp);
-    expect(page).toContain(messages.signOut);
+    expect(page).toContain(t("mfa:openApp"));
+    expect(page).toContain(t("mfa:signOut"));
     expect(page.match(/href="/g)).toHaveLength(1);
     expect(page).not.toMatch(/<img/i);
     expect(page).not.toMatch(/<canvas/i);
@@ -98,7 +98,7 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
         <p>texte secret</p>
       </MfaScreens>,
     );
-    expect(forced).toContain(messages.signOut);
+    expect(forced).toContain(t("mfa:signOut"));
     expect(forced).not.toContain(codes[0] ?? "");
     expect(forced).not.toContain("texte secret");
   });
@@ -110,17 +110,17 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
       </MfaScreens>,
     );
     expect(page).toContain('data-screen="codes-secours"');
-    expect(page).toContain(messages.codesIntro);
+    expect(page).toContain(t("mfa:codesIntro"));
     expect(page).toContain("16 caractères");
     expect(page.match(/<li>/g)).toHaveLength(10);
     for (const code of codes) {
       expect(page).toContain(code);
       expect(code).toMatch(/^[A-Z2-7]{4}(?:-[A-Z2-7]{4}){3}$/);
     }
-    expect(page).toContain(messages.copy);
-    expect(page).toContain(messages.save);
-    expect(page).toContain(messages.print);
-    expect(page).toContain(messages.continueTexts);
+    expect(page).toContain(t("mfa:copy"));
+    expect(page).toContain(t("mfa:save"));
+    expect(page).toContain(t("mfa:print"));
+    expect(page).toContain(t("mfa:continueTexts"));
     expect(page).not.toContain(secret);
     expect(page).not.toContain("texte secret");
     expect(page).not.toContain("Désactiver");
@@ -131,17 +131,17 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
       <Reconfigurer2faScreen notice={null} pending={true} onReconfigure={() => undefined} onSignOut={() => undefined} />,
     );
     expect(page).toContain('data-screen="reconfigurer-2fa"');
-    expect(page).toContain(messages.reconfigureBody);
+    expect(page).toContain(t("mfa:reconfigureBody"));
     expect(page).toContain("invalidés");
-    expect(page).toContain(messages.pending);
-    expect(page).toContain(messages.signOut);
+    expect(page).toContain(t("mfa:pending"));
+    expect(page).toContain(t("mfa:signOut"));
     expect(page).not.toContain("Fermer");
     const hidden = html(
       <MfaScreens initialPhase={{ name: "reconfigurer-2fa", notice: null }}>
         <p>texte secret</p>
       </MfaScreens>,
     );
-    expect(hidden).toContain(messages.reconfigureNow);
+    expect(hidden).toContain(t("mfa:reconfigureNow"));
     expect(hidden).not.toContain("texte secret");
     const ready = html(
       <MfaScreens initialPhase={{ name: "ready" }}>
@@ -156,22 +156,22 @@ describe("écrans D-003 D-005 D-006 D-007", () => {
     const page = html(
       <Connexion2faScreen notice="limited" pending={true} onSubmit={() => undefined} onUseRecovery={() => undefined} />,
     );
-    expect(page).toContain(messages.pending);
-    expect(page).toContain(messages.tooMany);
+    expect(page).toContain(t("mfa:pending"));
+    expect(page).toContain(t("mfa:tooMany"));
   });
 });
 
 describe("chaînes et périmètre", () => {
   it("garde les libellés de la maquette dans le catalogue", () => {
-    expect(messages.useRecovery).toBe("Utiliser un code de secours");
-    expect(messages.openApp).toBe("Ouvrir l'application");
-    expect(messages.continueTexts).toBe("Accéder à mes textes");
-    expect(messages.reconfigureNow).toBe("Reconfigurer maintenant");
-    expect(messages.signOut).toBe("Se déconnecter");
-    expect(messages.copy).toBe("Copier");
-    expect(messages.save).toBe("Enregistrer");
-    expect(messages.print).toBe("Imprimer");
-    expect(messages.issuer).toBe("Flaw");
+    expect(t("mfa:useRecovery")).toBe("Utiliser un code de secours");
+    expect(t("mfa:openApp")).toBe("Ouvrir l'application");
+    expect(t("mfa:continueTexts")).toBe("Accéder à mes textes");
+    expect(t("mfa:reconfigureNow")).toBe("Reconfigurer maintenant");
+    expect(t("mfa:signOut")).toBe("Se déconnecter");
+    expect(t("mfa:copy")).toBe("Copier");
+    expect(t("mfa:save")).toBe("Enregistrer");
+    expect(t("mfa:print")).toBe("Imprimer");
+    expect(t("mfa:issuer")).toBe("Flaw");
   });
 
   it("n'ajoute ni stockage navigateur, ni inscription, ni dépendance visuelle", () => {
