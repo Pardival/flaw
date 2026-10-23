@@ -15,15 +15,8 @@ allowBuilds:
 # minimatch 10+ est sous BlueOak-1.0.0, hors liste A-002. 9.0.9 est ISC.
 # vite est épinglé en 7.3.7. Sans épingle, Vitest 4.1.11 a installé lightningcss (MPL-2.0, hors A-002).
 # rollup 4.64.6 et postcss 8.5.30 ont moins de 7 jours (minimumReleaseAge).
-# workbox-build 7.4.1 est refusé (trust downgrade). 7.4.0 tire glob 11 (BlueOak-1.0.0).
-# caniuse-lite (CC-BY-4.0) est hors A-002 : données minimales sous apps/web/vendor.
-# serialize-javascript 6.0.2 (via @rollup/plugin-terser de workbox-build) est GHSA-5c6j-r48x-rmvq.
-# 7.1.2 est BSD-3-Clause et antérieur au délai de 7 jours. 7.1.3 est trop récent.
 overrides:
   minimatch: "9.0.9"
   vite: "7.3.7"
   rollup: "4.64.1"
   postcss: "8.5.29"
-  workbox-build: "7.3.0"
-  caniuse-lite: "file:apps/web/vendor/caniuse-lite"
-  serialize-javascript: "7.1.2"
