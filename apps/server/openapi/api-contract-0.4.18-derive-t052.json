@@ -1,5 +1,14 @@
 {
   "openapi": "3.1.0",
+  "x-source": {
+    "ref": "ARC-API",
+    "version": "0.4.0-draft",
+    "hash": "e782cb759b20",
+    "arc_sum": "322da9f66ea0"
+  },
+  "x-ecarts-connus": [
+    "403 mfa_required → T-009"
+  ],
   "info": {
     "title": "Flaw",
     "version": "0.0.0"
@@ -120,6 +129,16 @@
                   "additionalProperties": false
                 }
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache-Control: no-store",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
             }
           },
           "401": {
@@ -128,6 +147,16 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Unauthorized"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache-Control: no-store",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
                 }
               }
             }

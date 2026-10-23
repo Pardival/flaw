@@ -93,6 +93,21 @@ const unauthorizedResponse = {
   },
 };
 
+const noStoreHeader = {
+  description: "Cache-Control: no-store",
+  required: true,
+  schema: { type: "string", const: "no-store" },
+};
+
+function withNoStore<T extends Record<string, unknown>>(response: T): T & {
+  headers: { "Cache-Control": typeof noStoreHeader };
+} {
+  return {
+    ...response,
+    headers: { "Cache-Control": noStoreHeader },
+  };
+}
+
 const messageResponse = {
   description: "Message",
   content: {
@@ -135,15 +150,15 @@ export function buildOpenApiDocument(): Record<string, unknown> {
           operationId: "getMe",
           summary: "Profil de l'utilisateur connecté",
           responses: {
-            "200": {
+            "200": withNoStore({
               description: "Profil",
               content: {
                 "application/json": {
                   schema: jsonSchema(meResponseSchema),
                 },
               },
-            },
-            "401": unauthorizedResponse,
+            }),
+            "401": withNoStore(unauthorizedResponse),
           },
         },
       },

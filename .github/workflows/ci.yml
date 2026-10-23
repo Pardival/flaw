@@ -55,7 +55,7 @@ jobs:
           exit "${status}"
 
       # A-015 — openapi.json est généré depuis Zod et commité.
-      # oasdiff --fail-on ERR contre api-contract 0.4.18. Aucun fichier d'exceptions.
+      # oasdiff --fail-on ERR contre le contrat dérivé 0.4.18 (hors 403 mfa_required, T-009). Aucun fichier d'exceptions.
       - name: oasdiff
         run: |
           set -euo pipefail
@@ -67,7 +67,7 @@ jobs:
             echo "oasdiff : fichier d'exceptions interdit"
             exit 1
           fi
-          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR apps/server/openapi/api-contract-0.4.18.json openapi.json
+          "$HOME/.local/bin/oasdiff" breaking --fail-on ERR apps/server/openapi/api-contract-0.4.18-derive-t052.json openapi.json
 
       - name: Licences
         run: pnpm licenses:check

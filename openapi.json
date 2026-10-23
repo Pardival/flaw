@@ -120,6 +120,16 @@
                   "additionalProperties": false
                 }
               }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache-Control: no-store",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
+                }
+              }
             }
           },
           "401": {
@@ -128,6 +138,16 @@
               "application/problem+json": {
                 "schema": {
                   "$ref": "#/components/schemas/Unauthorized"
+                }
+              }
+            },
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache-Control: no-store",
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "const": "no-store"
                 }
               }
             }

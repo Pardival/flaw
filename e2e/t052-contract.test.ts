@@ -177,9 +177,28 @@ describe("T-052 contrat", () => {
     const ok = me.responses["200"]?.content?.["application/json"]?.schema?.required ?? [];
     expect([...ok].sort()).toEqual(["email", "id", "locale", "mfaEnrolled", "passwordMustChange", "role", "timeZone"]);
     expect(me.responses["401"]?.content).toHaveProperty("application/problem+json");
+    const header = {
+      description: "Cache-Control: no-store",
+      required: true,
+      schema: { type: "string", const: "no-store" },
+    };
+    const responses = me.responses as Record<string, { headers?: Record<string, unknown> }>;
+    expect(responses["200"]?.headers?.["Cache-Control"]).toEqual(header);
+    expect(responses["401"]?.headers?.["Cache-Control"]).toEqual(header);
     const contract = JSON.parse(
-      readFileSync(join(root, "apps/server/openapi/api-contract-0.4.18.json"), "utf8"),
-    ) as { paths: { "/api/v1/healthz": unknown; "/api/v1/me": unknown } };
+      readFileSync(join(root, "apps/server/openapi/api-contract-0.4.18-derive-t052.json"), "utf8"),
+    ) as {
+      "x-source": { ref: string; version: string; hash: string; arc_sum: string };
+      "x-ecarts-connus": string[];
+      paths: { "/api/v1/healthz": unknown; "/api/v1/me": unknown };
+    };
+    expect(contract["x-source"]).toEqual({
+      ref: "ARC-API",
+      version: "0.4.0-draft",
+      hash: "e782cb759b20",
+      arc_sum: "322da9f66ea0",
+    });
+    expect(contract["x-ecarts-connus"]).toEqual(["403 mfa_required → T-009"]);
     expect(JSON.stringify(contract.paths["/api/v1/healthz"])).not.toContain("clientIp");
     expect(contract.paths["/api/v1/me"]).toEqual(
       (document.paths as { "/api/v1/me": unknown })["/api/v1/me"],
@@ -213,7 +232,7 @@ describe("T-052 contrat", () => {
   it("compare oasdiff au contrat 0.4.18 sans fichier d'exceptions", () => {
     const ci = readFileSync(join(root, ".github/workflows/ci.yml"), "utf8");
     const command = ci.split("\n").find((line) => line.includes("breaking --fail-on ERR"));
-    expect(command).toContain("apps/server/openapi/api-contract-0.4.18.json openapi.json");
+    expect(command).toContain("apps/server/openapi/api-contract-0.4.18-derive-t052.json openapi.json");
     expect(command).not.toContain("ignore");
     expect(ci).not.toContain("git show FETCH_HEAD:openapi.json");
   });
