@@ -4,7 +4,6 @@
  */
 import { z } from "zod";
 
-import { PROBLEM_CODES } from "./problem.ts";
 import { documentTitleSchema } from "./validation.ts";
 
 export const healthResponseSchema = z
@@ -16,8 +15,12 @@ export const healthResponseSchema = z
 export const meResponseSchema = z
   .object({
     id: z.uuid(),
+    email: z.email(),
     role: z.enum(["user", "admin"]),
-    identifier: z.string(),
+    locale: z.string().min(1),
+    timeZone: z.string().min(1),
+    mfaEnrolled: z.boolean(),
+    passwordMustChange: z.boolean(),
   })
   .strict();
 
@@ -38,7 +41,16 @@ export const problemSchema = z
     type: z.literal("about:blank"),
     status: z.union([z.literal(400), z.literal(404), z.literal(413), z.literal(500)]),
     title: z.string(),
-    code: z.enum(PROBLEM_CODES),
+    code: z.enum(["invalid_request", "not_found", "payload_too_large", "internal_error"]),
+  })
+  .strict();
+
+export const unauthorizedProblemSchema = z
+  .object({
+    type: z.literal("about:blank"),
+    status: z.literal(401),
+    title: z.literal("Authentification requise"),
+    code: z.literal("unauthorized"),
   })
   .strict();
 
@@ -68,6 +80,15 @@ const problemResponse = {
   content: {
     "application/problem+json": {
       schema: { $ref: "#/components/schemas/Problem" },
+    },
+  },
+};
+
+const unauthorizedResponse = {
+  description: "Authentification requise",
+  content: {
+    "application/problem+json": {
+      schema: { $ref: "#/components/schemas/Unauthorized" },
     },
   },
 };
@@ -122,7 +143,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
                 },
               },
             },
-            "401": messageResponse,
+            "401": unauthorizedResponse,
           },
         },
       },
@@ -139,7 +160,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
                 },
               },
             },
-            "401": messageResponse,
+            "401": unauthorizedResponse,
           },
         },
       },
@@ -157,7 +178,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
           ],
           responses: {
             "204": { description: "Supprimé" },
-            "401": messageResponse,
+            "401": unauthorizedResponse,
             "403": messageResponse,
             "404": problemResponse,
           },
@@ -167,6 +188,7 @@ export function buildOpenApiDocument(): Record<string, unknown> {
     components: {
       schemas: {
         Problem: jsonSchema(problemSchema),
+        Unauthorized: jsonSchema(unauthorizedProblemSchema),
         DocumentTitle: jsonSchema(documentTitleSchema),
         Message: jsonSchema(messageSchema),
       },

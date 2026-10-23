@@ -19,15 +19,15 @@ import { loadConfig, type AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
+import { problem } from "../platform/problem.ts";
 import { checkRoles } from "../admin/check-roles.ts";
-import { hashSessionToken, serializeSessionCookie } from "./cookie.ts";
+import { hashSessionToken, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
 import { summarizeDevice } from "./device.ts";
 import { bucketHmac, hmacKey, subjectHmac, tempHmac } from "./hmac.ts";
 import {
-  AUTH_REQUIRED,
   FORGOT_MESSAGE,
-  INVALID_LOGIN,
   LOGIN_HTML,
+  RESTRICTED,
   ORIGIN_REJECTED,
   PASSWORD_REJECTED,
   TOO_MANY,
@@ -228,7 +228,8 @@ describe("politique et fichiers (hors base)", () => {
       os: "iOS",
     });
     const cookie = serializeSessionCookie("jeton", null);
-    expect(cookie.startsWith("__Secure-flaw.session_token=")).toBe(true);
+    expect(cookie.startsWith(`${SESSION_COOKIE}=`)).toBe(true);
+    expect(SESSION_COOKIE).toBe("__Host-flaw_session");
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("Secure");
     expect(cookie).toContain("SameSite=Lax");
@@ -301,7 +302,8 @@ describe("politique et fichiers (hors base)", () => {
       } else {
         expect(response.statusCode, `${route.method} ${route.url}`).toBe(401);
         if (route.method !== "HEAD") {
-          expect(response.json(), `${route.method} ${route.url}`).toEqual({ message: AUTH_REQUIRED });
+          expect(response.headers["content-type"], `${route.method} ${route.url}`).toContain("application/problem+json");
+          expect(response.json(), `${route.method} ${route.url}`).toEqual(problem(401));
         }
       }
     }
@@ -337,7 +339,9 @@ describe("politique et fichiers (hors base)", () => {
         payload: route.method === "GET" ? undefined : "{}",
       });
       expect(response.statusCode, `${route.method} ${route.url}`).toBe(401);
-      expect(response.json()).toEqual({ message: AUTH_REQUIRED });
+      expect(response.headers["content-type"]).toContain("application/problem+json");
+      expect(response.json()).toEqual(problem(401));
+      expect(response.headers["cache-control"]).toBe("no-store");
     }
     await app.close();
   });
@@ -684,7 +688,8 @@ describe("authentification sur PostgreSQL", () => {
     const app = buildApp(config(), appOptions());
     const response = await sign(app, email, created.password, nextIp());
     expect(response.statusCode).toBe(401);
-    expect(response.json()).toEqual({ message: INVALID_LOGIN });
+    expect(response.json()).toEqual(problem(401));
+    expect(response.headers["content-type"]).toContain("application/problem+json");
     const slice = logText.slice(mark);
     expect(slice).not.toContain(created.password);
     expect(response.body).not.toContain(created.password);
@@ -699,7 +704,7 @@ describe("authentification sur PostgreSQL", () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
       const failed = await sign(app, email, "mauvais-mot-de-passe", ip);
       expect(failed.statusCode).toBe(401);
-      expect(failed.json()).toEqual({ message: INVALID_LOGIN });
+      expect(failed.json()).toEqual(problem(401));
     }
     const limited = await sign(app, email, PASSWORD, ip);
     expect(limited.statusCode).toBe(429);
@@ -779,8 +784,8 @@ describe("authentification sur PostgreSQL", () => {
       unknownBody = unknown.body;
       wrongBody = wrong.body;
     }
-    expect(unknownBody).toContain(INVALID_LOGIN);
-    expect(wrongBody).toContain(INVALID_LOGIN);
+    expect(JSON.parse(unknownBody)).toEqual(problem(401));
+    expect(JSON.parse(wrongBody)).toEqual(problem(401));
     expect(Math.abs(median(unknownTimes) - median(wrongTimes))).toBeLessThan(50);
     await app.close();
   }, 120_000);
@@ -889,13 +894,13 @@ describe("authentification sur PostgreSQL", () => {
     await app.close();
   });
 
-  dbTest("pose le cookie __Secure- sans Domain (SEC-SESS-02)", async () => {
+  dbTest("pose le cookie __Host-flaw_session sans Domain (SEC-SESS-02)", async () => {
     const email = nextEmail();
     await seedUser(email, PASSWORD);
     const app = buildApp(config(), appOptions());
     const remembered = await sign(app, email, PASSWORD, nextIp(), true);
     const header = setCookie(remembered.headers);
-    expect(header.startsWith("__Secure-flaw.session_token=")).toBe(true);
+    expect(header.startsWith(`${SESSION_COOKIE}=`)).toBe(true);
     expect(header).toContain("HttpOnly");
     expect(header).toContain("Secure");
     expect(header).toContain("SameSite=Lax");
@@ -1311,7 +1316,16 @@ describe("authentification sur PostgreSQL", () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(me.statusCode).toBe(200);
-    expect(me.json()).toMatchObject({ id: userId, identifier: email, role: "user" });
+    expect(me.json()).toEqual({
+      id: userId,
+      email,
+      role: "user",
+      locale: "fr",
+      timeZone: "UTC",
+      mfaEnrolled: false,
+      passwordMustChange: false,
+    });
+    expect(me.headers["cache-control"]).toBe("no-store");
     await expect(
       pool.query(
         "INSERT INTO flaw.accounts (owner_id, provider_id, account_id, password_hash) VALUES ($1, 'credential', $2, $3)",
@@ -1568,7 +1582,16 @@ describe("authentification sur PostgreSQL", () => {
       headers: { cookie: cookiePair(setCookie(signed.headers)), "x-user-id": userB },
     });
     expect(me.statusCode).toBe(200);
-    expect(me.json()).toEqual({ id: userA, role: "user", identifier: emailA });
+    expect(me.json()).toEqual({
+      id: userA,
+      email: emailA,
+      role: "user",
+      locale: "fr",
+      timeZone: "UTC",
+      mfaEnrolled: false,
+      passwordMustChange: false,
+    });
+    expect(me.headers["cache-control"]).toBe("no-store");
     await app.close();
   });
 
@@ -1609,14 +1632,78 @@ describe("authentification sur PostgreSQL", () => {
       payload: `identifier=${encodeURIComponent(email)}&password=${encodeURIComponent(PASSWORD)}`,
     });
     expect(accepted.statusCode).toBe(200);
-    expect(setCookie(accepted.headers).startsWith("__Secure-flaw.session_token=")).toBe(true);
+    expect(setCookie(accepted.headers).startsWith(`${SESSION_COOKIE}=`)).toBe(true);
     const me = await app.inject({
       method: "GET",
       url: "/api/v1/me",
       headers: { cookie: cookiePair(setCookie(accepted.headers)) },
     });
     expect(me.statusCode).toBe(200);
-    expect(me.json()).toMatchObject({ identifier: email });
+    expect(me.json()).toMatchObject({ email });
+    await app.close();
+  });
+
+  dbTest("refuse l'ancien nom de cookie et garde le nouveau (SEC-SESS-02)", async () => {
+    const email = nextEmail();
+    await seedUser(email, PASSWORD);
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, PASSWORD, nextIp(), true);
+    const token = tokenOf(setCookie(signed.headers));
+    const legacy = "__Secure-flaw.session_token";
+    const onlyLegacy = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: `${legacy}=${token}` },
+    });
+    expect(onlyLegacy.statusCode).toBe(401);
+    expect(onlyLegacy.headers["content-type"]).toContain("application/problem+json");
+    expect(onlyLegacy.json()).toEqual(problem(401));
+    expect(onlyLegacy.headers["cache-control"]).toBe("no-store");
+    const current = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: `${SESSION_COOKIE}=${token}` },
+    });
+    expect(current.statusCode).toBe(200);
+    expect(current.headers["cache-control"]).toBe("no-store");
+    const both = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: `${legacy}=autre; ${SESSION_COOKIE}=${token}` },
+    });
+    expect(both.statusCode).toBe(200);
+    await app.close();
+  });
+
+  dbTest("expose le profil User et no-store sur /me (API-001)", async () => {
+    await wipeUsers();
+    const email = nextEmail();
+    const created = await floorAuth().createUser(email, nextIp());
+    expect(await floorAuth().profile(created.userId)).toEqual({
+      id: created.userId,
+      email,
+      role: "user",
+      locale: "fr",
+      timeZone: "UTC",
+      mfaEnrolled: false,
+      passwordMustChange: true,
+    });
+    const app = buildApp(config(), appOptions());
+    const signed = await sign(app, email, created.password, nextIp());
+    expect(signed.statusCode).toBe(200);
+    const restricted = await app.inject({
+      method: "GET",
+      url: "/api/v1/me",
+      headers: { cookie: cookiePair(setCookie(signed.headers)) },
+    });
+    expect(restricted.statusCode).toBe(403);
+    expect(restricted.json()).toEqual({ message: RESTRICTED });
+    expect(restricted.headers["cache-control"]).toBe("no-store");
+    const anonymous = await app.inject({ method: "GET", url: "/api/v1/me" });
+    expect(anonymous.statusCode).toBe(401);
+    expect(anonymous.headers["content-type"]).toContain("application/problem+json");
+    expect(anonymous.json()).toEqual(problem(401));
+    expect(anonymous.headers["cache-control"]).toBe("no-store");
     await app.close();
   });
 });

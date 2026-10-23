@@ -1,0 +1,338 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Flaw",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/api/v1/healthz": {
+      "get": {
+        "operationId": "health",
+        "summary": "Sonde de vie (sans authentification)",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Sonde de vie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "ok"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erreur générique (RFC 9457)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Erreur générique (RFC 9457)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erreur générique (RFC 9457)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/me": {
+      "get": {
+        "operationId": "getMe",
+        "summary": "Profil de l'utilisateur connecté",
+        "responses": {
+          "200": {
+            "description": "Profil",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                    },
+                    "email": {
+                      "type": "string",
+                      "format": "email",
+                      "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+                    },
+                    "role": {
+                      "type": "string",
+                      "enum": [
+                        "user",
+                        "admin"
+                      ]
+                    },
+                    "locale": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "timeZone": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "mfaEnrolled": {
+                      "type": "boolean"
+                    },
+                    "passwordMustChange": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email",
+                    "role",
+                    "locale",
+                    "timeZone",
+                    "mfaEnrolled",
+                    "passwordMustChange"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentification requise",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents": {
+      "get": {
+        "operationId": "listDocuments",
+        "summary": "Documents du compte connecté",
+        "responses": {
+          "200": {
+            "description": "Documents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "documents": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                          }
+                        },
+                        "required": [
+                          "id"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "documents"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentification requise",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/documents/{id}": {
+      "delete": {
+        "operationId": "deleteDocument",
+        "summary": "Supprime un document du compte connecté",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Supprimé"
+          },
+          "401": {
+            "description": "Authentification requise",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unauthorized"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Message"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Erreur générique (RFC 9457)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "about:blank"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "number",
+                "const": 400
+              },
+              {
+                "type": "number",
+                "const": 404
+              },
+              {
+                "type": "number",
+                "const": 413
+              },
+              {
+                "type": "number",
+                "const": 500
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "enum": [
+              "invalid_request",
+              "not_found",
+              "payload_too_large",
+              "internal_error"
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "title",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "Unauthorized": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "about:blank"
+          },
+          "status": {
+            "type": "number",
+            "const": 401
+          },
+          "title": {
+            "type": "string",
+            "const": "Authentification requise"
+          },
+          "code": {
+            "type": "string",
+            "const": "unauthorized"
+          }
+        },
+        "required": [
+          "type",
+          "status",
+          "title",
+          "code"
+        ],
+        "additionalProperties": false
+      },
+      "DocumentTitle": {
+        "type": "string",
+        "maxLength": 300
+      },
+      "Message": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "additionalProperties": false
+      }
+    }
+  }
+}

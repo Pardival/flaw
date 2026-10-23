@@ -10,7 +10,6 @@ import Fastify, { LogController, type FastifyInstance, type FastifyRequest } fro
 import { Client, Pool } from "pg";
 import { z } from "zod";
 
-import { AUTH_REQUIRED } from "./auth/html.ts";
 import { anonymousRequest, registerAuth, whenAuthReady, type AuthRuntime } from "./auth/routes.ts";
 import { assertPasswordMinLength } from "./auth/password.ts";
 import { holdSecrets, loadConfig, type AppConfig } from "./config/load.ts";
@@ -173,7 +172,7 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
 
   app.setNotFoundHandler(async (request, reply) => {
     if (await anonymousRequest(app, request)) {
-      return reply.code(401).type("application/json; charset=utf-8").send({ message: AUTH_REQUIRED });
+      return sendProblem(reply, 401);
     }
     return sendProblem(reply, 404);
   });

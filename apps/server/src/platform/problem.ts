@@ -4,6 +4,7 @@
 
 export const PROBLEM_CODES = [
   "invalid_request",
+  "unauthorized",
   "not_found",
   "payload_too_large",
   "internal_error",
@@ -11,7 +12,7 @@ export const PROBLEM_CODES = [
 
 export type ProblemCode = (typeof PROBLEM_CODES)[number];
 
-export type ProblemStatus = 400 | 404 | 413 | 500;
+export type ProblemStatus = 400 | 401 | 404 | 413 | 500;
 
 export type ProblemBody = {
   type: "about:blank";
@@ -22,6 +23,7 @@ export type ProblemBody = {
 
 const PROBLEMS: Record<ProblemStatus, { title: string; code: ProblemCode }> = {
   400: { title: "Requête invalide", code: "invalid_request" },
+  401: { title: "Authentification requise", code: "unauthorized" },
   404: { title: "Introuvable", code: "not_found" },
   413: { title: "Charge trop volumineuse", code: "payload_too_large" },
   500: { title: "Erreur interne", code: "internal_error" },

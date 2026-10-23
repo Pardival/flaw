@@ -24,16 +24,16 @@ import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { buildApp } from "../app.ts";
+import { SESSION_COOKIE } from "../auth/cookie.ts";
+import { problem } from "../platform/problem.ts";
 import type { AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
 import {
-  AUTH_REQUIRED,
   ENROLL_REFUSED,
   FORGOT_MESSAGE,
-  INVALID_LOGIN,
   MFA_REQUIRED,
   RESTRICTED,
   TOO_MANY,
@@ -143,7 +143,7 @@ function config(overrides: Partial<AppConfig> = {}): AppConfig {
 function setCookie(headers: Record<string, unknown>): string {
   const raw = headers["set-cookie"];
   const list = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
-  const session = list.find((item) => item.startsWith("__Secure-flaw.session_token="));
+  const session = list.find((item) => item.startsWith(`${SESSION_COOKIE}=`));
   const value = session ?? list[0];
   if (value === undefined || value.length === 0) {
     throw new Error("set-cookie absent");
@@ -663,7 +663,9 @@ describe("flaw-admin et session restreinte", () => {
         expect(anonymous.json()).toEqual({ status: "ok" });
       } else {
         expect(anonymous.statusCode, `${op.method} ${op.path}`).toBe(401);
-        expect(anonymous.json()).toEqual({ message: AUTH_REQUIRED });
+        expect(anonymous.headers["content-type"]).toContain("application/problem+json");
+        expect(anonymous.json()).toEqual(problem(401));
+        expect(anonymous.headers["cache-control"]).toBe("no-store");
       }
       const restricted = await authed(session.app, method, url, session.cookie);
       if (isPublic) {
@@ -822,6 +824,18 @@ describe("flaw-admin et session restreinte", () => {
     const confirmed = await verify(ready.app, ready.cookie, totpAt(secret, now()));
     expect(confirmed.statusCode).toBe(200);
     const cookie = cookiePair(setCookie(confirmed.headers));
+    const me = await ready.app.inject({ method: "GET", url: "/api/v1/me", headers: { cookie } });
+    expect(me.statusCode).toBe(200);
+    expect(me.headers["cache-control"]).toBe("no-store");
+    expect(me.json()).toEqual({
+      id: ready.userId,
+      email,
+      role: "user",
+      locale: "fr",
+      timeZone: "UTC",
+      mfaEnrolled: true,
+      passwordMustChange: false,
+    });
     const devices = await ready.app.inject({
       method: "GET",
       url: "/api/auth/sessions",
@@ -872,12 +886,12 @@ describe("flaw-admin et session restreinte", () => {
     expect(revokedTrust.json()).toEqual({ message: MFA_REQUIRED });
     const replay = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, totp: totpAt(secret, now()) });
     expect(replay.statusCode).toBe(401);
-    expect(replay.json()).toEqual({ message: INVALID_LOGIN });
+    expect(replay.json()).toEqual(problem(401));
     const next = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, totp: totpAt(secret, now(), 1) });
     expect(next.statusCode).toBe(200);
     const wrong = await sign(ready.app, email, "pas-le-bon-mot-de-passe", { ua: FIREFOX, totp: totpAt(secret, now(), 1) });
     expect(wrong.statusCode).toBe(401);
-    expect(wrong.json()).toEqual({ message: INVALID_LOGIN });
+    expect(wrong.json()).toEqual(problem(401));
   });
 
   dbTest("aucune route publique ne désactive le MFA (AC-064, négatif)", async () => {
@@ -1322,7 +1336,7 @@ describe("flaw-admin et session restreinte", () => {
     const withDevice = await sign(app, email, NEW_PASSWORD, { ua: CHROME, cookie: devicePair });
     for (const response of [plain, withCode, withDevice]) {
       expect(response.statusCode).toBe(401);
-      expect(response.json()).toEqual({ message: INVALID_LOGIN });
+      expect(response.json()).toEqual(problem(401));
       expect(JSON.stringify(response.json())).not.toMatch(/revoked|révoqu|dek/i);
     }
     expect(log).toContain("admin.dek_revoked");

@@ -14,7 +14,7 @@ import type { Writable } from "node:stream";
 import type { Pool } from "pg";
 
 import { clearSessionCookie, DEVICE_COOKIE, readBearer, readCookie, serializeDeviceCookie, serializeSessionCookie, SESSION_COOKIE } from "./cookie.ts";
-import { LOGIN_HTML, AUTH_REQUIRED, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, INVALID_LOGIN, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
+import { LOGIN_HTML, AUTH_REQUIRED, BAD_REQUEST, ENROLL_REFUSED, FORGOT_MESSAGE, MFA_REQUIRED, ORIGIN_REJECTED, PASSWORD_REJECTED, RESTRICTED, TOO_MANY } from "./html.ts";
 import { ARGON_TARGET, type ArgonParams } from "./password.ts";
 import { restrictedAllows } from "./restricted-session.ts";
 import { openAuth } from "./service.ts";
@@ -135,11 +135,8 @@ function clientIp(request: FastifyRequest, cidr: string): string {
 
 export function allowedOrigins(config: AppConfig): Set<string> {
   const values = new Set<string>();
-  for (const candidate of [config.PUBLIC_URL, config.BETTER_AUTH_URL]) {
-    if (candidate === undefined) {
-      continue;
-    }
-    values.add(new URL(candidate).origin);
+  if (config.PUBLIC_URL !== undefined) {
+    values.add(new URL(config.PUBLIC_URL).origin);
   }
   for (const part of config.TRUSTED_ORIGINS.split(",")) {
     const trimmed = part.trim();
@@ -179,6 +176,10 @@ function sendMessage(
     reply.header("retry-after", String(retryAfter));
   }
   return reply.code(status).type("application/json; charset=utf-8").send({ message });
+}
+
+function sendUnauthorized(reply: FastifyReply): unknown {
+  return sendProblem(reply, 401);
 }
 
 function credentialsFrom(body: unknown): unknown {
@@ -259,7 +260,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return undefined;
     }
     if (cookie === undefined && bearer === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     if (auth === null) {
       return sendProblem(reply, 500);
@@ -273,7 +274,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
           return sendMessage(reply, 429, TOO_MANY, blocked.retryAfter);
         }
       }
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     if (session.restricted && !restrictedAllows(request.method, pattern ?? "")) {
       return sendMessage(reply, 403, RESTRICTED);
@@ -345,7 +346,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return sendMessage(reply, 401, MFA_REQUIRED);
     }
     if (result.kind === "invalid") {
-      return sendMessage(reply, 401, INVALID_LOGIN);
+      return sendUnauthorized(reply);
     }
     const cookies = [serializeSessionCookie(result.token, result.maxAge)];
     if (result.deviceToken !== undefined) {
@@ -358,7 +359,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   app.post("/api/auth/sign-out", async (request, reply) => {
     const current = sessionOf(request);
     if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     await auth.signOut(
       current.sessionId,
@@ -373,7 +374,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   app.post("/api/auth/change-password", async (request, reply) => {
     const current = sessionOf(request);
     if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     const parsed = changeSchema.safeParse(request.body);
     if (!parsed.success) {
@@ -394,7 +395,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return sendMessage(reply, 400, PASSWORD_REJECTED);
     }
     if (result.kind === "invalid") {
-      return sendMessage(reply, 401, INVALID_LOGIN);
+      return sendUnauthorized(reply);
     }
     reply.header("set-cookie", serializeSessionCookie(result.token, result.maxAge));
     return { ok: true as const };
@@ -405,7 +406,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   app.post("/api/auth/mfa/enroll", async (request, reply) => {
     const current = sessionOf(request);
     if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     const result = await auth.enroll(current.userId, current.restricted);
     if (result.kind === "forbidden") {
@@ -417,7 +418,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   app.post("/api/auth/mfa/verify", async (request, reply) => {
     const current = sessionOf(request);
     if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     const parsed = mfaCode.safeParse(request.body);
     if (!parsed.success) {
@@ -437,7 +438,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return sendMessage(reply, 429, TOO_MANY, result.retryAfter);
     }
     if (result.kind === "invalid") {
-      return sendMessage(reply, 401, INVALID_LOGIN);
+      return sendUnauthorized(reply);
     }
     reply.header("set-cookie", [
       serializeSessionCookie(result.token, result.maxAge),
@@ -449,7 +450,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   app.get("/api/auth/sessions", async (request, reply) => {
     const current = sessionOf(request);
     if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     return { devices: await auth.devices(current.userId, current.sessionId) };
   });
@@ -457,11 +458,11 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   app.get("/api/v1/me", async (request, reply) => {
     const current = sessionOf(request);
     if (auth === null || current === undefined) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     const profile = await auth.profile(current.userId);
     if (profile === null || (profile.role !== "user" && profile.role !== "admin")) {
-      return sendMessage(reply, 401, AUTH_REQUIRED);
+      return sendUnauthorized(reply);
     }
     return profile;
   });
