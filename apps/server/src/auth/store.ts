@@ -63,6 +63,11 @@ export async function countUsers(sql: Sql): Promise<number> {
   return result.rows[0]?.n ?? 0;
 }
 
+export async function anyUserId(sql: Sql): Promise<string | null> {
+  const result = await sql.query<{ id: string }>("SELECT id FROM flaw.users LIMIT 1");
+  return result.rows[0]?.id ?? null;
+}
+
 export async function insertUser(sql: Sql): Promise<string> {
   const result = await sql.query<{ id: string }>(
     "INSERT INTO flaw.users (role) VALUES ('user') RETURNING id",

@@ -12,7 +12,7 @@ import type { Writable } from "node:stream";
 import { checkRoles } from "../admin/check-roles.ts";
 import { openAuth } from "../auth/service.ts";
 import { ARGON_TARGET } from "../auth/password.ts";
-import { findAccount, insertAudit, type Sql } from "../auth/store.ts";
+import { anyUserId, findAccount, insertAudit, type Sql } from "../auth/store.ts";
 import { decodeValidatedKey, loadKekFile, sameKeyBytes } from "../crypto/kek.ts";
 import { loadConfig, type LoadResult } from "../config/load.ts";
 import { writeSecurityLog } from "../platform/security-log.ts";
@@ -89,8 +89,7 @@ async function auditFailure(sql: Sql, action: string, email: string | null): Pro
     userId = account?.user_id ?? null;
   }
   if (userId === null) {
-    const any = await sql.query<{ id: string }>("SELECT id FROM flaw.users LIMIT 1");
-    userId = any.rows[0]?.id ?? null;
+    userId = await anyUserId(sql);
   }
   if (userId === null) {
     return;
