@@ -27,6 +27,7 @@ export type SessionRow = {
   remember: boolean;
   created_at: Date;
   restricted: boolean;
+  reauthenticated_at: Date;
 };
 
 export type AuditRow = {
@@ -134,13 +135,14 @@ export async function insertSession(
     os: string;
     remember: boolean;
     restricted: boolean;
+    reauthenticatedAt: Date;
   },
 ): Promise<string> {
   const result = await sql.query<{ id: string }>(
     `INSERT INTO flaw.sessions (
        owner_id, token_hash, expires_at, created_at, last_activity_at,
-       absolute_expires_at, browser, os, remember, restricted
-     ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9)
+       absolute_expires_at, browser, os, remember, restricted, reauthenticated_at
+     ) VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10)
      RETURNING id`,
     [
       input.userId,
@@ -152,6 +154,7 @@ export async function insertSession(
       input.os,
       input.remember,
       input.restricted,
+      input.reauthenticatedAt,
     ],
   );
   const id = result.rows[0]?.id;
@@ -164,7 +167,7 @@ export async function insertSession(
 export async function findSessionById(sql: Sql, sessionId: string): Promise<SessionRow | null> {
   const result = await sql.query<SessionRow>(
     `SELECT id, owner_id, expires_at, absolute_expires_at, last_activity_at,
-            revoked_at, remember, created_at, restricted
+            revoked_at, remember, created_at, restricted, reauthenticated_at
      FROM flaw.sessions
      WHERE id = $1`,
     [sessionId],
@@ -175,7 +178,7 @@ export async function findSessionById(sql: Sql, sessionId: string): Promise<Sess
 export async function findSession(sql: Sql, tokenHash: Buffer): Promise<SessionRow | null> {
   const result = await sql.query<SessionRow>(
     `SELECT id, owner_id, expires_at, absolute_expires_at, last_activity_at,
-            revoked_at, remember, created_at, restricted
+            revoked_at, remember, created_at, restricted, reauthenticated_at
      FROM flaw.sessions
      WHERE token_hash = $1`,
     [tokenHash],
@@ -199,12 +202,25 @@ export async function revokeSession(sql: Sql, sessionId: string, at: Date): Prom
   );
 }
 
-export async function revokeOtherSessions(sql: Sql, userId: string, sessionId: string, at: Date): Promise<void> {
-  await sql.query(
+export async function revokeOtherSessions(sql: Sql, userId: string, sessionId: string, at: Date): Promise<string[]> {
+  const result = await sql.query<{ id: string }>(
     `UPDATE flaw.sessions SET revoked_at = $3
-     WHERE owner_id = $1 AND id <> $2 AND revoked_at IS NULL`,
+     WHERE owner_id = $1 AND id <> $2 AND revoked_at IS NULL
+     RETURNING id`,
     [userId, sessionId, at],
   );
+  return result.rows.map((row) => row.id);
+}
+
+/** Même 0 ligne pour un id inconnu et pour la session d'un autre compte. */
+export async function revokeOwnedSession(sql: Sql, userId: string, sessionId: string, at: Date): Promise<boolean> {
+  const result = await sql.query<{ id: string }>(
+    `UPDATE flaw.sessions SET revoked_at = $3
+     WHERE id = $1 AND owner_id = $2 AND revoked_at IS NULL
+     RETURNING id`,
+    [sessionId, userId, at],
+  );
+  return (result.rowCount ?? 0) > 0;
 }
 
 export async function revokeAllSessions(sql: Sql, userId: string, at: Date): Promise<void> {
@@ -218,9 +234,25 @@ export async function listDevices(
   sql: Sql,
   userId: string,
   now: Date,
-): Promise<Array<{ id: string; browser: string; os: string; last_activity_at: Date }>> {
-  const result = await sql.query<{ id: string; browser: string; os: string; last_activity_at: Date }>(
-    `SELECT id, browser, os, last_activity_at
+): Promise<
+  Array<{
+    id: string;
+    browser: string;
+    os: string;
+    last_activity_at: Date;
+    created_at: Date;
+    expires_at: Date;
+  }>
+> {
+  const result = await sql.query<{
+    id: string;
+    browser: string;
+    os: string;
+    last_activity_at: Date;
+    created_at: Date;
+    expires_at: Date;
+  }>(
+    `SELECT id, browser, os, last_activity_at, created_at, expires_at
      FROM flaw.sessions
      WHERE owner_id = $1 AND revoked_at IS NULL AND absolute_expires_at > $2 AND expires_at > $2
      ORDER BY last_activity_at DESC`,

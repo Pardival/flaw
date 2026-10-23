@@ -694,7 +694,7 @@ describe("flaw-admin et session restreinte", () => {
     for (const op of openApiOperations(openapi)) {
       const isPublic = op.method === "GET" && op.path === "/api/v1/healthz";
       expect(restrictedDecision(op.method, op.path, isPublic)).toBe(isPublic ? "public" : "deny");
-      const url = op.path.includes("{id}") ? op.path.replace("{id}", "00000000-0000-4000-8000-000000000001") : op.path;
+      const url = op.path.replace(/\{[^}]+\}/g, "00000000-0000-4000-8000-000000000001");
       const method = op.method === "DELETE" ? "DELETE" : "GET";
       const anonymous = await authed(session.app, method, url);
       if (isPublic) {
@@ -712,7 +712,11 @@ describe("flaw-admin et session restreinte", () => {
       } else {
         expect(restricted.statusCode, `${op.method} ${op.path}`).toBe(403);
         expect(restricted.headers["content-type"]).toContain("application/problem+json");
-        if (op.method === "GET" && op.path === "/api/v1/me") {
+        const mfaRoute =
+          (op.method === "GET" && op.path === "/api/v1/me") ||
+          op.path === "/api/v1/me/sessions" ||
+          op.path === "/api/v1/me/sessions/{sessionId}";
+        if (mfaRoute) {
           expect(restricted.json()).toEqual(mfaRequiredProblem());
           expect(restricted.json()).not.toEqual(problem(403, RESTRICTED));
         } else {

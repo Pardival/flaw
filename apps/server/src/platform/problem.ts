@@ -89,3 +89,34 @@ export function sendMfaRequired(reply: MfaReply): unknown {
     .header("cache-control", "no-store")
     .send(mfaRequiredProblem());
 }
+
+/** Corps 403 de API-004 : schéma ReauthRequired (type …/reauth_required). */
+export type ReauthRequiredProblem = {
+  type: "https://flaw.example.com/problems/reauth_required";
+  status: 403;
+  title: "Ré-authentification requise";
+  code: "reauth_required";
+};
+
+export function reauthRequiredProblem(): ReauthRequiredProblem {
+  return {
+    type: "https://flaw.example.com/problems/reauth_required",
+    status: 403,
+    title: "Ré-authentification requise",
+    code: "reauth_required",
+  };
+}
+
+type ReauthReply = {
+  code: (status: number) => ReauthReply;
+  header: (name: string, value: string) => ReauthReply;
+  send: (body: ReauthRequiredProblem) => unknown;
+};
+
+export function sendReauthRequired(reply: ReauthReply): unknown {
+  return reply
+    .code(403)
+    .header("content-type", "application/problem+json; charset=utf-8")
+    .header("cache-control", "no-store")
+    .send(reauthRequiredProblem());
+}

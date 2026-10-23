@@ -9,7 +9,7 @@ import { parseRecoveryPepperOldIds } from "../config/env.ts";
 import type { AppConfig } from "../config/load.ts";
 import type { LoadedSecrets } from "../config/secrets.ts";
 import { resolvedClientIp } from "../platform/healthz.ts";
-import { sendMfaRequired, sendProblem } from "../platform/problem.ts";
+import { sendMfaRequired, sendProblem, sendReauthRequired } from "../platform/problem.ts";
 import { writeSecurityLog, type SecurityEvent } from "../platform/security-log.ts";
 import type { Writable } from "node:stream";
 import type { Pool } from "pg";
@@ -33,6 +33,9 @@ export const PROTECTED_ROUTES = [
   { method: "POST", url: "/api/auth/sign-out", auth: true },
   { method: "POST", url: "/api/auth/change-password", auth: true },
   { method: "GET", url: "/api/auth/sessions", auth: true },
+  { method: "GET", url: "/api/v1/me/sessions", auth: true },
+  { method: "DELETE", url: "/api/v1/me/sessions", auth: true },
+  { method: "DELETE", url: "/api/v1/me/sessions/:sessionId", auth: true },
   { method: "GET", url: "/api/v1/me", auth: true },
   { method: "GET", url: "/api/v1/documents", auth: true },
   { method: "DELETE", url: "/api/v1/documents/:id", auth: true },
@@ -345,7 +348,11 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       return sendUnauthorized(reply);
     }
     if (session.restricted && !restrictedAllows(request.method, pattern ?? "")) {
-      if (request.method === "GET" && pattern === "/api/v1/me") {
+      const mfaContract =
+        (request.method === "GET" && pattern === "/api/v1/me") ||
+        pattern === "/api/v1/me/sessions" ||
+        pattern === "/api/v1/me/sessions/:sessionId";
+      if (mfaContract) {
         return sendMfaRequired(reply);
       }
       return sendMessage(reply, 403, RESTRICTED);
@@ -528,7 +535,54 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (auth === null || current === undefined) {
       return sendUnauthorized(reply);
     }
+    // Alias historique de listSessions : même service.devices, enveloppe { devices }.
     return { devices: await auth.devices(current.userId, current.sessionId) };
+  });
+
+  app.get("/api/v1/me/sessions", async (request, reply) => {
+    const current = sessionOf(request);
+    if (auth === null || current === undefined) {
+      return sendUnauthorized(reply);
+    }
+    return auth.devices(current.userId, current.sessionId);
+  });
+
+  app.delete("/api/v1/me/sessions", async (request, reply) => {
+    const current = sessionOf(request);
+    if (auth === null || current === undefined) {
+      return sendUnauthorized(reply);
+    }
+    const result = await auth.revokeOtherDevices(
+      current.userId,
+      current.sessionId,
+      clientIp(request, config.TRUSTED_PROXY_CIDR),
+      headerValue(request.headers["user-agent"]),
+    );
+    if (result.kind === "reauth") {
+      return sendReauthRequired(reply);
+    }
+    return reply.code(204).send();
+  });
+
+  app.delete("/api/v1/me/sessions/:sessionId", async (request, reply) => {
+    const current = sessionOf(request);
+    if (auth === null || current === undefined) {
+      return sendUnauthorized(reply);
+    }
+    const params = z.object({ sessionId: z.uuid() }).safeParse(request.params);
+    if (!params.success) {
+      return sendProblem(reply, 404);
+    }
+    const removed = await auth.revokeOwnedDevice(
+      current.userId,
+      params.data.sessionId,
+      clientIp(request, config.TRUSTED_PROXY_CIDR),
+      headerValue(request.headers["user-agent"]),
+    );
+    if (!removed) {
+      return sendProblem(reply, 404);
+    }
+    return reply.code(204).send();
   });
 
   app.get("/api/v1/me", async (request, reply) => {
