@@ -16,8 +16,8 @@ import {
 } from "@flaw/crypto";
 
 import type { SecurityEvent } from "../platform/security-log.ts";
-import { deviceLabel, summarizeDevice } from "./device.ts";
-import { hashDeviceToken, hashSessionToken, newDeviceToken, newSessionToken } from "./cookie.ts";
+import { hashSessionToken, newSessionToken } from "./cookie.ts";
+import { deviceLabel, deviceSecretMatches, hashDeviceSecret, issueDeviceSecret, summarizeDevice } from "./device.ts";
 import { bucketHmac, hmacKey, ipHmac, subjectHmac, tempHmac } from "./hmac.ts";
 import { encodeBase32, matchTotp, recoveryCode, recoveryCodeHmac } from "./mfa.ts";
 import { RESTRICTED_TTL_MS } from "./restricted-session.ts";
@@ -104,7 +104,6 @@ export type AuthDeps = {
   kekId?: string;
   recoveryPepper?: Uint8Array;
   recoveryPepperId?: string;
-  oldRecoveryPeppers?: readonly { id: string; pepper: Uint8Array }[];
 };
 
 export type SignInResult =
@@ -248,6 +247,10 @@ export function openAuth(deps: AuthDeps) {
       return issueSession(account.user_id, input, now, true);
     }
     const factor = await findTotpFactor(deps.pool, account.user_id);
+    if (factor !== null && (await factorDekRevoked(account.user_id, factor))) {
+      await signalRevokedDek(account.user_id, input.ip, input.userAgent);
+      return { kind: "invalid" };
+    }
     const confirmed = factor !== null && (await totpIsConfirmed(account.user_id, now));
     const presentsFactor = input.totp !== undefined || input.recoveryCode !== undefined;
     if (!presentsFactor && (factor === null || !confirmed)) {
@@ -469,14 +472,31 @@ export function openAuth(deps: AuthDeps) {
     if (token === undefined) {
       return false;
     }
-    const row = await findVerificationRow(deps.pool, hashDeviceToken(token));
-    return row !== null && row.value_hash === userId && now.getTime() < row.expires_at.getTime();
+    const row = await findVerificationRow(deps.pool, hashDeviceSecret(token));
+    return deviceSecretMatches(row, userId, now);
   }
 
   async function trustDevice(userId: string, now: Date): Promise<string> {
-    const issued = newDeviceToken();
+    const issued = issueDeviceSecret();
     await upsertVerification(deps.pool, issued.hash, userId, new Date(now.getTime() + 90 * DAY_MS));
     return issued.token;
+  }
+
+  async function factorDekRevoked(userId: string, factor: TotpFactorRow): Promise<boolean> {
+    const keyRow = await findUserKey(deps.pool, userId, factor.key_id);
+    return keyRow !== null && keyRow.status === "revoked";
+  }
+
+  async function signalRevokedDek(userId: string, ip: string, userAgent: string | undefined): Promise<void> {
+    await insertAudit(deps.pool, userId, "admin.dek_revoked", "refus");
+    emit({
+      type: "admin_action",
+      result: "echec",
+      userId,
+      ip,
+      userAgent: userAgent ?? null,
+      action: "admin.dek_revoked",
+    });
   }
 
   function stepId(userId: string): string {
@@ -558,24 +578,15 @@ export function openAuth(deps: AuthDeps) {
   }
 
   async function consumeRecovery(userId: string, code: string, now: Date): Promise<boolean> {
-    const peppers: Array<{ id: string; pepper: Uint8Array }> = [];
-    if (deps.recoveryPepper !== undefined && deps.recoveryPepperId !== undefined) {
-      peppers.push({ id: deps.recoveryPepperId, pepper: deps.recoveryPepper });
-    }
-    for (const old of deps.oldRecoveryPeppers ?? []) {
-      peppers.push(old);
-    }
-    if (peppers.length === 0) {
+    if (deps.recoveryPepper === undefined || deps.recoveryPepperId === undefined) {
       return false;
     }
-    for (const item of peppers) {
-      const mac = recoveryCodeHmac(item.pepper, item.id, userId, code);
-      if (mac === null) {
-        return false;
-      }
-      if (await consumeRecoveryCode(deps.pool, userId, mac, now)) {
-        return true;
-      }
+    const mac = recoveryCodeHmac(deps.recoveryPepper, deps.recoveryPepperId, userId, code);
+    if (mac === null) {
+      return false;
+    }
+    if (await consumeRecoveryCode(deps.pool, userId, mac, now)) {
+      return true;
     }
     return false;
   }
@@ -885,6 +896,7 @@ export function openAuth(deps: AuthDeps) {
     sessionId: string,
     code: string,
     userAgent: string | undefined,
+    ip: string,
   ): Promise<
     | { kind: "ok"; token: string; maxAge: number | null; deviceToken: string }
     | { kind: "invalid" }
@@ -892,7 +904,7 @@ export function openAuth(deps: AuthDeps) {
     | { kind: "limited"; retryAfter: number }
   > {
     const session = await findSessionById(deps.pool, sessionId);
-    if (session === null || !session.restricted || session.revoked_at !== null) {
+    if (session === null) {
       return { kind: "forbidden" };
     }
     const account = await findAccountByUser(deps.pool, userId);
@@ -903,8 +915,18 @@ export function openAuth(deps: AuthDeps) {
     const lockBucket = bucketHmac(key, `acct-lock|${account.identifier}`);
     const lockedUntil = await activeLock(deps.pool, lockBucket, now);
     if (lockedUntil !== null) {
-      await revokeSession(deps.pool, sessionId, now);
+      if (session.revoked_at === null) {
+        await revokeSession(deps.pool, sessionId, now);
+      }
       return { kind: "limited", retryAfter: retrySeconds(lockedUntil, now) };
+    }
+    const ipHit = await noteHit(bucketHmac(key, `ip|${ip}`), now);
+    if (ipHit.hits > 20) {
+      emit({ type: "rate_limited", result: "echec", userId, ip, userAgent: userAgent ?? null });
+      return { kind: "limited", retryAfter: ipHit.retryAfter };
+    }
+    if (!session.restricted || session.revoked_at !== null) {
+      return { kind: "forbidden" };
     }
     if ((await provisionalActive(userId, now)) || (await reconfigureActive(userId, now))) {
       return { kind: "forbidden" };
@@ -912,6 +934,10 @@ export function openAuth(deps: AuthDeps) {
     const factor = await findTotpFactor(deps.pool, userId);
     if (factor === null) {
       return { kind: "forbidden" };
+    }
+    if (await factorDekRevoked(userId, factor)) {
+      await signalRevokedDek(userId, ip, userAgent);
+      return { kind: "invalid" };
     }
     const step = await acceptTotp(userId, factor, code, now);
     if (step === null) {

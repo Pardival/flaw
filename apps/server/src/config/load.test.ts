@@ -217,22 +217,4 @@ describe("configuration", () => {
       expect(JSON.stringify(loaded.config)).not.toContain(HEX);
     }
   });
-
-  it("charge les anciens poivres recovery_pepper_<id>", () => {
-    const values = validSet();
-    const env = writeSecrets(values);
-    const directory = env.RECOVERY_PEPPER_FILE?.replace(/\/recovery_pepper$/u, "");
-    if (directory === undefined) {
-      throw new Error("répertoire");
-    }
-    const old = validKey();
-    const file = `${directory}/recovery_pepper_pep-old`;
-    writeFileSync(file, `${old}\n`);
-    chmodSync(file, 0o600);
-    const loaded = loadSecrets({ ...env, RECOVERY_PEPPER_OLD_IDS: "pep-old" });
-    expect(loaded.ok).toBe(true);
-    if (loaded.ok) {
-      expect(loaded.secrets.oldRecoveryPeppers).toEqual([{ id: "pep-old", value: old }]);
-    }
-  });
 });

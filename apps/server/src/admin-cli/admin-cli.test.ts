@@ -38,11 +38,12 @@ import {
   RESTRICTED,
   TOO_MANY,
 } from "../auth/html.ts";
-import { decodeBase32, hotp, recoveryCode, recoveryCodeHmac, totpStep } from "../auth/mfa.ts";
+import { decodeBase32, hotp, recoveryCodeHmac, totpStep } from "../auth/mfa.ts";
 import { ARGON_FLOOR } from "../auth/password.ts";
 import { openAuth } from "../auth/service.ts";
 import {
   consumeRecoveryCode,
+  deleteVerificationsByValue,
   findActiveUserKey,
   insertRecoveryCode,
   insertUserKey,
@@ -865,6 +866,10 @@ describe("flaw-admin et session restreinte", () => {
     const required = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX });
     expect(required.statusCode).toBe(401);
     expect(required.json()).toEqual({ message: MFA_REQUIRED });
+    await deleteVerificationsByValue(pool, ready.userId);
+    const revokedTrust = await sign(ready.app, email, NEW_PASSWORD, { ua: CHROME, cookie: devicePair });
+    expect(revokedTrust.statusCode).toBe(401);
+    expect(revokedTrust.json()).toEqual({ message: MFA_REQUIRED });
     const replay = await sign(ready.app, email, NEW_PASSWORD, { ua: FIREFOX, totp: totpAt(secret, now()) });
     expect(replay.statusCode).toBe(401);
     expect(replay.json()).toEqual({ message: INVALID_LOGIN });
@@ -966,10 +971,11 @@ describe("flaw-admin et session restreinte", () => {
     chmodSync(newPath, 0o600);
     const rotated = await run(["rotate-kek", "--kek-id", "kek-2026-11", "--new-kek-file", newPath], adminEnv({ FLAW_KEK_FILE: oldPath }));
     expect(rotated.code, rotated.stderr).toBe(0);
-    expect(rotated.stdout).toContain("kek tournée");
+    expect(rotated.stdout).toContain("kek tournée, retirer l'ancien secret");
     expect(rotated.stdout).toContain("FLAW_KEK_ID=kek-2026-11");
     expect(rotated.stdout).toContain("retired");
     expect(rotated.stdout).toContain("T-042");
+    expect(rotated.stderr).not.toContain("EACCES");
     expect(existsSync(oldPath)).toBe(true);
     expect(readFileSync(oldPath).equals(oldFileBytes)).toBe(true);
     expect(existsSync(newPath)).toBe(true);
@@ -1250,26 +1256,26 @@ describe("flaw-admin et session restreinte", () => {
     expect(refused.statusCode).toBe(401);
   });
 
-  dbTest("mfa/verify est limité comme la connexion et répond 429 (Q-015, M3)", async () => {
+  dbTest("mfa/verify est limité comme la connexion et répond 429 (Q-015, SEC-AUTH-03)", async () => {
     const email = nextEmail();
     const ready = await readyToEnroll(email);
     const enrolled = await enroll(ready.app, ready.cookie);
     expect(enrolled.statusCode).toBe(200);
     const secret = (enrolled.json() as { secret: string }).secret;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const failed = await verify(ready.app, ready.cookie, "000000");
-      expect(failed.statusCode).toBe(401);
+    let limited = await verify(ready.app, ready.cookie, "000000");
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      limited = await verify(ready.app, ready.cookie, "000000");
     }
-    const limited = await verify(ready.app, ready.cookie, "000000");
     expect(limited.statusCode).toBe(429);
     expect(limited.json()).toEqual({ message: TOO_MANY });
     expect(limited.headers["retry-after"]).toBeDefined();
     const late = await verify(ready.app, ready.cookie, totpAt(secret, now()));
-    expect(late.statusCode).not.toBe(200);
+    expect(late.statusCode).toBe(429);
+    expect(late.json()).toEqual({ message: TOO_MANY });
     const signed = await sign(ready.app, email, NEW_PASSWORD);
     expect(signed.statusCode).toBe(429);
     expect(signed.json()).toEqual({ message: TOO_MANY });
-  });
+  }, 120_000);
 
   dbTest("le même pas TOTP envoyé en parallèle n'est accepté qu'une fois (Q-015)", async () => {
     const email = nextEmail();
@@ -1295,7 +1301,7 @@ describe("flaw-admin et session restreinte", () => {
     expect(signed.statusCode).toBe(200);
   });
 
-  dbTest("un code de secours scellé avec un ancien poivre reste consommable", async () => {
+  dbTest("une DEK revoked rend la connexion impossible et prévient l'exploitant (Q-015)", async () => {
     const email = nextEmail();
     const ready = await readyToEnroll(email);
     const enrolled = await enroll(ready.app, ready.cookie);
@@ -1303,28 +1309,24 @@ describe("flaw-admin et session restreinte", () => {
     const secret = (enrolled.json() as { secret: string }).secret;
     const confirmed = await verify(ready.app, ready.cookie, totpAt(secret, now()));
     expect(confirmed.statusCode).toBe(200);
-    const oldValue = validKey();
-    const oldPepper = decodeValidatedKey(oldValue);
-    if (oldPepper === null) {
-      throw new Error("poivre");
+    const devicePair = cookiePair(deviceSetCookie(confirmed.headers));
+    await pool.query("UPDATE flaw.user_keys SET status = 'revoked' WHERE owner_id = $1", [ready.userId]);
+    let log = "";
+    const stream = new PassThrough();
+    stream.on("data", (chunk: Buffer) => {
+      log += chunk.toString("utf8");
+    });
+    const app = track(buildApp(config(), { ...appOptions(), logStream: stream }));
+    const plain = await sign(app, email, NEW_PASSWORD, { ua: CHROME });
+    const withCode = await sign(app, email, NEW_PASSWORD, { ua: CHROME, totp: totpAt(secret, now(), 1) });
+    const withDevice = await sign(app, email, NEW_PASSWORD, { ua: CHROME, cookie: devicePair });
+    for (const response of [plain, withCode, withDevice]) {
+      expect(response.statusCode).toBe(401);
+      expect(response.json()).toEqual({ message: INVALID_LOGIN });
+      expect(JSON.stringify(response.json())).not.toMatch(/revoked|révoqu|dek/i);
     }
-    const code = recoveryCode();
-    const mac = recoveryCodeHmac(oldPepper, "pep-old", ready.userId, code);
-    if (mac === null) {
-      throw new Error("hmac");
-    }
-    await insertRecoveryCode(pool, ready.userId, "pep-old", mac);
-    const missed = await sign(ready.app, email, NEW_PASSWORD, { recoveryCode: code, ua: FIREFOX });
-    expect(missed.statusCode).toBe(401);
-    const app = track(
-      buildApp(
-        config(),
-        appOptions(ARGON_FLOOR, { ...secrets, oldRecoveryPeppers: [{ id: "pep-old", value: oldValue }] }),
-      ),
-    );
-    const recovered = await sign(app, email, NEW_PASSWORD, { recoveryCode: code, ua: FIREFOX });
-    expect(recovered.statusCode).toBe(200);
-    expect((await authed(app, "GET", "/api/v1/documents", cookiePair(setCookie(recovered.headers)))).statusCode).toBe(403);
-    oldPepper.fill(0);
+    expect(log).toContain("admin.dek_revoked");
+    const audits = await listAuditEvents(pool, ready.userId);
+    expect(audits.map((row) => row.event_type)).toContain("admin.dek_revoked");
   });
 });

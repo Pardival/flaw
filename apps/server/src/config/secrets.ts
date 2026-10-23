@@ -3,18 +3,12 @@
  * Aucune règle n'est réécrite : readSecretFile est le validateur T-002
  * (identique à infra/creer-secrets.sh).
  */
-import { dirname, join } from "node:path";
-
 import { peppersMatchKek } from "../crypto/kek.ts";
 import { readSecretFile, type SecretKind } from "../platform/healthz.ts";
 
 export type SecretName = "databasePassword" | "betterAuthSecret" | "kek" | "recoveryPepper" | "hmacPepper";
 
-export type OldRecoveryPepper = { id: string; value: string };
-
-export type LoadedSecrets = Record<SecretName, string> & {
-  oldRecoveryPeppers?: readonly OldRecoveryPepper[];
-};
+export type LoadedSecrets = Record<SecretName, string>;
 
 type SecretSpec = {
   name: SecretName;
@@ -73,21 +67,5 @@ export function loadSecrets(env: NodeJS.ProcessEnv): SecretsResult {
   if (peppersMatchKek(secrets.kek, secrets.hmacPepper, secrets.recoveryPepper)) {
     return { ok: false, message: "refus de démarrer : poivre" };
   }
-  const oldIds = (env.RECOVERY_PEPPER_OLD_IDS ?? "")
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
-  const recoveryPath = env.RECOVERY_PEPPER_FILE ?? "/run/secrets/recovery_pepper";
-  const oldRecoveryPeppers: OldRecoveryPepper[] = [];
-  for (const id of oldIds) {
-    if (!/^[A-Za-z0-9._-]{1,64}$/.test(id)) {
-      return { ok: false, message: "refus de démarrer : poivre" };
-    }
-    const read = readSecretFile(join(dirname(recoveryPath), `recovery_pepper_${id}`), "key");
-    if (!read.ok) {
-      return { ok: false, message: "refus de démarrer : poivre" };
-    }
-    oldRecoveryPeppers.push({ id, value: read.value });
-  }
-  return { ok: true, secrets: { ...secrets, oldRecoveryPeppers } };
+  return { ok: true, secrets };
 }

@@ -222,10 +222,6 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
           kekId: config.FLAW_KEK_ID,
           recoveryPepper: decodeValidatedKey(runtime.secrets.recoveryPepper) ?? undefined,
           recoveryPepperId: config.RECOVERY_PEPPER_ID,
-          oldRecoveryPeppers: (runtime.secrets.oldRecoveryPeppers ?? []).flatMap((item) => {
-            const pepper = decodeValidatedKey(item.value);
-            return pepper === null ? [] : [{ id: item.id, pepper }];
-          }),
         })
       : null;
 
@@ -426,6 +422,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       current.sessionId,
       parsed.data.code,
       headerValue(request.headers["user-agent"]),
+      clientIp(request, config.TRUSTED_PROXY_CIDR),
     );
     if (result.kind === "forbidden") {
       return sendMessage(reply, 403, ENROLL_REFUSED);

@@ -5,6 +5,8 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 
+import { hashDeviceSecret, issueDeviceSecret } from "./device.ts";
+
 export const SESSION_COOKIE = "__Secure-flaw.session_token";
 export const DEVICE_COOKIE = "__Secure-flaw.device";
 export const DEVICE_MAX_AGE = 90 * 24 * 60 * 60;
@@ -20,12 +22,11 @@ export function hashSessionToken(token: string): Buffer {
 }
 
 export function newDeviceToken(): { token: string; hash: string } {
-  const token = randomBytes(32).toString("base64url");
-  return { token, hash: hashDeviceToken(token) };
+  return issueDeviceSecret();
 }
 
 export function hashDeviceToken(token: string): string {
-  return createHash("sha256").update(token, "utf8").digest("hex");
+  return hashDeviceSecret(token);
 }
 
 export function serializeDeviceCookie(token: string): string {

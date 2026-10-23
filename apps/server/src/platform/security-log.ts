@@ -35,6 +35,7 @@ export const ADMIN_ACTIONS = [
   "admin.revoke_sessions",
   "admin.rotate_kek",
   "admin.revoke_dek",
+  "admin.dek_revoked",
   "admin.check_roles",
   "admin.replay_erasures",
 ] as const;

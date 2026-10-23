@@ -73,7 +73,7 @@ function keysConflict(oldKek: Uint8Array, newKek: Uint8Array, hmacPepper: string
 
 function rotateSuccessMessage(newId: string): string {
   return [
-    "kek tournée",
+    "kek tournée, retirer l'ancien secret",
     "L'ancienne KEK a le statut retired : elle ne sert plus à chiffrer et reste disponible pour déchiffrer jusqu'à la fin de la rétention des sauvegardes. Aucun fichier n'a été supprimé.",
     `Installez le nouveau secret à la place de flaw_kek, réglez FLAW_KEK_ID=${newId}, redémarrez l'application, puis vérifiez une connexion.`,
     "La destruction planifiée de l'ancienne KEK est hors périmètre (T-042).",
