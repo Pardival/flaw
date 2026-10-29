@@ -23,6 +23,7 @@ import { ARGON_TARGET, type ArgonParams } from "./password.ts";
 import { restrictedAllows } from "./restricted-session.ts";
 import { openAuth } from "./service.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
+import { attachSync } from "../sync/hocuspocus.ts";
 
 export const PUBLIC_ROUTES = [
   { method: "GET", url: "/login", auth: false },
@@ -627,6 +628,27 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
         return undefined;
       }
       return { userId: current.userId, role };
+    },
+  });
+
+  attachSync(app, {
+    pool: () => runtime.pool,
+    kek: () => (runtime.secrets === undefined ? undefined : (decodeValidatedKey(runtime.secrets.kek) ?? undefined)),
+    origins: () => allowedOrigins(config),
+    maxPayload: config.bodyLimit,
+    resolve: async (token) => {
+      if (auth === null || runtime.pool === undefined) {
+        return null;
+      }
+      const session = await auth.resolve(token);
+      if (session === null || session.restricted) {
+        return null;
+      }
+      const result = await runtime.pool.query<{ role: string }>("SELECT role FROM flaw.users WHERE id = $1", [
+        session.owner_id,
+      ]);
+      const role = result.rows[0]?.role;
+      return role === "user" || role === "admin" ? { userId: session.owner_id, role } : null;
     },
   });
 }

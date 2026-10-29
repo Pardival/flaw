@@ -10,14 +10,19 @@
   "dependencies": {
     "@flaw/crypto": "workspace:*",
     "@flaw/schema": "workspace:*",
+    "@hocuspocus/server": "4.7.1",
     "@node-rs/argon2": "2.2.2",
     "drizzle-orm": "0.45.3",
     "fastify": "5.12.5",
     "pg": "8.16.3",
+    "ws": "8.22.0",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33",
     "zod": "4.6.5"
   },
   "devDependencies": {
     "@types/node": "24.10.1",
-    "@types/pg": "8.15.5"
+    "@types/pg": "8.15.5",
+    "@types/ws": "8.18.2"
   }
 }

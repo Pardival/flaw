@@ -117,3 +117,17 @@ export function clientTooOld(client: number | undefined, documentSchema: number)
 export function payloadTooLarge(byteLength: number, limit: number): boolean {
   return byteLength > limit;
 }
+
+/** Structure du Y.Doc d'un texte (A-008) : contenu ProseMirror et métadonnées. */
+export const CONTENT_FRAGMENT = "content";
+export const META_MAP = "meta";
+
+/** WSS multiplexé (API-024). Le paramètre `schema` porte la version du client. */
+export const SYNC_PATH = "/api/v1/sync";
+export const SYNC_SCHEMA_PARAM = "schema";
+
+/** Revalidation de la session des WebSocket ouverts (SEC-API-06). */
+export const SYNC_REVALIDATE_MS = 30_000;
+
+/** Fermeture : session absente, expirée ou révoquée. */
+export const SYNC_CLOSE_UNAUTHORIZED = 4401;
