@@ -4,3 +4,4 @@ export { exportEpub } from "./epub/index.ts";
 export { exportFountain } from "./fountain/index.ts";
 export { formatsForMode, type ExportKind } from "./formats.ts";
 export { safeFileName, type ExportInput, type ExportMode, type PMJson } from "./model.ts";
+export { PDF_FONT_FILES, TYPST_MAIN, pdfData, pdfFonts, type PdfOptions } from "./pdf/template.ts";

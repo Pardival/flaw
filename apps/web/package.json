@@ -14,6 +14,8 @@
     "@flaw/schema": "workspace:*",
     "@flaw/sync": "workspace:*",
     "@hocuspocus/provider": "4.7.1",
+    "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
+    "@myriaddreamin/typst.ts": "0.7.0",
     "dexie": "4.4.6",
     "i18next": "26.4.7",
     "prosemirror-commands": "1.7.2",

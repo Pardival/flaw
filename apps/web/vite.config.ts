@@ -8,6 +8,10 @@ export default defineConfig({
   esbuild: {
     jsx: "automatic",
   },
+  // Workers en modules ES (export, PDF Typst) : découpage du WASM et des polices.
+  worker: {
+    format: "es",
+  },
   server: {
     fs: {
       allow: [repoRoot],

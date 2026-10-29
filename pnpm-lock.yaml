@@ -251,6 +251,12 @@ importers:
       '@hocuspocus/provider':
         specifier: 4.7.1
         version: 4.7.1(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
+      '@myriaddreamin/typst-ts-web-compiler':
+        specifier: 0.7.0
+        version: 0.7.0
+      '@myriaddreamin/typst.ts':
+        specifier: 0.7.0
+        version: 0.7.0(@myriaddreamin/typst-ts-web-compiler@0.7.0)
       dexie:
         specifier: 4.4.6
         version: 4.4.6
@@ -639,6 +645,20 @@ packages:
 
   '@lifeomic/attempt@3.1.0':
     resolution: {integrity: sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw==}
+
+  '@myriaddreamin/typst-ts-web-compiler@0.7.0':
+    resolution: {integrity: sha512-nMwMcfOBy5pABPDuVM7/u8425SxhPUM+OJe6daqqgVOT3+neCTz4JKwx2L8XasfEHTNvd0cUI07LR9q5ADo7Gw==}
+
+  '@myriaddreamin/typst.ts@0.7.0':
+    resolution: {integrity: sha512-JtO5Td/1QesH1IBKAZtbayFNK8u2sl3iz18Y67uYqBEdcXiu3z+wpZcDDKlmVJvAcCgSjHTnuk6ZLfkYclrGGQ==}
+    peerDependencies:
+      '@myriaddreamin/typst-ts-renderer': ^0.7.0
+      '@myriaddreamin/typst-ts-web-compiler': ^0.7.0
+    peerDependenciesMeta:
+      '@myriaddreamin/typst-ts-renderer':
+        optional: true
+      '@myriaddreamin/typst-ts-web-compiler':
+        optional: true
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -1366,6 +1386,9 @@ packages:
     peerDependenciesMeta:
       typescript:
         optional: true
+
+  idb@7.1.1:
+    resolution: {integrity: sha512-gchesWBzyvGHRO9W8tzUWFDycow5gwjvFKfyV9FF32Y7F50yZMp7mP+T2mJIWFx49zicqyC4uefHM17o6xKIVQ==}
 
   ignore@5.3.2:
     resolution: {integrity: sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g==}
@@ -2184,6 +2207,14 @@ snapshots:
 
   '@lifeomic/attempt@3.1.0': {}
 
+  '@myriaddreamin/typst-ts-web-compiler@0.7.0': {}
+
+  '@myriaddreamin/typst.ts@0.7.0(@myriaddreamin/typst-ts-web-compiler@0.7.0)':
+    dependencies:
+      idb: 7.1.1
+    optionalDependencies:
+      '@myriaddreamin/typst-ts-web-compiler': 0.7.0
+
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
@@ -2803,6 +2834,8 @@ snapshots:
   i18next@26.4.7(typescript@6.0.3):
     optionalDependencies:
       typescript: 6.0.3
+
+  idb@7.1.1: {}
 
   ignore@5.3.2: {}
 
