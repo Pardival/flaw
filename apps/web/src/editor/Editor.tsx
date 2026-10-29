@@ -31,6 +31,11 @@ import { FORMATS_BY_MODE, defaultFormat } from "../library/formats-by-mode.ts";
 import { changeSize } from "./size.ts";
 import { typographyPlugin } from "./typography.ts";
 import { caretLineOffset, focusPlugin, setFocusMode } from "./focus.ts";
+import { searchPlugin } from "./search.ts";
+import { SearchBar } from "./SearchBar.tsx";
+import { ChapterJump } from "./ChapterJump.tsx";
+import { EditorMenu, type EditorPanel } from "./EditorMenu.tsx";
+import { Shortcuts } from "./Shortcuts.tsx";
 import { keymap } from "prosemirror-keymap";
 import { totalWords } from "./pagination/words.ts";
 import { DailyGoal } from "../stats/DailyGoal.tsx";
@@ -79,6 +84,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const { prefs } = usePreferences();
   const generalFrench = prefs.frenchTypographyDefault;
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panel, setPanel] = useState<EditorPanel | null>(null);
   const meta = useMeta(ydoc);
   const typographyRef = useRef({ on: true, mode: document.mode });
   typographyRef.current = { on: meta === null ? generalFrench : frenchTypographyOn(meta, generalFrench), mode: document.mode };
@@ -150,8 +156,20 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   };
 
   // Ctrl/⌘+Maj+F entre et sort ; Échap sort (AC-034, AC-039).
+  // Ctrl/⌘+F : recherche interne (dans l'éditeur seulement) ; Ctrl+Alt+G : aller au chapitre.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && !event.shiftKey && !event.altKey && (event.key === "f" || event.key === "F")) {
+        event.preventDefault();
+        setPanel("search");
+        return;
+      }
+      const altGraph = event.getModifierState("AltGraph") && event.key !== "g" && event.key !== "G" && event.key.length === 1;
+      if ((event.ctrlKey || event.metaKey) && event.altKey && !altGraph && (event.code === "KeyG") && document.mode === "novel") {
+        event.preventDefault();
+        setPanel("chapters");
+        return;
+      }
       if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === "f" || event.key === "F")) {
         event.preventDefault();
         toggleFocus(!focusRef.current);
@@ -266,6 +284,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
             },
           }),
           focusPlugin(),
+          searchPlugin(),
           pastePlugin(),
           typographyPlugin({ enabled: () => typographyRef.current.on, mode: () => typographyRef.current.mode }),
           keymap({
@@ -484,6 +503,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
+        <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} />
         <button type="button" className="editor-focus" onClick={() => setSettingsOpen(true)} aria-label={t("settings")}>
           Aa
         </button>
@@ -526,6 +546,13 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       >
         <div ref={mount} className="book-mount" />
       </div>
+      {panel === "search" && viewRef.current && !focusMode ? (
+        <SearchBar view={viewRef.current} onClose={() => setPanel(null)} />
+      ) : null}
+      {panel === "chapters" && viewRef.current && !focusMode ? (
+        <ChapterJump view={viewRef.current} onClose={() => setPanel(null)} />
+      ) : null}
+      {panel === "shortcuts" ? <Shortcuts mode={document.mode} onClose={() => setPanel(null)} /> : null}
       {settingsOpen && !focusMode ? (
         <SettingsPanel text={textSettings()} onClose={() => setSettingsOpen(false)} />
       ) : null}

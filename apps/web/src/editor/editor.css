@@ -540,3 +540,103 @@
   font-size: var(--taille-ui-s);
   color: var(--couleur-encre-3);
 }
+
+/* Recherche (T-030, D-035) et aller au chapitre (D-036). */
+.search-hit {
+  background: var(--couleur-recherche);
+  border-radius: 2px;
+}
+
+.search-current {
+  background: var(--couleur-recherche-courante);
+  outline: 1px solid var(--couleur-accent);
+}
+
+.search-bar {
+  position: fixed;
+  top: var(--espace-3);
+  right: var(--espace-4);
+  z-index: 16;
+  display: flex;
+  align-items: center;
+  gap: var(--espace-2);
+  padding: var(--espace-2);
+  background: var(--couleur-surface);
+  border-radius: var(--rayon-m);
+  box-shadow: var(--ombre-flottante);
+  font-size: var(--taille-ui-s);
+}
+
+.page .search-bar input {
+  width: 14rem;
+}
+
+.page .search-bar button {
+  border: none;
+  background: transparent;
+  padding: 0 var(--espace-2);
+}
+
+.search-count {
+  min-width: 5rem;
+  color: var(--couleur-encre-3);
+  white-space: nowrap;
+}
+
+.chapter-jump ul {
+  list-style: none;
+  margin: var(--espace-3) 0 0;
+  padding: 0;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.page .chapter-jump li button {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+}
+
+.page .chapter-jump li[aria-selected="true"] button {
+  background: var(--couleur-accent-doux);
+}
+
+.page .chapter-jump button[data-current="true"] {
+  font-weight: 600;
+}
+
+.chapter-page {
+  color: var(--couleur-encre-3);
+}
+
+.editor-menu {
+  position: relative;
+  right: auto;
+  bottom: auto;
+}
+
+.page .editor-menu .row-menu-trigger {
+  opacity: 1;
+  border: none;
+  background: transparent;
+}
+
+.shortcuts dl {
+  margin: 0 0 var(--espace-4);
+}
+
+.shortcuts dl > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--espace-4);
+  padding: var(--espace-1) 0;
+  border-bottom: 1px solid var(--couleur-trait);
+  font-size: var(--taille-ui-s);
+}
+
+.shortcuts dd {
+  margin: 0;
+}
