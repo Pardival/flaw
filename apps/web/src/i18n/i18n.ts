@@ -7,13 +7,14 @@ import { editor } from "./fr/editor.ts";
 import { library } from "./fr/library.ts";
 import { mfa } from "./fr/mfa.ts";
 import { exportCatalog } from "./fr/export.ts";
+import { importCatalog } from "./fr/import.ts";
 import { settings } from "./fr/settings.ts";
 import { sync } from "./fr/sync.ts";
 import { theme } from "./fr/theme.ts";
 
 export const defaultLanguage = "fr";
 
-const namespaces = ["auth", "mfa", "account", "theme", "library", "editor", "sync", "settings", "export"] as const;
+const namespaces = ["auth", "mfa", "account", "theme", "library", "editor", "sync", "settings", "export", "import"] as const;
 
 export type CatalogNamespace = (typeof namespaces)[number];
 
@@ -27,7 +28,7 @@ if (!i18n.isInitialized) {
     defaultNS: "auth",
     ns: [...namespaces],
     resources: {
-      fr: { auth, mfa, account, theme, library, editor, sync, settings, export: exportCatalog },
+      fr: { auth, mfa, account, theme, library, editor, sync, settings, export: exportCatalog, import: importCatalog },
     },
     interpolation: { escapeValue: false },
     initAsync: false,

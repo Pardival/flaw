@@ -6,6 +6,7 @@ import { MODE_FONT } from "./formats-by-mode.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { SettingsPanel } from "../settings/SettingsPanel.tsx";
 import { DailyGoal } from "../stats/DailyGoal.tsx";
+import { ImportFlow } from "../import/ImportFlow.tsx";
 import { navigate, openTextWith } from "./route.ts";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
@@ -27,6 +28,9 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [trashedToast, setTrashedToast] = useState<LocalDocument | null>(null);
+  const [importing, setImporting] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (trashedToast === null) {
@@ -52,6 +56,9 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
       if (event.key === "n" || event.key === "N") {
         event.preventDefault();
         navigate({ name: "create" });
+      } else if (event.key === "i" || event.key === "I") {
+        event.preventDefault();
+        picker.current?.click();
       } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && rows.current.length > 0) {
         const index = rows.current.findIndex((row) => row === document.activeElement);
         const step = event.key === "ArrowDown" ? 1 : -1;
@@ -79,6 +86,22 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
       <span className="library-logo">Flaw</span>
       <span className="library-bar-spacer" />
       <DailyGoal />
+      <button type="button" className="library-import" onClick={() => picker.current?.click()} title="I">
+        {t("importAction")}
+      </button>
+      <input
+        ref={picker}
+        type="file"
+        hidden
+        accept=".docx,.md,.markdown,.txt"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) {
+            setImporting(file);
+          }
+        }}
+      />
       <SyncIndicator />
       <button type="button" className="icon-button" aria-label={t("settings")} onClick={() => setSettingsOpen(true)}>
         Aa
@@ -87,15 +110,36 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
         + {t("newText")}
       </button>
     </header>
+    {importing ? <ImportFlow store={store} file={importing} onClose={() => setImporting(null)} /> : null}
     {settingsOpen ? (
       <SettingsPanel onClose={() => setSettingsOpen(false)} onTrash={() => navigate({ name: "trash" })} />
     ) : null}
     </>
   );
 
+  const dropProps = {
+    "data-dragging": dragging ? "true" : "false",
+    onDragOver: (event: React.DragEvent) => {
+      if (event.dataTransfer.types.includes("Files")) {
+        event.preventDefault();
+        setDragging(true);
+      }
+    },
+    onDragLeave: () => setDragging(false),
+    onDrop: (event: React.DragEvent) => {
+      event.preventDefault();
+      setDragging(false);
+      // Un seul fichier à la fois (AC-082).
+      const file = event.dataTransfer.files[0];
+      if (file) {
+        setImporting(file);
+      }
+    },
+  };
+
   if (documents.length === 0) {
     return (
-      <div className="library">
+      <div className="library" {...dropProps}>
         {header}
         <section className="library-empty">
           <div className="empty-page" aria-hidden="true" />
@@ -110,7 +154,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
   }
 
   return (
-    <div className="library">
+    <div className="library" {...dropProps}>
       {header}
       <section className="library-list" aria-labelledby="library-heading">
         <h1 id="library-heading" className="library-heading">

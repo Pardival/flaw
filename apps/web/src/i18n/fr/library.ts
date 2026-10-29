@@ -2,6 +2,7 @@
 export const library = {
   heading: "Textes",
   settings: "Réglages",
+  importAction: "Importer",
   sortNote: "Triés par dernière modification",
   newText: "Nouveau texte",
   newTextShortcut: "N",

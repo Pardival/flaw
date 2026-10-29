@@ -764,3 +764,17 @@ kbd {
 .library .toast {
   position: fixed;
 }
+
+/* Import (T-040) : « Importer » discret, dépôt de fichier sur la liste. */
+.page .library-import {
+  border: none;
+  background: transparent;
+  color: var(--couleur-encre-2);
+  font-size: var(--taille-ui-s);
+}
+
+.library[data-dragging="true"] {
+  outline: 2px dashed var(--couleur-accent);
+  outline-offset: var(--espace-2);
+  border-radius: var(--rayon-l);
+}
