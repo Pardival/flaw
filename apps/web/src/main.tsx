@@ -25,3 +25,10 @@ createRoot(root).render(
     </I18nextProvider>
   </StrictMode>,
 );
+
+// PWA installable (T-056) : le service worker n'est enregistré que dans la version construite.
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
+  });
+}
