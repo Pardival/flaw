@@ -26,6 +26,7 @@ import { decodeValidatedKey } from "../crypto/kek.ts";
 import { attachSync } from "../sync/hocuspocus.ts";
 import { registerPreferences } from "../preferences/routes.ts";
 import { registerStats } from "../stats/routes.ts";
+import { registerVersions } from "../versions/routes.ts";
 
 export const PUBLIC_ROUTES = [
   { method: "GET", url: "/login", auth: false },
@@ -46,6 +47,10 @@ export const PROTECTED_ROUTES = [
   { method: "GET", url: "/api/v1/me/preferences", auth: true },
   { method: "PATCH", url: "/api/v1/me/preferences", auth: true },
   { method: "GET", url: "/api/v1/stats/daily", auth: true },
+  { method: "GET", url: "/api/v1/documents/:documentId/versions", auth: true },
+  { method: "POST", url: "/api/v1/documents/:documentId/versions", auth: true },
+  { method: "POST", url: "/api/v1/documents/:documentId/versions/:versionId/restore", auth: true },
+  { method: "GET", url: "/api/v1/documents/:documentId/versions/:versionId/preview", auth: true },
   { method: "PUT", url: "/api/v1/stats/daily/:day/devices/:deviceId", auth: true },
   { method: "GET", url: "/api/v1/documents", auth: true },
   { method: "POST", url: "/api/v1/documents", auth: true },
@@ -617,10 +622,10 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     return profile;
   });
 
-  registerContentRoutes(app, {
+  const contentDeps = {
     pool: () => runtime.pool,
     kek: () => (runtime.secrets === undefined ? undefined : (decodeValidatedKey(runtime.secrets.kek) ?? undefined)),
-    actor: async (request): Promise<AccessActor | undefined> => {
+    actor: async (request: FastifyRequest): Promise<AccessActor | undefined> => {
       const current = sessionOf(request);
       if (current === undefined || runtime.pool === undefined) {
         return undefined;
@@ -635,7 +640,9 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
       }
       return { userId: current.userId, role };
     },
-  });
+  };
+  registerContentRoutes(app, contentDeps);
+  registerVersions(app, contentDeps);
 
   registerPreferences(app, {
     pool: () => runtime.pool,

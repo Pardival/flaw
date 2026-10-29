@@ -6,7 +6,7 @@ import { MODE_FONT } from "./formats-by-mode.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { SettingsPanel } from "../settings/SettingsPanel.tsx";
 import { DailyGoal } from "../stats/DailyGoal.tsx";
-import { navigate } from "./route.ts";
+import { navigate, openTextWith } from "./route.ts";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -175,6 +175,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
                   setMenuFor(null);
                   setRenaming(doc.id);
                 }}
+                onHistory={() => openTextWith(doc.id, "history")}
                 onTrash={() => {
                   void askTrash(doc);
                 }}
@@ -263,6 +264,7 @@ function RowMenu({
   onToggle,
   onOpen,
   onRename,
+  onHistory,
   onTrash,
 }: {
   title: string;
@@ -270,6 +272,7 @@ function RowMenu({
   onToggle: (open: boolean) => void;
   onOpen: () => void;
   onRename: () => void;
+  onHistory: () => void;
   onTrash: () => void;
 }) {
   const t = useTranslate("library");
@@ -332,7 +335,7 @@ function RowMenu({
           <button type="button" role="menuitem" onClick={onRename}>
             {t("rename")}
           </button>
-          <button type="button" role="menuitem" disabled title={t("soon")}>
+          <button type="button" role="menuitem" onClick={onHistory}>
             {t("history")}
           </button>
           <button type="button" role="menuitem" disabled title={t("soon")}>

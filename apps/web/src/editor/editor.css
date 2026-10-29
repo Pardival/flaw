@@ -640,3 +640,39 @@
 .shortcuts dd {
   margin: 0;
 }
+
+/* Historique (T-032, D-038, D-039). */
+.history-save {
+  display: flex;
+  gap: var(--espace-2);
+  margin-bottom: var(--espace-4);
+}
+
+.history-list {
+  list-style: none;
+  margin: 0 0 var(--espace-4);
+  padding: 0;
+}
+
+.page .history-item {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: var(--taille-ui-s);
+}
+
+.page .history-item:hover {
+  background: var(--couleur-surface-survol);
+}
+
+.history-preview pre {
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-family: var(--police-roman);
+  font-size: var(--taille-ui-m);
+  margin: 0 0 var(--espace-4);
+}

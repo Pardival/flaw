@@ -15,7 +15,7 @@ import * as Y from "yjs";
 
 import { useTranslate } from "../i18n/i18n.ts";
 import { PROSEMIRROR_FRAGMENT, type LocalDocument, type LocalStore } from "../local-store/index.ts";
-import { navigate } from "../library/route.ts";
+import { navigate, takePendingPanel } from "../library/route.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { attachDocument, type Attachment } from "../sync-client/connection.ts";
 import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } from "../sync-client/status.ts";
@@ -36,6 +36,7 @@ import { SearchBar } from "./SearchBar.tsx";
 import { ChapterJump } from "./ChapterJump.tsx";
 import { EditorMenu, type EditorPanel } from "./EditorMenu.tsx";
 import { Shortcuts } from "./Shortcuts.tsx";
+import { History } from "./History.tsx";
 import { keymap } from "prosemirror-keymap";
 import { totalWords } from "./pagination/words.ts";
 import { DailyGoal } from "../stats/DailyGoal.tsx";
@@ -84,7 +85,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const { prefs } = usePreferences();
   const generalFrench = prefs.frenchTypographyDefault;
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [panel, setPanel] = useState<EditorPanel | null>(null);
+  const [panel, setPanel] = useState<EditorPanel | null>(() => takePendingPanel());
   const meta = useMeta(ydoc);
   const typographyRef = useRef({ on: true, mode: document.mode });
   typographyRef.current = { on: meta === null ? generalFrench : frenchTypographyOn(meta, generalFrench), mode: document.mode };
@@ -503,7 +504,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
-        <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} />
+        <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "shortcuts"]} />
         <button type="button" className="editor-focus" onClick={() => setSettingsOpen(true)} aria-label={t("settings")}>
           Aa
         </button>
@@ -531,6 +532,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
           onBack: () => {
             navigate({ name: "list" });
           },
+          onHistory: () => {
+            setPanel("history");
+          },
         }}
       />
       <div
@@ -552,6 +556,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       {panel === "chapters" && viewRef.current && !focusMode ? (
         <ChapterJump view={viewRef.current} onClose={() => setPanel(null)} />
       ) : null}
+      {panel === "history" && !focusMode ? <History documentId={document.id} doc={ydoc} onClose={() => setPanel(null)} /> : null}
       {panel === "shortcuts" ? <Shortcuts mode={document.mode} onClose={() => setPanel(null)} /> : null}
       {settingsOpen && !focusMode ? (
         <SettingsPanel text={textSettings()} onClose={() => setSettingsOpen(false)} />

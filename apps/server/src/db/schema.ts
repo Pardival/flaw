@@ -475,6 +475,8 @@ export const documentVersions = flaw
       createdAt: createdAt(),
       labelCt: bytea("label_ct"),
       labelNonce: bytea("label_nonce"),
+      reason: text("reason").notNull().default("auto"),
+      wordCount: integer("word_count").notNull().default(0),
     },
     (table) => [
       foreignKey({

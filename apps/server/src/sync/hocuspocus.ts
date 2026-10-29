@@ -27,6 +27,7 @@ import {
 import { SCHEMA_VERSION } from "@flaw/schema/src/index.ts";
 import { liveDocuments } from "./journal.ts";
 import { LOAD_ORIGIN, appendUpdate, compact, loadInto, maySync } from "./persistence.ts";
+import { snapshot } from "../versions/store.ts";
 
 export type SyncSession = { userId: string; role: "user" | "admin" };
 
@@ -72,6 +73,9 @@ export function attachSync(app: FastifyInstance, deps: SyncDeps): Hocuspocus<Con
     return { pool, kek };
   };
 
+  // Dernier acteur par texte ouvert : sert à la version de fin de session.
+  const owners = new Map<string, AccessActor>();
+
   const hocuspocus = new Hocuspocus<Context>({
     name: "flaw",
     debounce: 2_000,
@@ -97,6 +101,7 @@ export function attachSync(app: FastifyInstance, deps: SyncDeps): Hocuspocus<Con
         throw new Error("texte illisible");
       }
       const document = data.document;
+      owners.set(data.documentName, data.context.actor);
       liveDocuments.set(data.documentName, (update) => {
         Y.applyUpdate(document, update, LOAD_ORIGIN);
       });
@@ -122,9 +127,19 @@ export function attachSync(app: FastifyInstance, deps: SyncDeps): Hocuspocus<Con
       }
       const { pool, kek } = required();
       await compact(pool, actor, kek, data.documentName, data.document);
+      await snapshot(pool, actor, kek, data.documentName, data.document, "auto").catch(() => undefined);
+    },
+    async beforeUnloadDocument(data) {
+      const actor = owners.get(data.documentName);
+      const pool = deps.pool();
+      const kek = deps.kek();
+      if (actor !== undefined && pool !== undefined && kek !== undefined) {
+        await snapshot(pool, actor, kek, data.documentName, data.document, "session_end").catch(() => undefined);
+      }
     },
     async afterUnloadDocument(data) {
       liveDocuments.delete(data.documentName);
+      owners.delete(data.documentName);
     },
   });
 

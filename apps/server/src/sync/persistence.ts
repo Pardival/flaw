@@ -86,7 +86,7 @@ export function keyring(sql: Sql, kek: Uint8Array, userId: string): Keyring {
   };
 }
 
-function seal(
+export function seal(
   dek: { id: string; dek: Uint8Array },
   ownerId: string,
   rowId: string,
@@ -97,7 +97,7 @@ function seal(
   return { ct: Buffer.from(sealed.ciphertext), nonce: Buffer.from(sealed.nonce), encVersion: sealed.encVersion };
 }
 
-async function open(
+export async function openSealed(
   keys: Keyring,
   ownerId: string,
   rowId: string,
@@ -138,7 +138,7 @@ export async function readJournal(
   const ids: string[] = [];
   const updates: Uint8Array[] = [];
   for (const row of result.rows) {
-    const plain = await open(keys, ownerId, row.id, COLUMN.updateCt, {
+    const plain = await openSealed(keys, ownerId, row.id, COLUMN.updateCt, {
       ct: row.update_ct,
       nonce: row.update_nonce,
       keyId: row.key_id,
@@ -276,7 +276,7 @@ async function project(sql: Sql, keys: Keyring, ownerId: string, documentId: str
   }
   let title = "";
   let baseFontSizePt = 11;
-  const plain = await open(keys, ownerId, row.id, COLUMN.projectionCt, {
+  const plain = await openSealed(keys, ownerId, row.id, COLUMN.projectionCt, {
     ct: row.projection_ct,
     nonce: row.projection_nonce,
     keyId: row.key_id,
