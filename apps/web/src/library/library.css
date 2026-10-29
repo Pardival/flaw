@@ -481,3 +481,117 @@ kbd {
     display: none;
   }
 }
+
+/* États de synchro (A-025) et bandeaux (D-023, D-041, D-045, D-046). */
+
+.library-bar-spacer {
+  flex: 1;
+}
+
+.sync-indicator {
+  position: relative;
+}
+
+.page .sync-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-2);
+  border: none;
+  background: transparent;
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+  padding: 0 var(--espace-2);
+}
+
+.sync-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--rayon-plein);
+  border: 1.5px solid var(--couleur-encre-3);
+}
+
+.sync-indicator[data-state="synced"] .sync-dot {
+  background: var(--couleur-succes);
+  border-color: var(--couleur-succes);
+}
+
+.sync-indicator[data-state="offline"] .sync-dot,
+.sync-indicator[data-state="auth-expired"] .sync-dot,
+.sync-indicator[data-state="update-required"] .sync-dot {
+  background: var(--couleur-alerte);
+  border-color: var(--couleur-alerte);
+}
+
+.sync-indicator[data-state="auth-expired"] .sync-trigger {
+  color: var(--couleur-alerte);
+  text-decoration: underline;
+}
+
+.sync-indicator[data-state="error"] .sync-dot {
+  background: var(--couleur-danger);
+  border-color: var(--couleur-danger);
+}
+
+.sync-indicator[data-state="error"] .sync-trigger {
+  color: var(--couleur-danger);
+}
+
+.sync-popover {
+  position: absolute;
+  right: 0;
+  top: calc(100% + var(--espace-2));
+  z-index: 20;
+  width: min(20rem, calc(100vw - 2rem));
+  padding: var(--espace-4);
+  background: var(--couleur-surface);
+  border-radius: var(--rayon-l);
+  box-shadow: var(--ombre-flottante);
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre);
+}
+
+.sync-popover p {
+  margin: 0 0 var(--espace-3);
+}
+
+.sync-popover .sync-last {
+  margin: var(--espace-3) 0 0;
+  color: var(--couleur-encre-3);
+}
+
+.sync-banners {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-2);
+  max-width: 47rem;
+  margin: 0 auto var(--espace-3);
+}
+
+.banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--espace-3);
+  padding: var(--espace-3) var(--espace-4);
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-trait);
+  border-radius: var(--rayon-m);
+  font-size: var(--taille-ui-s);
+}
+
+.banner p {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.banner-amber {
+  border-color: var(--couleur-alerte);
+  background: color-mix(in srgb, var(--couleur-alerte) 10%, var(--couleur-surface));
+}
+
+.page .banner-close {
+  border: none;
+  background: transparent;
+  font-size: var(--taille-ui-l);
+  padding: 0 var(--espace-2);
+}

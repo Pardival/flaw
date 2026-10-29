@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslate } from "../i18n/i18n.ts";
 import type { LocalDocument, LocalStore } from "../local-store/index.ts";
 import { MODE_FONT } from "./formats-by-mode.ts";
+import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { navigate } from "./route.ts";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
@@ -56,12 +57,17 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
   };
 
   const header = (
+    <>
+    <SyncBanners />
     <header className="library-bar">
       <span className="library-logo">Flaw</span>
+      <span className="library-bar-spacer" />
+      <SyncIndicator />
       <button type="button" className="button-primary" onClick={() => navigate({ name: "create" })}>
         + {t("newText")}
       </button>
     </header>
+    </>
   );
 
   if (documents.length === 0) {

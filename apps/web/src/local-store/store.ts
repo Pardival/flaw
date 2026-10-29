@@ -34,11 +34,24 @@ import {
   type LocalStore,
   type LocalStoreOptions,
   type LogoutInspection,
+  type RemoteDocument,
   type ReopenedDocument,
   type RestOperation,
   type StoreEvent,
+  DOCUMENT_MODES,
+  PAGE_FORMATS,
+  type DocumentMode,
+  type PageFormat,
   LocalStoreError,
 } from "./types.ts";
+
+function isDocumentMode(value: string): value is DocumentMode {
+  return (DOCUMENT_MODES as readonly string[]).includes(value);
+}
+
+function isPageFormat(value: string): value is PageFormat {
+  return (PAGE_FORMATS as readonly string[]).includes(value);
+}
 import { normalizeUuidV7, uuidV7 } from "./uuid.ts";
 
 type Memory = {
@@ -729,6 +742,51 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
     return rows.some((row) => row.contentPending);
   }
 
+  /**
+   * Métadonnées venues du serveur (texte créé ou modifié sur un autre appareil).
+   * Aucune opération REST n'est mise en file : le serveur les connaît déjà.
+   * Le titre et la corbeille du serveur gagnent si le serveur est plus récent.
+   */
+  async function upsertRemote(remote: RemoteDocument): Promise<void> {
+    assertOpen();
+    if (!isDocumentMode(remote.mode) || !isPageFormat(remote.pageFormat)) {
+      return;
+    }
+    const id = normalizeUuidV7(remote.id);
+    const row = await getRow(id);
+    if (row && row.updatedAt >= remote.updatedAt) {
+      return;
+    }
+    const next: DocumentRow = row
+      ? {
+          ...row,
+          title: remote.title,
+          pageFormat: remote.pageFormat,
+          wordCount: remote.wordCount,
+          updatedAt: remote.updatedAt,
+          deletedAt: remote.deletedAt,
+        }
+      : {
+          id,
+          title: remote.title,
+          mode: remote.mode,
+          pageFormat: remote.pageFormat,
+          fontFamily: null,
+          baseFontSizePt: null,
+          wordCount: remote.wordCount,
+          createdAt: remote.updatedAt,
+          updatedAt: remote.updatedAt,
+          deletedAt: remote.deletedAt,
+          cursor: null,
+          contentPending: false,
+          schemaVersion: SCHEMA_VERSION,
+        };
+    await commit({ documents: [next] });
+    if (!memory.active) {
+      publish({ kind: "changed", documentId: id });
+    }
+  }
+
   async function createDocument(input: CreateDocumentInput): Promise<LocalDocument> {
     assertOpen();
     assertMode(input.mode);
@@ -1166,6 +1224,7 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
     persist: () => track(retryPersistentWrite),
     saveCursor: (id: string, cursor: Uint8Array) => track(() => saveCursor(normalizeUuidV7(id), cursor)),
     loadCursor: (id: string) => loadCursor(normalizeUuidV7(id)),
+    upsertRemote: (remote: RemoteDocument) => track(() => upsertRemote(remote)),
     captureEdits: (id: string) => {
       assertOpen();
       return track(() => captureIfEdited(normalizeUuidV7(id)));

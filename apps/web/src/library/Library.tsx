@@ -8,7 +8,7 @@ import { navigate, useRoute } from "./route.ts";
 import { useDocuments, useLocalStore } from "./store-context.tsx";
 import { TextList } from "./TextList.tsx";
 
-export type TextView = (props: { store: LocalStore; document: LocalDocument }) => ReactNode;
+export type TextView = (props: { store: LocalStore; document: LocalDocument; trashed?: boolean }) => ReactNode;
 
 /**
  * Bibliothèque : liste, création, ouverture d'un texte.
@@ -21,6 +21,8 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
   const documents = useDocuments(store);
   const route = useRoute();
   const [reopened, setReopened] = useState(false);
+  // Texte ouvert puis placé dans la corbeille ailleurs : il reste affiché avec un bandeau (D-023).
+  const lastOpened = useRef<LocalDocument | null>(null);
   const reopening = useRef(false);
 
   useEffect(() => {
@@ -58,14 +60,18 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
   }
   if (route.name === "text") {
     const current = documents.find((doc) => doc.id === route.id);
-    if (!current) {
-      return <TextList store={store} documents={documents} />;
+    if (current) {
+      lastOpened.current = current;
+      return <>{renderText({ store, document: current })}</>;
     }
-    return <>{renderText({ store, document: current })}</>;
+    if (lastOpened.current?.id === route.id) {
+      return <>{renderText({ store, document: lastOpened.current, trashed: true })}</>;
+    }
+    return <TextList store={store} documents={documents} />;
   }
   return <TextList store={store} documents={documents} />;
 }
 
-function DefaultEditor({ store, document }: { store: LocalStore; document: LocalDocument }) {
-  return <Editor key={document.id} store={store} document={document} />;
+function DefaultEditor({ store, document, trashed }: { store: LocalStore; document: LocalDocument; trashed?: boolean }) {
+  return <Editor key={document.id} store={store} document={document} trashed={trashed} />;
 }

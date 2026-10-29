@@ -23,6 +23,7 @@ export type {
   LocalStoreOptions,
   LogoutInspection,
   PageFormat,
+  RemoteDocument,
   ReopenedDocument,
   RestOperation,
   StoreEvent,

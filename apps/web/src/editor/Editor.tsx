@@ -16,6 +16,9 @@ import * as Y from "yjs";
 import { useTranslate } from "../i18n/i18n.ts";
 import { PROSEMIRROR_FRAGMENT, type LocalDocument, type LocalStore } from "../local-store/index.ts";
 import { navigate } from "../library/route.ts";
+import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
+import { attachDocument, type Attachment } from "../sync-client/connection.ts";
+import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } from "../sync-client/status.ts";
 import { editorKeymaps, pastePlugin } from "./commands.ts";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
 import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
@@ -23,7 +26,7 @@ import { runningHead } from "./pagination/paginate.ts";
 import { useEditorChrome } from "./useEditorChrome.ts";
 import { useKeyboardClearance } from "./useKeyboardClearance.ts";
 
-export type EditorProps = { store: LocalStore; document: LocalDocument };
+export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
 const SAVE_DELAY_MS = 800;
 const TOAST_MS = 4_000;
@@ -47,7 +50,7 @@ function geometryFor(document: LocalDocument, width: number): Geometry {
  * Éditeur au format livre (T-022, D-026) : un seul ProseMirror lié au Y.Doc local,
  * pages par décorations (niveau 1), en-tête du chapitre courant, folios.
  */
-export function Editor({ store, document }: EditorProps) {
+export function Editor({ store, document, trashed = false }: EditorProps) {
   const t = useTranslate("editor");
   const mount = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -58,6 +61,18 @@ export function Editor({ store, document }: EditorProps) {
   const geometry = geometryFor(document, width);
   const surfaceKey = `${geometry.surface}:${document.pageFormat}`;
   const { hidden, onTyping } = useEditorChrome();
+  const sync = useSyncStatus();
+  const readOnly = sync.state === "update-required";
+
+  useEffect(() => {
+    if (trashed) {
+      showBannerOnce({ kind: "trashed-elsewhere", documentId: document.id });
+    }
+  }, [trashed, document.id]);
+
+  useEffect(() => {
+    viewRef.current?.setProps({ editable: () => !readOnly });
+  }, [readOnly]);
   useKeyboardClearance(viewRef);
 
   useEffect(() => {
@@ -74,11 +89,13 @@ export function Editor({ store, document }: EditorProps) {
     let alive = true;
     let view: EditorView | null = null;
     let doc: Y.Doc | null = null;
+    let attachment: Attachment | null = null;
     let timer: number | undefined;
     let toastTimer: number | undefined;
     const id = document.id;
 
     const save = () => {
+      updateSync({ saving: false });
       if (timer !== undefined) {
         window.clearTimeout(timer);
         timer = undefined;
@@ -100,7 +117,13 @@ export function Editor({ store, document }: EditorProps) {
       }
     };
 
-    const onUpdate = () => {
+    const onUpdate = (_update: Uint8Array, origin: unknown) => {
+      if (attachment !== null && origin === attachment.provider) {
+        // Modification venue du serveur : déjà synchronisée, on met juste à jour la liste.
+        timer ??= window.setTimeout(save, SAVE_DELAY_MS);
+        return;
+      }
+      updateSync({ saving: true });
       if (timer !== undefined) {
         window.clearTimeout(timer);
       }
@@ -114,6 +137,26 @@ export function Editor({ store, document }: EditorProps) {
       }
       doc = opened;
       const fragment = opened.getXmlFragment(PROSEMIRROR_FRAGMENT);
+      const pending = await store.pendingOperations().catch(() => []);
+      if (!alive) {
+        return;
+      }
+      attachment = attachDocument(id, opened, {
+        localChanges: pending.some((operation) => operation.documentId === id && operation.path.endsWith("/sync")),
+      });
+      // Contenu initial seulement si ni l'appareil ni le serveur n'ont de contenu.
+      if (fragment.length === 0 && navigator.onLine) {
+        await new Promise<void>((resolve) => {
+          const done = () => {
+            resolve();
+          };
+          attachment?.provider.on("synced", done);
+          window.setTimeout(done, 3_000);
+        });
+      }
+      if (!alive || mount.current === null) {
+        return;
+      }
       seed(opened, fragment, document.mode);
       const state = EditorState.create({
         schema,
@@ -135,6 +178,7 @@ export function Editor({ store, document }: EditorProps) {
       });
       view = new EditorView(mount.current, {
         state,
+        editable: () => !readFlags().updateRequired,
         attributes: {
           class: "book-text",
           "data-mode": document.mode,
@@ -202,6 +246,7 @@ export function Editor({ store, document }: EditorProps) {
       window.clearTimeout(toastTimer);
       doc?.off("update", onUpdate);
       save();
+      attachment?.detach();
       view?.destroy();
       viewRef.current = null;
       view = null;
@@ -244,7 +289,20 @@ export function Editor({ store, document }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
+        <SyncIndicator />
       </header>
+      <SyncBanners
+        documentId={document.id}
+        actions={{
+          onRestore: (documentId) => {
+            void store.restoreDocument(documentId).catch(() => undefined);
+            dismissBanner({ kind: "trashed-elsewhere", documentId });
+          },
+          onBack: () => {
+            navigate({ name: "list" });
+          },
+        }}
+      />
       <div
         className="book"
         data-mode={document.mode}

@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { openLocalStore, type LocalDocument, type LocalStore } from "../local-store/index.ts";
-import { sendOperation } from "./sync.ts";
+import { isLive } from "../sync-client/connection.ts";
+import { makeSender, pullRemoteList } from "../sync-client/rest.ts";
+import { updateSync } from "../sync-client/status.ts";
 
 type StoreState = { status: "loading" } | { status: "ready"; store: LocalStore } | { status: "error" };
 
@@ -19,7 +21,7 @@ export function LocalStoreProvider({ children, store: injected }: { children: Re
     }
     let closed = false;
     let opened: LocalStore | null = null;
-    openLocalStore({ send: sendOperation }).then(
+    openLocalStore({ send: makeSender(() => opened) }).then(
       (store) => {
         if (closed) {
           void store.close();
@@ -45,20 +47,38 @@ export function LocalStoreProvider({ children, store: injected }: { children: Re
       return;
     }
     const { store } = state;
+    const send = makeSender(() => store);
     let running = false;
+    const count = () => {
+      updateSync({ storageFull: store.isMemoryOnly() });
+      void store.pendingOperations().then(
+        (operations) => {
+          // Le contenu passe par le WebSocket ; la file compte les métadonnées et le repli hors WSS.
+          updateSync({ queued: operations.filter((operation) => !isLive(operation.documentId) || !operation.path.endsWith("/sync")).length });
+        },
+        () => undefined,
+      );
+    };
     const flush = () => {
       if (running || !navigator.onLine) {
         return;
       }
       running = true;
-      store.flush(sendOperation).finally(() => {
-        running = false;
-      });
+      store
+        .flush(send)
+        .then(() => pullRemoteList(store))
+        .catch(() => undefined)
+        .finally(() => {
+          running = false;
+          count();
+        });
     };
     flush();
+    const unsubscribe = store.subscribe(count);
     window.addEventListener("online", flush);
     const timer = window.setInterval(flush, 30_000);
     return () => {
+      unsubscribe();
       window.removeEventListener("online", flush);
       window.clearInterval(timer);
     };

@@ -58,6 +58,16 @@ export type CreateDocumentInput = {
   importedFrom?: ImportSource;
 };
 
+export type RemoteDocument = {
+  id: string;
+  title: string;
+  mode: string;
+  pageFormat: string;
+  wordCount: number;
+  updatedAt: string;
+  deletedAt: string | null;
+};
+
 export type DocumentPatch = {
   title?: string;
   pageFormat?: PageFormat;
@@ -169,6 +179,7 @@ export type LocalStore = {
   /** Enregistre les modifications du Y.Doc ouvert : compteur, date, file de synchro. */
   captureEdits: (id: string) => Promise<void>;
   saveCursor: (id: string, cursor: Uint8Array) => Promise<void>;
+  upsertRemote: (remote: RemoteDocument) => Promise<void>;
   loadCursor: (id: string) => Promise<Uint8Array | null>;
   subscribe: (listener: (event: StoreEvent) => void) => () => void;
   close: () => Promise<void>;
