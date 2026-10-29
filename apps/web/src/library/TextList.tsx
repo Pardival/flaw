@@ -1,0 +1,341 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+
+import { useTranslate } from "../i18n/i18n.ts";
+import type { LocalDocument, LocalStore } from "../local-store/index.ts";
+import { MODE_FONT } from "./formats-by-mode.ts";
+import { navigate } from "./route.ts";
+
+const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+function shortDate(iso: string): string {
+  const date = new Date(iso);
+  const today = new Date();
+  return date.toDateString() === today.toDateString() ? TIME.format(date) : DATE.format(date);
+}
+
+function isTyping(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+}
+
+/** Liste unique triée par dernière modification (D-009, AC-023), menu ⋯ (D-011), état vide (D-012). */
+export function TextList({ store, documents }: { store: LocalStore; documents: LocalDocument[] }) {
+  const t = useTranslate("library");
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [trashing, setTrashing] = useState<{ doc: LocalDocument; confirmationId: string } | null>(null);
+  const rows = useRef<(HTMLAnchorElement | null)[]>([]);
+
+  // Raccourcis de la liste (aucun champ actif) : N nouveau texte, ↑ ↓ déplacement.
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target) || trashing || renaming) {
+        return;
+      }
+      if (event.key === "n" || event.key === "N") {
+        event.preventDefault();
+        navigate({ name: "create" });
+      } else if ((event.key === "ArrowDown" || event.key === "ArrowUp") && rows.current.length > 0) {
+        const index = rows.current.findIndex((row) => row === document.activeElement);
+        const step = event.key === "ArrowDown" ? 1 : -1;
+        const next = index === -1 ? 0 : Math.min(rows.current.length - 1, Math.max(0, index + step));
+        event.preventDefault();
+        rows.current[next]?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [trashing, renaming]);
+
+  const askTrash = async (doc: LocalDocument) => {
+    setMenuFor(null);
+    const confirmation = await store.requestTrash(doc.id);
+    setTrashing({ doc, confirmationId: confirmation.confirmationId });
+  };
+
+  const header = (
+    <header className="library-bar">
+      <span className="library-logo">Flaw</span>
+      <button type="button" className="button-primary" onClick={() => navigate({ name: "create" })}>
+        + {t("newText")}
+      </button>
+    </header>
+  );
+
+  if (documents.length === 0) {
+    return (
+      <div className="library">
+        {header}
+        <section className="library-empty">
+          <div className="empty-page" aria-hidden="true" />
+          <h1>{t("emptyTitle")}</h1>
+          <p>{t("emptyHint")}</p>
+          <button type="button" className="button-primary" onClick={() => navigate({ name: "create" })}>
+            {t("newText")} <kbd>{t("newTextShortcut")}</kbd>
+          </button>
+        </section>
+      </div>
+    );
+  }
+
+  return (
+    <div className="library">
+      {header}
+      <section className="library-list" aria-labelledby="library-heading">
+        <h1 id="library-heading" className="library-heading">
+          {t("heading")} <span>— {t("sortNote")}</span>
+        </h1>
+        <ul>
+          {documents.map((doc, index) => (
+            <li key={doc.id} className="library-row" data-menu-open={menuFor === doc.id ? "true" : "false"}>
+              {renaming === doc.id ? (
+                <RenameField
+                  doc={doc}
+                  onDone={async (title) => {
+                    setRenaming(null);
+                    if (title !== null && title !== doc.title) {
+                      await store.renameDocument(doc.id, title);
+                    }
+                  }}
+                />
+              ) : (
+                <a
+                  ref={(element) => {
+                    rows.current[index] = element;
+                  }}
+                  className="library-open"
+                  href={`/t/${doc.id}`}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    navigate({ name: "text", id: doc.id });
+                  }}
+                  onDoubleClick={(event) => {
+                    event.preventDefault();
+                    setRenaming(doc.id);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "F2") {
+                      event.preventDefault();
+                      setRenaming(doc.id);
+                    }
+                  }}
+                >
+                  <span className="library-title" style={{ fontFamily: MODE_FONT[doc.mode] }}>
+                    {doc.title || t("untitled")}
+                  </span>
+                  <span className="library-meta">
+                    {t(`mode_${doc.mode}`)} · {t(`format_${doc.pageFormat}`)} · {t("words", { count: doc.wordCount })}
+                  </span>
+                  <span className="library-date">
+                    <time dateTime={doc.updatedAt}>{shortDate(doc.updatedAt)}</time>
+                  </span>
+                </a>
+              )}
+              <RowMenu
+                title={doc.title || t("untitled")}
+                open={menuFor === doc.id}
+                onToggle={(open) => {
+                  setMenuFor(open ? doc.id : null);
+                }}
+                onOpen={() => {
+                  navigate({ name: "text", id: doc.id });
+                }}
+                onRename={() => {
+                  setMenuFor(null);
+                  setRenaming(doc.id);
+                }}
+                onTrash={() => {
+                  void askTrash(doc);
+                }}
+              />
+            </li>
+          ))}
+        </ul>
+      </section>
+      {trashing ? (
+        <ConfirmTrash
+          title={trashing.doc.title || t("untitled")}
+          onCancel={() => {
+            setTrashing(null);
+          }}
+          onConfirm={async () => {
+            const { doc, confirmationId } = trashing;
+            setTrashing(null);
+            await store.confirmTrash(doc.id, confirmationId);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function RenameField({ doc, onDone }: { doc: LocalDocument; onDone: (title: string | null) => void }) {
+  const t = useTranslate("library");
+  const [value, setValue] = useState(doc.title);
+  const done = useRef(false);
+  const finish = (title: string | null) => {
+    if (done.current) {
+      return;
+    }
+    done.current = true;
+    const trimmed = title?.trim() ?? null;
+    onDone(trimmed === null ? null : trimmed.length > 0 ? trimmed : t("untitled"));
+  };
+  return (
+    <input
+      className="library-rename"
+      aria-label={t("renameLabel")}
+      autoFocus
+      maxLength={200}
+      value={value}
+      onFocus={(event) => {
+        event.currentTarget.select();
+      }}
+      onChange={(event) => {
+        setValue(event.currentTarget.value);
+      }}
+      onBlur={() => {
+        finish(value);
+      }}
+      onKeyDown={(event: KeyboardEvent<HTMLInputElement>) => {
+        if (event.key === "Enter") {
+          finish(value);
+        } else if (event.key === "Escape") {
+          finish(null);
+        }
+      }}
+    />
+  );
+}
+
+function RowMenu({
+  title,
+  open,
+  onToggle,
+  onOpen,
+  onRename,
+  onTrash,
+}: {
+  title: string;
+  open: boolean;
+  onToggle: (open: boolean) => void;
+  onOpen: () => void;
+  onRename: () => void;
+  onTrash: () => void;
+}) {
+  const t = useTranslate("library");
+  const menu = useRef<HTMLDivElement>(null);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const toggle = useRef(onToggle);
+  toggle.current = onToggle;
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    menu.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+    const onPointer = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node) && event.target !== trigger.current) {
+        toggle.current(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointer);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+    };
+  }, [open]);
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>("button:not(:disabled)") ?? [])];
+    const index = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onToggle(false);
+      trigger.current?.focus();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      const step = event.key === "ArrowDown" ? 1 : -1;
+      items[(index + step + items.length) % items.length]?.focus();
+    }
+  };
+
+  return (
+    <div className="row-menu">
+      <button
+        ref={trigger}
+        type="button"
+        className="row-menu-trigger"
+        aria-label={t("rowMenu", { title })}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => {
+          onToggle(!open);
+        }}
+      >
+        ⋯
+      </button>
+      {open ? (
+        <div ref={menu} className="row-menu-list" role="menu" onKeyDown={onKeyDown}>
+          <button type="button" role="menuitem" onClick={onOpen}>
+            {t("open")}
+          </button>
+          <button type="button" role="menuitem" onClick={onRename}>
+            {t("rename")}
+          </button>
+          <button type="button" role="menuitem" disabled title={t("soon")}>
+            {t("history")}
+          </button>
+          <button type="button" role="menuitem" disabled title={t("soon")}>
+            {t("export")}
+          </button>
+          <hr />
+          <button type="button" role="menuitem" className="danger" onClick={onTrash}>
+            {t("trash")}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** Confirmation de suppression, focus par défaut sur Annuler (AC-022). */
+function ConfirmTrash({ title, onCancel, onConfirm }: { title: string; onCancel: () => void; onConfirm: () => void }) {
+  const t = useTranslate("library");
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    cancel.current?.focus();
+  }, []);
+  return (
+    <div className="dialog-veil" onClick={onCancel}>
+      <div
+        className="dialog"
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="trash-title"
+        aria-describedby="trash-body"
+        onClick={(event) => {
+          event.stopPropagation();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            onCancel();
+          }
+        }}
+      >
+        <h2 id="trash-title">{t("trashTitle", { title })}</h2>
+        <p id="trash-body">{t("trashBody")}</p>
+        <div className="dialog-actions">
+          <button ref={cancel} type="button" onClick={onCancel}>
+            {t("cancel")}
+          </button>
+          <button type="button" className="button-danger" onClick={onConfirm}>
+            {t("confirmTrash")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

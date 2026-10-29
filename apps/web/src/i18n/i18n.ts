@@ -3,12 +3,13 @@ import { initReactI18next, useTranslation } from "react-i18next";
 
 import { account } from "./fr/account.ts";
 import { auth } from "./fr/auth.ts";
+import { library } from "./fr/library.ts";
 import { mfa } from "./fr/mfa.ts";
 import { theme } from "./fr/theme.ts";
 
 export const defaultLanguage = "fr";
 
-const namespaces = ["auth", "mfa", "account", "theme"] as const;
+const namespaces = ["auth", "mfa", "account", "theme", "library"] as const;
 
 export type CatalogNamespace = (typeof namespaces)[number];
 
@@ -22,7 +23,7 @@ if (!i18n.isInitialized) {
     defaultNS: "auth",
     ns: [...namespaces],
     resources: {
-      fr: { auth, mfa, account, theme },
+      fr: { auth, mfa, account, theme, library },
     },
     interpolation: { escapeValue: false },
     initAsync: false,

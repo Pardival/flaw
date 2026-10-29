@@ -8,6 +8,7 @@ import { applyThemeChoice, browserPrefersDark, browserStorage, readChoice } from
 import "../../../assets/fonts/polices.css";
 import "./theme/design-tokens.css";
 import "./layout/layout.css";
+import "./library/library.css";
 
 applyThemeChoice(document.documentElement, readChoice(browserStorage()), browserPrefersDark());
 

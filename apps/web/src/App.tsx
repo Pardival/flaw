@@ -4,6 +4,7 @@ import { AccountSettings } from "./auth-ui/account/index.ts";
 import { AuthScreens, type AuthScreensProps } from "./auth-ui/index.ts";
 import { MfaScreens, type MfaIntent, type MfaScreensProps } from "./auth-ui/mfa/index.ts";
 import { Shell } from "./layout/Shell.tsx";
+import { Library, LocalStoreProvider } from "./library/index.ts";
 
 type MfaMount = {
   intent: MfaIntent;
@@ -31,7 +32,11 @@ export function App({
 
   const body = (
     <>
-      {children ?? <main className="writing" data-screen="ready" />}
+      {children ?? (
+        <LocalStoreProvider>
+          <Library />
+        </LocalStoreProvider>
+      )}
       <AccountSettings
         client={client}
         onChangeDevice={() => {
