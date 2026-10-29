@@ -197,7 +197,7 @@ export function buildApp(config: AppConfig, options: BuildOptions = {}): Fastify
 export function createAppPool(config: AppConfig, password: string): Pool {
   return new Pool({
     host: config.DATABASE_HOST,
-    port: 5432,
+    port: config.DATABASE_PORT ?? 5432,
     database: config.DATABASE_NAME,
     user: config.DATABASE_USER,
     password,

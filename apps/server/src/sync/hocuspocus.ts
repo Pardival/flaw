@@ -37,6 +37,8 @@ export type SyncDeps = {
   /** Session complète (non restreinte) du jeton, ou null. */
   resolve: (token: string) => Promise<SyncSession | null>;
   origins: () => Set<string>;
+  /** Développement sans connexion (FLAW_DEV_NO_AUTH) : session du compte local. */
+  devSession?: () => Promise<SyncSession | null>;
   maxPayload: number;
 };
 
@@ -160,12 +162,14 @@ export function attachSync(app: FastifyInstance, deps: SyncDeps): Hocuspocus<Con
       refuse(socket, 401);
       return;
     }
-    const token = readCookie(request.headers.cookie, SESSION_COOKIE);
+    const devSession = deps.devSession;
+    const token = readCookie(request.headers.cookie, SESSION_COOKIE) ?? (devSession ? "dev" : undefined);
     if (token === undefined) {
       refuse(socket, 401);
       return;
     }
-    deps.resolve(token).then(
+    const resolveSession = devSession ?? (() => deps.resolve(token));
+    resolveSession().then(
       (session) => {
         if (session === null) {
           refuse(socket, 401);
@@ -195,7 +199,7 @@ export function attachSync(app: FastifyInstance, deps: SyncDeps): Hocuspocus<Con
     });
     // Revalidation : révocation ou expiration → fermeture en moins de 60 s.
     const timer = setInterval(() => {
-      deps.resolve(token).then(
+      (deps.devSession ?? (() => deps.resolve(token)))().then(
         (current) => {
           if (current === null || current.userId !== session.userId) {
             ws.close(SYNC_CLOSE_UNAUTHORIZED, "session");

@@ -17,3 +17,6 @@ coverage/
 
 # OS
 .DS_Store
+
+# Environnement de développement local (secrets générés, jamais commités)
+.dev/

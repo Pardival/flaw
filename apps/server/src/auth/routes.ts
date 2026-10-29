@@ -322,9 +322,41 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   bearerFlags.set(app, config.bearerEnabled);
   const extraPublic = runtime.extraPublicRoutes ?? [];
 
+  /**
+   * Développement local sans connexion (FLAW_DEV_NO_AUTH=true, refusé hors NODE_ENV=development) :
+   * chaque requête agit comme le premier compte de la base. Jamais en production.
+   */
+  const devNoAuth = config.NODE_ENV === "development" && process.env.FLAW_DEV_NO_AUTH === "true";
+  let devUser: Promise<string | null> | null = null;
+  const devUserId = (): Promise<string | null> => {
+    if (runtime.pool === undefined) {
+      return Promise.resolve(null);
+    }
+    devUser ??= runtime.pool
+      .query<{ id: string }>("SELECT id FROM flaw.users ORDER BY id LIMIT 1")
+      .then((result) => result.rows[0]?.id ?? null)
+      .catch(() => null);
+    return devUser;
+  };
   app.addHook("preHandler", async (request, reply) => {
     if (queryTokenPresent(request)) {
       return sendUnauthorized(reply);
+    }
+    if (devNoAuth) {
+      const route = request.routeOptions.url ?? "";
+      const writes = request.method === "POST" || request.method === "PUT" || request.method === "PATCH" || request.method === "DELETE";
+      if (writes && !csrfOk(request, config)) {
+        return sendMessage(reply, 403, ORIGIN_REJECTED);
+      }
+      if (isPublicRoute(request.method, route, extraPublic)) {
+        return undefined;
+      }
+      const userId = await devUserId();
+      if (userId === null) {
+        return sendUnauthorized(reply);
+      }
+      sessions.set(request, { userId, sessionId: "00000000-0000-7000-8000-000000000000", token: "", restricted: false });
+      return undefined;
     }
     const pattern = request.routeOptions.url;
     const key = `${request.method} ${pattern ?? ""}`;
@@ -623,7 +655,8 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     if (profile === null || (profile.role !== "user" && profile.role !== "admin")) {
       return sendUnauthorized(reply);
     }
-    return profile;
+    // Sans connexion en développement : ni changement de mot de passe ni 2FA imposés.
+    return devNoAuth ? { ...profile, mfaEnrolled: true, passwordMustChange: false } : profile;
   });
 
   const contentDeps = {
@@ -665,6 +698,12 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
     kek: () => (runtime.secrets === undefined ? undefined : (decodeValidatedKey(runtime.secrets.kek) ?? undefined)),
     origins: () => allowedOrigins(config),
     maxPayload: config.bodyLimit,
+    devSession: devNoAuth
+      ? async () => {
+          const userId = await devUserId();
+          return userId === null ? null : { userId, role: "user" as const };
+        }
+      : undefined,
     resolve: async (token) => {
       if (auth === null || runtime.pool === undefined) {
         return null;

@@ -106,7 +106,7 @@ async function connectOwner(): Promise<Client> {
   while (Date.now() < deadline) {
     const client = new Client({
       host: process.env.DATABASE_HOST ?? "db",
-      port: 5432,
+      port: Number(process.env.DATABASE_PORT ?? "5432"),
       database: process.env.DATABASE_NAME ?? "flaw",
       user: process.env.DATABASE_USER ?? "flaw_owner",
       password: secret.value,

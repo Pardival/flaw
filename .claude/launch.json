@@ -1,0 +1,22 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "flaw-api",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "scripts/dev-server.sh"
+      ],
+      "port": 3000
+    },
+    {
+      "name": "flaw-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "N=$(ls -d \"$HOME\"/.nvm/versions/node/v24.*/bin/node | tail -1); cd apps/web && exec \"$N\" ../../node_modules/vite/bin/vite.js --port 5173 --strictPort"
+      ],
+      "port": 5173
+    }
+  ]
+}
