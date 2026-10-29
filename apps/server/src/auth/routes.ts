@@ -28,6 +28,7 @@ import { registerPreferences } from "../preferences/routes.ts";
 import { registerStats } from "../stats/routes.ts";
 import { registerVersions } from "../versions/routes.ts";
 import { registerExports } from "../exports/routes.ts";
+import { registerAccountExport } from "../account/export.ts";
 
 export const PUBLIC_ROUTES = [
   { method: "GET", url: "/login", auth: false },
@@ -50,6 +51,7 @@ export const PROTECTED_ROUTES = [
   { method: "GET", url: "/api/v1/stats/daily", auth: true },
   { method: "GET", url: "/api/v1/documents/:documentId/versions", auth: true },
   { method: "POST", url: "/api/v1/documents/:documentId/exports", auth: true },
+  { method: "POST", url: "/api/v1/me/export", auth: true },
   { method: "POST", url: "/api/v1/documents/:documentId/versions", auth: true },
   { method: "POST", url: "/api/v1/documents/:documentId/versions/:versionId/restore", auth: true },
   { method: "GET", url: "/api/v1/documents/:documentId/versions/:versionId/preview", auth: true },
@@ -646,6 +648,7 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   registerContentRoutes(app, contentDeps);
   registerVersions(app, contentDeps);
   registerExports(app, contentDeps);
+  registerAccountExport(app, { ...contentDeps, sessionId: (request) => sessionOf(request)?.sessionId });
 
   registerPreferences(app, {
     pool: () => runtime.pool,

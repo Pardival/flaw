@@ -6,6 +6,8 @@ import { DOCUMENT_MODES } from "../local-store/index.ts";
 import { FORMATS_BY_MODE, defaultFormat, formatDimensions } from "../library/formats-by-mode.ts";
 import { tokens } from "../theme/tokens.ts";
 import { usePreferences, type Preferences } from "./preferences.tsx";
+import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
+import { download } from "../export/run.ts";
 
 /** Écran Compte existant (T-014b), fourni par l'App pour l'onglet Compte. */
 export const AccountSlot = createContext<ReactNode>(null);
@@ -359,6 +361,40 @@ function GeneralTab({ onTrash }: { onTrash?: () => void }) {
           {t("trash")}
         </button>
       ) : null}
+      <AccountExport />
+    </div>
+  );
+}
+
+/** Export complet du compte (AC-099) : archive ZIP de tous les textes et métadonnées. */
+function AccountExport() {
+  const t = useTranslate("settings");
+  const [state, setState] = useState<"idle" | "busy" | "reauth" | "failed">("idle");
+  const run = async () => {
+    setState("busy");
+    const response = await fetch("/api/v1/me/export", {
+      method: "POST",
+      headers: { [CSRF_HEADER]: CSRF_VALUE },
+      credentials: "same-origin",
+    }).catch(() => null);
+    if (response?.status === 403) {
+      setState("reauth");
+      return;
+    }
+    if (!response?.ok) {
+      setState("failed");
+      return;
+    }
+    const name = /filename="([^"]+)"/u.exec(response.headers.get("content-disposition") ?? "")?.[1] ?? "flaw-export.zip";
+    download(new Uint8Array(await response.arrayBuffer()), name, "application/zip");
+    setState("idle");
+  };
+  return (
+    <div className="settings-field">
+      <button type="button" disabled={state === "busy"} onClick={() => void run()}>
+        {state === "busy" ? t("exportBusy") : t("exportAll")}
+      </button>
+      <small>{state === "reauth" ? t("exportReauth") : state === "failed" ? t("exportFailed") : t("exportAllHint")}</small>
     </div>
   );
 }

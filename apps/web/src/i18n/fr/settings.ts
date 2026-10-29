@@ -49,4 +49,9 @@ export const settings = {
     "Le correcteur de certains navigateurs envoie le texte à un service en ligne pour le vérifier. Activez-le seulement si vous acceptez que vos textes quittent cet appareil.",
   spellcheckEnable: "Activer quand même",
   trash: "Textes › Corbeille",
+  exportAll: "Exporter toutes mes données",
+  exportAllHint: "Archive ZIP : chaque texte en JSON et Markdown (Fountain pour les scripts), avec les réglages.",
+  exportBusy: "Préparation de l'archive…",
+  exportReauth: "Par sécurité, reconnectez-vous puis relancez l'export dans les 5 minutes.",
+  exportFailed: "L'export n'a pas abouti. Réessayez une fois en ligne.",
 };

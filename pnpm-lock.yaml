@@ -217,6 +217,9 @@ importers:
       fastify:
         specifier: 5.12.5
         version: 5.12.5
+      fflate:
+        specifier: 0.8.3
+        version: 0.8.3
       pg:
         specifier: 8.16.3
         version: 8.16.3
