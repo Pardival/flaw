@@ -25,6 +25,7 @@ import { openAuth } from "./service.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
 import { attachSync } from "../sync/hocuspocus.ts";
 import { registerPreferences } from "../preferences/routes.ts";
+import { registerStats } from "../stats/routes.ts";
 
 export const PUBLIC_ROUTES = [
   { method: "GET", url: "/login", auth: false },
@@ -44,6 +45,8 @@ export const PROTECTED_ROUTES = [
   { method: "GET", url: "/api/v1/me", auth: true },
   { method: "GET", url: "/api/v1/me/preferences", auth: true },
   { method: "PATCH", url: "/api/v1/me/preferences", auth: true },
+  { method: "GET", url: "/api/v1/stats/daily", auth: true },
+  { method: "PUT", url: "/api/v1/stats/daily/:day/devices/:deviceId", auth: true },
   { method: "GET", url: "/api/v1/documents", auth: true },
   { method: "POST", url: "/api/v1/documents", auth: true },
   { method: "GET", url: "/api/v1/documents/:documentId", auth: true },
@@ -635,6 +638,11 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
   });
 
   registerPreferences(app, {
+    pool: () => runtime.pool,
+    userId: (request) => sessionOf(request)?.userId,
+  });
+
+  registerStats(app, {
     pool: () => runtime.pool,
     userId: (request) => sessionOf(request)?.userId,
   });

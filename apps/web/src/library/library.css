@@ -712,3 +712,27 @@ kbd {
   padding-left: 1.2em;
   color: var(--couleur-encre-2);
 }
+
+/* Objectif du jour (T-029, AC-055). */
+.daily-goal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-2);
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+  white-space: nowrap;
+}
+
+.daily-bar {
+  width: 3rem;
+  height: 4px;
+  border-radius: var(--rayon-plein);
+  background: var(--couleur-trait);
+  overflow: hidden;
+}
+
+.daily-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--couleur-succes);
+}

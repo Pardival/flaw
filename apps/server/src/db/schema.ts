@@ -247,8 +247,9 @@ export const dailyProgress = flaw.table(
     ownerId: ownerId(),
     day: date("day", { mode: "string" }).notNull(),
     progressCount: integer("progress_count").notNull().default(0),
+    deviceId: uuid("device_id").notNull().default("00000000-0000-0000-0000-000000000000"),
   },
-  (table) => [uniqueIndex("daily_progress_owner_day_uidx").on(table.ownerId, table.day)],
+  (table) => [unique("daily_progress_owner_day_device_uidx").on(table.ownerId, table.day, table.deviceId)],
 );
 
 /** bucket = HMAC-SHA256 poivré, hex 64. Pas de RLS. */

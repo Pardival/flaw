@@ -5,6 +5,7 @@ import type { LocalDocument, LocalStore } from "../local-store/index.ts";
 import { MODE_FONT } from "./formats-by-mode.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { SettingsPanel } from "../settings/SettingsPanel.tsx";
+import { DailyGoal } from "../stats/DailyGoal.tsx";
 import { navigate } from "./route.ts";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
@@ -64,6 +65,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
     <header className="library-bar">
       <span className="library-logo">Flaw</span>
       <span className="library-bar-spacer" />
+      <DailyGoal />
       <SyncIndicator />
       <button type="button" className="icon-button" aria-label={t("settings")} onClick={() => setSettingsOpen(true)}>
         Aa

@@ -33,6 +33,8 @@ import { typographyPlugin } from "./typography.ts";
 import { caretLineOffset, focusPlugin, setFocusMode } from "./focus.ts";
 import { keymap } from "prosemirror-keymap";
 import { totalWords } from "./pagination/words.ts";
+import { DailyGoal } from "../stats/DailyGoal.tsx";
+import { recordWords } from "../stats/daily.ts";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
 import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
 import { runningHead } from "./pagination/paginate.ts";
@@ -181,6 +183,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     let attachment: Attachment | null = null;
     let timer: number | undefined;
     let toastTimer: number | undefined;
+    let lastTotal: number | null = null;
     const id = document.id;
 
     const save = () => {
@@ -321,6 +324,11 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
               0,
             );
             setWords((previous) => (previous.words === total && previous.pages === pages ? previous : { words: total, pages }));
+            // Mots nets du jour : seulement les changements faits sur cet appareil.
+            if (lastTotal !== null && tr.docChanged && !tr.getMeta(ySyncPluginKey)) {
+              recordWords(total - lastTotal);
+            }
+            lastTotal = total;
             const running = runningHead(model, current.state.selection.from);
             setHead((previous) =>
               previous.chapter === running.chapterTitle && previous.folio === String(running.folio)
@@ -490,6 +498,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
             </>
           ) : null}
         </span>
+        <DailyGoal />
         <SyncIndicator />
       </header>
       <SyncBanners

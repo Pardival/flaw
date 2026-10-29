@@ -8,6 +8,8 @@ export const editor = {
   elements: "Éléments du script",
   format: "Mise en forme",
   focus: "Focus",
+  dailyGoal: "Objectif du jour",
+  today: "Aujourd'hui {{words}} / {{goal}}",
   settings: "Réglages",
   exitFocus: "Sortir du mode focus",
   focusHint: "Échap pour sortir",
