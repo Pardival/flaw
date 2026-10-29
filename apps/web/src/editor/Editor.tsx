@@ -20,6 +20,7 @@ import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { attachDocument, type Attachment } from "../sync-client/connection.ts";
 import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } from "../sync-client/status.ts";
 import { editorKeymaps, pastePlugin } from "./commands.ts";
+import { ElementBar } from "./modes/script/ElementBar.tsx";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
 import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
 import { runningHead } from "./pagination/paginate.ts";
@@ -57,6 +58,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const [ready, setReady] = useState(false);
   const [head, setHead] = useState<{ chapter: string; folio: string }>({ chapter: "", folio: "" });
   const [toast, setToast] = useState(false);
+  const [element, setElement] = useState("");
   const [width, setWidth] = useState(() => window.innerWidth);
   const geometry = geometryFor(document, width);
   const surfaceKey = `${geometry.surface}:${document.pageFormat}`;
@@ -194,6 +196,8 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
             return;
           }
           current.updateState(current.state.apply(tr));
+          const name = current.state.selection.$from.parent.type.name;
+          setElement((previous) => (previous === name ? previous : name));
           const model = paginationOf(current.state);
           if (model !== undefined) {
             const running = runningHead(model, current.state.selection.from);
@@ -313,6 +317,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       >
         <div ref={mount} className="book-mount" />
       </div>
+      {document.mode === "screenplay" ? (
+        <ElementBar view={viewRef.current} current={element} />
+      ) : null}
       {toast ? (
         <div className="toast" role="status">
           <span>{t("chapterInserted")}</span>

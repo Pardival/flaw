@@ -288,3 +288,94 @@
     transition: none;
   }
 }
+
+/* Script de film (T-023, D-029) : mise en page standard, Courier Prime 12 pt. */
+.book[data-mode="screenplay"] .book-text p {
+  margin: 0;
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="scene_heading"] {
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-top: 1lh;
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="action"] {
+  margin-top: 1lh;
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="character"] {
+  text-transform: uppercase;
+  margin: 1lh 0 0 calc(var(--script-personnage-retrait) * var(--book-scale));
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="parenthetical"] {
+  margin-left: calc(var(--script-parenthese-retrait) * var(--book-scale));
+  max-width: calc(var(--script-parenthese-largeur) * var(--book-scale));
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="dialogue"] {
+  margin-left: calc(var(--script-dialogue-retrait) * var(--book-scale));
+  max-width: calc(var(--script-dialogue-largeur) * var(--book-scale));
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="transition"] {
+  text-transform: uppercase;
+  text-align: right;
+  margin-top: 1lh;
+}
+
+.book[data-mode="screenplay"] .book-text [data-flaw-node="centered"] {
+  text-align: center;
+  margin-top: 1lh;
+}
+
+.book[data-mode="screenplay"] .book-text > :first-child {
+  margin-top: 0;
+}
+
+/* Téléphone : les retraits deviennent proportionnels à la colonne fluide. */
+.book[data-surface="phone"][data-mode="screenplay"] .book-text [data-flaw-node="character"] { margin-left: 37%; }
+.book[data-surface="phone"][data-mode="screenplay"] .book-text [data-flaw-node="parenthetical"] { margin-left: 27%; max-width: 50%; }
+.book[data-surface="phone"][data-mode="screenplay"] .book-text [data-flaw-node="dialogue"] { margin-left: 17%; max-width: 70%; }
+
+.element-bar {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--espace-4) + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 6;
+  display: flex;
+  gap: var(--espace-1);
+  padding: var(--espace-1);
+  background: var(--couleur-surface);
+  border-radius: var(--rayon-m);
+  box-shadow: var(--ombre-flottante);
+  max-width: calc(100vw - 2rem);
+  overflow-x: auto;
+  transition: opacity var(--duree-ui-apparition);
+}
+
+.page .element-bar button {
+  border: none;
+  background: transparent;
+  font-size: var(--taille-ui-s);
+  padding: 0 var(--espace-3);
+  white-space: nowrap;
+}
+
+.page .element-bar button[aria-pressed="true"] {
+  background: var(--couleur-accent-doux);
+  color: var(--couleur-accent);
+}
+
+.editor-desk[data-chrome-hidden="true"] .element-bar {
+  opacity: 0.35;
+}
+
+@media (min-width: 600px) {
+  .editor-desk[data-chrome-hidden="true"] .element-bar {
+    opacity: 0;
+    pointer-events: none;
+  }
+}

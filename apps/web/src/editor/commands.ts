@@ -6,6 +6,7 @@ import { Plugin, TextSelection, type Command, type EditorState } from "prosemirr
 import { redo, undo } from "y-prosemirror";
 
 import type { DocumentMode } from "../local-store/index.ts";
+import { scriptKeys } from "./modes/script/keys.ts";
 
 const ALIGN_KEYS: Record<string, "left" | "center" | "right" | "justify"> = {
   "7": "left",
@@ -113,7 +114,7 @@ function novelKeys(onChapter: () => void): Record<string, Command> {
 }
 
 export function editorKeymaps(mode: DocumentMode, hooks: { onChapter: () => void }): Plugin[] {
-  const modeKeys = mode === "novel" ? novelKeys(hooks.onChapter) : {};
+  const modeKeys = mode === "novel" ? novelKeys(hooks.onChapter) : mode === "screenplay" ? scriptKeys() : {};
   return [keymap(modeKeys), keymap(commonKeys()), keymap(baseKeymap)];
 }
 
