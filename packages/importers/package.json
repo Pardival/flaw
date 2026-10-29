@@ -2,9 +2,14 @@
   "name": "@flaw/importers",
   "private": true,
   "version": "0.0.0",
-  "description": "Placeholder imports (A-019).",
+  "description": "Import .docx, .md, .txt sur l'appareil, en Web Worker (A-017, T-037 \u00e0 T-039).",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "fflate": "0.8.3",
+    "saxes": "6.0.0",
+    "markdown-it": "15.0.3"
   }
 }
