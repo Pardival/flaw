@@ -22,7 +22,12 @@ import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } f
 import { editorKeymaps, pastePlugin } from "./commands.ts";
 import { ElementBar } from "./modes/script/ElementBar.tsx";
 import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.tsx";
-import { frenchTypographyOn, useMeta } from "./meta.ts";
+import { frenchTypographyOn, useMeta, writeMeta } from "./meta.ts";
+import { SettingsPanel, fontsFor, type TextSettings } from "../settings/SettingsPanel.tsx";
+import { usePreferences } from "../settings/preferences.tsx";
+import { saveBeforeMerge } from "../sync-client/before-merge.ts";
+import { convertSpacesForMode } from "./typography.ts";
+import { FORMATS_BY_MODE, defaultFormat } from "../library/formats-by-mode.ts";
 import { changeSize } from "./size.ts";
 import { typographyPlugin } from "./typography.ts";
 import { caretLineOffset, focusPlugin, setFocusMode } from "./focus.ts";
@@ -69,7 +74,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const [menu, setMenu] = useState<MenuPosition>(null);
   const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
   const [words, setWords] = useState<{ words: number; pages: number }>({ words: document.wordCount, pages: 1 });
-  const [generalFrench, setGeneralFrench] = useState(true);
+  const { prefs } = usePreferences();
+  const generalFrench = prefs.frenchTypographyDefault;
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const meta = useMeta(ydoc);
   const typographyRef = useRef({ on: true, mode: document.mode });
   typographyRef.current = { on: meta === null ? generalFrench : frenchTypographyOn(meta, generalFrench), mode: document.mode };
@@ -88,14 +95,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   // Page blanche : aucune interface tant que la page a le focus (AC-020, D-032).
   const hidden = typingHidden || (document.mode === "blank" && focused);
 
-  useEffect(() => {
-    void store.getPreference("frenchTypography").then(
-      (value) => {
-        setGeneralFrench(value !== "false");
-      },
-      () => undefined,
-    );
-  }, [store]);
+
   const sync = useSyncStatus();
   const readOnly = sync.state === "update-required";
 
@@ -296,7 +296,6 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         attributes: {
           class: "book-text",
           "data-mode": document.mode,
-          spellcheck: "true",
           "aria-label": t("textArea"),
           "aria-multiline": "true",
           role: "textbox",
@@ -394,8 +393,65 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     };
   }, []);
 
+  const textSettings = (): TextSettings => ({
+    document,
+    lang: meta?.lang ?? "fr",
+    frenchTypography: meta?.frenchTypography ?? null,
+    fontFamily: meta?.fontFamily ?? document.fontFamily ?? fontsFor(document.mode)[0] ?? "",
+    baseFontSizePt: baseSizeRef.current,
+    onRename: (title) => {
+      void store.renameDocument(document.id, title).catch(() => undefined);
+    },
+    onFormat: (pageFormat) => {
+      void store.updateDocument(document.id, { pageFormat }).catch(() => undefined);
+    },
+    onFont: (font) => {
+      if (ydoc) {
+        writeMeta(ydoc, { fontFamily: font });
+      }
+      void store.updateDocument(document.id, { fontFamily: font }).catch(() => undefined);
+    },
+    onSize: (size) => {
+      if (ydoc) {
+        writeMeta(ydoc, { baseFontSizePt: size });
+      }
+      void store.updateDocument(document.id, { baseFontSizePt: size }).catch(() => undefined);
+    },
+    onLang: (lang) => {
+      if (ydoc) {
+        writeMeta(ydoc, { lang });
+      }
+    },
+    onFrenchTypography: (value) => {
+      if (ydoc) {
+        writeMeta(ydoc, { frenchTypography: value });
+      }
+    },
+    onMode: (mode) => {
+      const view = viewRef.current;
+      // Instantané avant le changement : la version d'avant reste dans l'historique.
+      if (ydoc) {
+        void saveBeforeMerge(document.id, Y.encodeStateAsUpdate(ydoc)).catch(() => undefined);
+        writeMeta(ydoc, { fontFamily: null });
+      }
+      if (view && (mode === "screenplay") !== (document.mode === "screenplay")) {
+        view.dispatch(convertSpacesForMode(view.state.tr, mode === "screenplay"));
+      }
+      const pageFormat = FORMATS_BY_MODE[mode].includes(document.pageFormat) ? undefined : defaultFormat(mode);
+      void store
+        .updateDocument(document.id, { mode, fontFamily: fontsFor(mode)[0] ?? "", ...(pageFormat ? { pageFormat } : {}) })
+        .catch(() => undefined);
+      setSettingsOpen(false);
+    },
+  });
+
   const type = MODE_TYPE[document.mode];
+  const fontFamily =
+    document.mode === "screenplay" ? null : (meta?.fontFamily ?? document.fontFamily ?? null);
+  const baseSize = document.mode === "screenplay" ? null : (meta?.baseFontSizePt ?? document.baseFontSizePt ?? null);
   const style = {
+    ...(fontFamily !== null ? { fontFamily: `"${fontFamily.replace(/"/gu, "")}", var(--police-roman)` } : {}),
+    ...(baseSize !== null ? { "--book-text-size": `calc(${String(baseSize)}pt * var(--book-scale))` } : {}),
     "--book-scale": String(type.scale),
     "--book-width": `${String(geometry.pageWidthPx)}px`,
     "--book-height": `${String(geometry.pageHeightPx)}px`,
@@ -420,12 +476,19 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
+        <button type="button" className="editor-focus" onClick={() => setSettingsOpen(true)} aria-label={t("settings")}>
+          Aa
+        </button>
         <button type="button" className="editor-focus" onClick={() => toggleFocus(true)} title="Ctrl/⌘+Maj+F">
           {t("focus")}
         </button>
         <span className="editor-count" aria-live="off">
-          {document.mode === "screenplay" ? `${t("pages", { count: words.pages })} · ` : ""}
-          {t("words", { count: words.words })}
+          {prefs.showWordCount ? (
+            <>
+              {document.mode === "screenplay" ? `${t("pages", { count: words.pages })} · ` : ""}
+              {t("words", { count: words.words })}
+            </>
+          ) : null}
         </span>
         <SyncIndicator />
       </header>
@@ -449,10 +512,14 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         data-surface={geometry.surface}
         data-ready={ready ? "true" : "false"}
         lang={meta?.lang ?? "fr"}
+        spellCheck={prefs.spellcheck}
         style={style}
       >
         <div ref={mount} className="book-mount" />
       </div>
+      {settingsOpen && !focusMode ? (
+        <SettingsPanel text={textSettings()} onClose={() => setSettingsOpen(false)} />
+      ) : null}
       {focusMode ? (
         <button type="button" className="focus-exit" aria-label={t("exitFocus")} onClick={() => toggleFocus(false)}>
           ✕

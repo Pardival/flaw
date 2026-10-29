@@ -1,0 +1,364 @@
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+
+import { useTranslate } from "../i18n/i18n.ts";
+import type { DocumentMode, LocalDocument, PageFormat } from "../local-store/index.ts";
+import { DOCUMENT_MODES } from "../local-store/index.ts";
+import { FORMATS_BY_MODE, defaultFormat, formatDimensions } from "../library/formats-by-mode.ts";
+import { tokens } from "../theme/tokens.ts";
+import { usePreferences, type Preferences } from "./preferences.tsx";
+
+/** Écran Compte existant (T-014b), fourni par l'App pour l'onglet Compte. */
+export const AccountSlot = createContext<ReactNode>(null);
+
+type Usage = "roman" | "script" | "document" | "page-blanche";
+const USAGE: Record<DocumentMode, Usage> = { novel: "roman", screenplay: "script", document: "document", blank: "page-blanche" };
+
+/** Polices du § 5.5 par mode, défaut en tête (AC-006, AC-007) ; script : imposée (AC-008). */
+export function fontsFor(mode: DocumentMode): string[] {
+  const usage = tokens.typographie["polices-par-usage"][USAGE[mode]] as { defaut: string; alternatives: string[] };
+  return [usage.defaut, ...usage.alternatives];
+}
+
+export type TextSettings = {
+  document: LocalDocument;
+  lang: "fr" | "en";
+  frenchTypography: boolean | null;
+  fontFamily: string;
+  baseFontSizePt: number;
+  onRename: (title: string) => void;
+  onFormat: (format: PageFormat) => void;
+  onFont: (font: string) => void;
+  onSize: (size: number) => void;
+  onLang: (lang: "fr" | "en") => void;
+  onFrenchTypography: (value: boolean | null) => void;
+  onMode: (mode: DocumentMode) => void;
+};
+
+type Tab = "text" | "general" | "account";
+
+/** Panneau Réglages (P7, D-051, D-052) : latéral non modal sur ordinateur, feuille sur téléphone. */
+export function SettingsPanel({ text, onClose, onTrash }: { text?: TextSettings; onClose: () => void; onTrash?: () => void }) {
+  const t = useTranslate("settings");
+  const [tab, setTab] = useState<Tab>(text ? "text" : "general");
+  const account = useContext(AccountSlot);
+  const panel = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    panel.current?.focus();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  return (
+    <aside ref={panel} className="settings-panel" tabIndex={-1} aria-label={t("title")}>
+      <header className="settings-head">
+        <div role="tablist" className="settings-tabs">
+          {text ? (
+            <button type="button" role="tab" aria-selected={tab === "text"} onClick={() => setTab("text")}>
+              {t("tabText")}
+            </button>
+          ) : null}
+          <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>
+            {t("tabGeneral")}
+          </button>
+          <button type="button" role="tab" aria-selected={tab === "account"} onClick={() => setTab("account")}>
+            {t("tabAccount")}
+          </button>
+        </div>
+        <button type="button" className="icon-button" aria-label={t("close")} onClick={onClose}>
+          ×
+        </button>
+      </header>
+      <div className="settings-body">
+        {tab === "text" && text ? <TextTab text={text} /> : null}
+        {tab === "general" ? <GeneralTab onTrash={onTrash} /> : null}
+        {tab === "account" ? <div className="settings-account">{account}</div> : null}
+      </div>
+    </aside>
+  );
+}
+
+function TextTab({ text }: { text: TextSettings }) {
+  const t = useTranslate("settings");
+  const { prefs } = usePreferences();
+  const [title, setTitle] = useState(text.document.title);
+  const [pendingMode, setPendingMode] = useState<DocumentMode | null>(null);
+  const mode = text.document.mode;
+  const fonts = fontsFor(mode);
+  const french = text.frenchTypography ?? prefs.frenchTypographyDefault;
+
+  return (
+    <div className="settings-section">
+      <label className="settings-field">
+        <span>{mode === "novel" ? t("bookTitle") : t("textTitle")}</span>
+        <input
+          value={title}
+          maxLength={300}
+          onChange={(event) => setTitle(event.currentTarget.value)}
+          onBlur={() => {
+            const next = title.trim() || t("untitled");
+            if (next !== text.document.title) {
+              text.onRename(next);
+            }
+          }}
+        />
+      </label>
+
+      <fieldset className="settings-field">
+        <legend>{t("mode")}</legend>
+        <select
+          value={mode}
+          onChange={(event) => {
+            const next = event.currentTarget.value as DocumentMode;
+            if (next !== mode) {
+              setPendingMode(next);
+            }
+          }}
+        >
+          {DOCUMENT_MODES.map((item) => (
+            <option key={item} value={item}>
+              {t(`mode_${item}`)}
+            </option>
+          ))}
+        </select>
+      </fieldset>
+
+      <fieldset className="settings-field">
+        <legend>{t("format")}</legend>
+        {FORMATS_BY_MODE[mode].map((format) => (
+          <label key={format} className="settings-radio">
+            <input
+              type="radio"
+              name="format"
+              checked={text.document.pageFormat === format}
+              onChange={() => text.onFormat(format)}
+            />
+            <span>
+              {t(`format_${format}`)} — {formatDimensions(format)}
+            </span>
+          </label>
+        ))}
+      </fieldset>
+
+      <label className="settings-field">
+        <span>{t("font")}</span>
+        {mode === "screenplay" ? (
+          <span className="settings-locked">{t("fontLocked")}</span>
+        ) : (
+          <select value={text.fontFamily} onChange={(event) => text.onFont(event.currentTarget.value)}>
+            {fonts.map((font) => (
+              <option key={font} value={font} style={{ fontFamily: font }}>
+                {font}
+              </option>
+            ))}
+          </select>
+        )}
+      </label>
+
+      <label className="settings-field">
+        <span>{t("size")}</span>
+        <input
+          type="number"
+          min={8}
+          max={24}
+          step={0.5}
+          value={text.baseFontSizePt}
+          disabled={mode === "screenplay"}
+          onChange={(event) => {
+            const value = Number(event.currentTarget.value);
+            if (Number.isFinite(value) && value >= 8 && value <= 24) {
+              text.onSize(value);
+            }
+          }}
+        />
+      </label>
+
+      <label className="settings-field">
+        <span>{t("lang")}</span>
+        <select value={text.lang} onChange={(event) => text.onLang(event.currentTarget.value === "en" ? "en" : "fr")}>
+          <option value="fr">Français</option>
+          <option value="en">English</option>
+        </select>
+      </label>
+
+      <label className="settings-toggle">
+        <input
+          type="checkbox"
+          checked={text.lang === "fr" && french}
+          disabled={text.lang !== "fr"}
+          onChange={(event) => text.onFrenchTypography(event.currentTarget.checked)}
+        />
+        <span>
+          {t("frenchTypography")} <small>{text.lang === "fr" ? t("frenchExample") : t("frenchEnglish")}</small>
+        </span>
+      </label>
+
+      {pendingMode !== null ? (
+        <ModeConfirm
+          from={mode}
+          to={pendingMode}
+          format={text.document.pageFormat}
+          onCancel={() => setPendingMode(null)}
+          onConfirm={() => {
+            text.onMode(pendingMode);
+            setPendingMode(null);
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/** Confirmation qui liste les effets du changement de mode (AC-005, D-053). */
+function ModeConfirm({
+  from,
+  to,
+  format,
+  onCancel,
+  onConfirm,
+}: {
+  from: DocumentMode;
+  to: DocumentMode;
+  format: PageFormat;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const t = useTranslate("settings");
+  const cancel = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    cancel.current?.focus();
+  }, []);
+  const effects = [t("effectKept")];
+  if (!FORMATS_BY_MODE[to].includes(format)) {
+    effects.push(t("effectFormat", { format: t(`format_${defaultFormat(to)}`) }));
+  }
+  effects.push(t("effectFont", { font: fontsFor(to)[0] ?? "" }));
+  if (from === "screenplay" || to === "screenplay") {
+    effects.push(t("effectSpaces"));
+  }
+  effects.push(t("effectHistory"));
+  return (
+    <div className="dialog-veil" onClick={onCancel}>
+      <div className="dialog" role="alertdialog" aria-modal="true" aria-labelledby="mode-title" onClick={(event) => event.stopPropagation()}>
+        <h2 id="mode-title">{t("modeConfirmTitle", { mode: t(`mode_${to}`) })}</h2>
+        <ul>
+          {effects.map((effect) => (
+            <li key={effect}>{effect}</li>
+          ))}
+        </ul>
+        <div className="dialog-actions">
+          <button ref={cancel} type="button" onClick={onCancel}>
+            {t("cancel")}
+          </button>
+          <button type="button" className="button-primary" onClick={onConfirm}>
+            {t("modeConfirm")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GeneralTab({ onTrash }: { onTrash?: () => void }) {
+  const t = useTranslate("settings");
+  const { prefs, update } = usePreferences();
+  const [spellWarning, setSpellWarning] = useState(false);
+  const set = (patch: Partial<Preferences>) => update(patch);
+  return (
+    <div className="settings-section">
+      <fieldset className="settings-field">
+        <legend>{t("theme")}</legend>
+        {(["light", "dark", "system"] as const).map((theme) => (
+          <label key={theme} className="settings-radio">
+            <input type="radio" name="theme" checked={prefs.theme === theme} onChange={() => set({ theme })} />
+            <span>{t(`theme_${theme}`)}</span>
+          </label>
+        ))}
+      </fieldset>
+
+      <label className="settings-field">
+        <span>{t("dailyGoal")}</span>
+        <input
+          type="number"
+          min={0}
+          max={100000}
+          step={50}
+          value={prefs.dailyWordGoal}
+          onChange={(event) => {
+            const value = Math.round(Number(event.currentTarget.value));
+            if (Number.isFinite(value) && value >= 0 && value <= 100000) {
+              set({ dailyWordGoal: value });
+            }
+          }}
+        />
+        <small>{t("dailyGoalHint")}</small>
+      </label>
+
+      <label className="settings-toggle">
+        <input type="checkbox" checked={prefs.showWordCount} onChange={(event) => set({ showWordCount: event.currentTarget.checked })} />
+        <span>{t("showWordCount")}</span>
+      </label>
+      <label className="settings-toggle">
+        <input type="checkbox" checked={prefs.showDailyGoal} onChange={(event) => set({ showDailyGoal: event.currentTarget.checked })} />
+        <span>{t("showDailyGoal")}</span>
+      </label>
+
+      <label className="settings-toggle">
+        <input
+          type="checkbox"
+          checked={prefs.frenchTypographyDefault}
+          onChange={(event) => set({ frenchTypographyDefault: event.currentTarget.checked })}
+        />
+        <span>
+          {t("frenchTypography")} <small>{t("frenchExample")}</small>
+        </span>
+      </label>
+
+      <label className="settings-toggle">
+        <input
+          type="checkbox"
+          checked={prefs.spellcheck}
+          onChange={(event) => {
+            if (event.currentTarget.checked) {
+              setSpellWarning(true);
+            } else {
+              set({ spellcheck: false });
+            }
+          }}
+        />
+        <span>{t("spellcheck")}</span>
+      </label>
+      {spellWarning ? (
+        <div className="banner" role="alertdialog" aria-label={t("spellcheck")}>
+          <p>{t("spellcheckWarning")}</p>
+          <button type="button" onClick={() => setSpellWarning(false)}>
+            {t("cancel")}
+          </button>
+          <button
+            type="button"
+            className="button-primary"
+            onClick={() => {
+              set({ spellcheck: true });
+              setSpellWarning(false);
+            }}
+          >
+            {t("spellcheckEnable")}
+          </button>
+        </div>
+      ) : null}
+
+      {onTrash ? (
+        <button type="button" className="settings-link" onClick={onTrash}>
+          {t("trash")}
+        </button>
+      ) : null}
+    </div>
+  );
+}

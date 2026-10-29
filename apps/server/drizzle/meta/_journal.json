@@ -78,6 +78,13 @@
       "when": 1761400000000,
       "tag": "0010_documents_list",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1761500000000,
+      "tag": "0011_preferences",
+      "breakpoints": true
     }
   ]
 }

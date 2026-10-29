@@ -8,6 +8,7 @@ export const editor = {
   elements: "Éléments du script",
   format: "Mise en forme",
   focus: "Focus",
+  settings: "Réglages",
   exitFocus: "Sortir du mode focus",
   focusHint: "Échap pour sortir",
   focusHintPhone: "Touchez ✕ ou pincez pour sortir",

@@ -896,6 +896,11 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
       next.title = patch.title;
       body.title = patch.title;
     }
+    if (patch.mode !== undefined) {
+      assertMode(patch.mode);
+      next.mode = patch.mode;
+      body.mode = patch.mode;
+    }
     if (patch.pageFormat !== undefined) {
       assertPageFormat(patch.pageFormat);
       next.pageFormat = patch.pageFormat;

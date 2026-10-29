@@ -1,6 +1,7 @@
 /** Ressources i18next de la liste des textes et de la création (T-021). Français par défaut. */
 export const library = {
   heading: "Textes",
+  settings: "Réglages",
   sortNote: "Triés par dernière modification",
   newText: "Nouveau texte",
   newTextShortcut: "N",

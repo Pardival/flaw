@@ -545,9 +545,9 @@ export async function updateDocument(
       }
       await sql.query(
         `UPDATE flaw.documents
-         SET format = $3, font = $4, updated_at = now(), revision = revision + 1
+         SET format = $3, font = $4, mode = $5, updated_at = now(), revision = revision + 1
          WHERE id = $1 AND owner_id = $2`,
-        [documentId, actor.userId, patch.pageFormat ?? row.format, patch.fontFamily ?? row.font],
+        [documentId, actor.userId, patch.pageFormat ?? row.format, patch.fontFamily ?? row.font, patch.mode ?? row.mode],
       );
       const saved = await loadRow(sql, actor.userId, documentId);
       if (saved === undefined) {
@@ -560,7 +560,7 @@ export async function updateDocument(
       patch.baseFontSizePt ?? size,
     );
     const saved = await writeRow(sql, actor, kek, row, {
-      mode: row.mode,
+      mode: patch.mode ?? row.mode,
       format: patch.pageFormat ?? row.format,
       font: patch.fontFamily ?? row.font,
       described,

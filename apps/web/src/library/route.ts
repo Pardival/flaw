@@ -4,13 +4,16 @@ import { useEffect, useState } from "react";
  * Routes de l'app. Les URL ne portent que des UUID, jamais de titre (SEC-CLI-01).
  * L'éditeur est une route : le retour du navigateur ramène à la liste.
  */
-export type Route = { name: "list" } | { name: "create" } | { name: "text"; id: string };
+export type Route = { name: "list" } | { name: "create" } | { name: "trash" } | { name: "text"; id: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function parseRoute(pathname: string): Route {
   if (pathname === "/nouveau") {
     return { name: "create" };
+  }
+  if (pathname === "/corbeille") {
+    return { name: "trash" };
   }
   const match = /^\/t\/([^/]+)$/.exec(pathname);
   if (match && UUID.test(match[1] as string)) {
@@ -23,6 +26,8 @@ export function routePath(route: Route): string {
   switch (route.name) {
     case "create":
       return "/nouveau";
+    case "trash":
+      return "/corbeille";
     case "text":
       if (!UUID.test(route.id)) {
         throw new Error("identifiant de texte invalide");

@@ -4,6 +4,7 @@ import { useTranslate } from "../i18n/i18n.ts";
 import type { LocalDocument, LocalStore } from "../local-store/index.ts";
 import { MODE_FONT } from "./formats-by-mode.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
+import { SettingsPanel } from "../settings/SettingsPanel.tsx";
 import { navigate } from "./route.ts";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
@@ -23,6 +24,7 @@ function isTyping(target: EventTarget | null): boolean {
 export function TextList({ store, documents }: { store: LocalStore; documents: LocalDocument[] }) {
   const t = useTranslate("library");
   const [menuFor, setMenuFor] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [trashing, setTrashing] = useState<{ doc: LocalDocument; confirmationId: string } | null>(null);
   const rows = useRef<(HTMLAnchorElement | null)[]>([]);
@@ -63,10 +65,16 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
       <span className="library-logo">Flaw</span>
       <span className="library-bar-spacer" />
       <SyncIndicator />
+      <button type="button" className="icon-button" aria-label={t("settings")} onClick={() => setSettingsOpen(true)}>
+        Aa
+      </button>
       <button type="button" className="button-primary" onClick={() => navigate({ name: "create" })}>
         + {t("newText")}
       </button>
     </header>
+    {settingsOpen ? (
+      <SettingsPanel onClose={() => setSettingsOpen(false)} onTrash={() => navigate({ name: "trash" })} />
+    ) : null}
     </>
   );
 

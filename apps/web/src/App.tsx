@@ -5,6 +5,8 @@ import { AuthScreens, type AuthScreensProps } from "./auth-ui/index.ts";
 import { MfaScreens, type MfaIntent, type MfaScreensProps } from "./auth-ui/mfa/index.ts";
 import { Shell } from "./layout/Shell.tsx";
 import { Library, LocalStoreProvider } from "./library/index.ts";
+import { PreferencesProvider } from "./settings/preferences.tsx";
+import { AccountSlot } from "./settings/SettingsPanel.tsx";
 
 type MfaMount = {
   intent: MfaIntent;
@@ -30,24 +32,31 @@ export function App({
     initialMfa !== undefined ? { intent: mfaIntent, initialPhase: initialMfa } : null,
   );
 
-  const body = (
-    <>
-      {children ?? (
-        <LocalStoreProvider>
-          <Library />
-        </LocalStoreProvider>
-      )}
-      <AccountSettings
-        client={client}
-        onChangeDevice={() => {
-          setMfa({ intent: "reconfigure" });
-        }}
-        onRegenerateCodes={() => {
-          setMfa({ intent: "reconfigure" });
-        }}
-      />
-    </>
+  const account = (
+    <AccountSettings
+      client={client}
+      onChangeDevice={() => {
+        setMfa({ intent: "reconfigure" });
+      }}
+      onRegenerateCodes={() => {
+        setMfa({ intent: "reconfigure" });
+      }}
+    />
   );
+
+  // Le compte s'affiche dans Réglages › Compte (P7).
+  const body = (
+    <AccountSlot.Provider value={account}>
+      {children ?? (
+        <PreferencesProvider>
+          <LocalStoreProvider>
+            <Library />
+          </LocalStoreProvider>
+        </PreferencesProvider>
+      )}
+    </AccountSlot.Provider>
+  );
+
 
   return (
     <Shell>

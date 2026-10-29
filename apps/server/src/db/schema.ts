@@ -26,6 +26,7 @@ import {
   foreignKey,
   index,
   integer,
+  jsonb,
   pgPolicy,
   pgSchema,
   text,
@@ -235,6 +236,7 @@ export const userPreferences = flaw.table("user_preferences", {
     .primaryKey()
     .references(() => users.id, { onDelete: "cascade" }),
   browserSpellcheck: boolean("browser_spellcheck").notNull().default(false),
+  settings: jsonb("settings").notNull().default({}),
   updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" }).notNull().defaultNow(),
 });
 

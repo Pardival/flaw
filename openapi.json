@@ -1458,6 +1458,9 @@
             "type": "string",
             "maxLength": 300
           },
+          "mode": {
+            "$ref": "#/components/schemas/Mode"
+          },
           "pageFormat": {
             "$ref": "#/components/schemas/PageFormat"
           },

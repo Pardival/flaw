@@ -70,6 +70,7 @@ export type RemoteDocument = {
 
 export type DocumentPatch = {
   title?: string;
+  mode?: DocumentMode;
   pageFormat?: PageFormat;
   fontFamily?: string;
   baseFontSizePt?: number;

@@ -31,6 +31,8 @@ export const documentCreateSchema = z
 export const documentPatchSchema = z
   .object({
     title: z.string().max(300).optional(),
+    // Changement de mode (AC-005) : ajout au contrat 0.4.18, rétrocompatible.
+    mode: z.enum(MODES).optional(),
     pageFormat: z.enum(PAGE_FORMATS).optional(),
     fontFamily: z.string().min(1).max(200).optional(),
     baseFontSizePt: z.number().min(6).max(48).optional(),

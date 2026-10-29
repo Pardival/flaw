@@ -41,6 +41,8 @@ const RESERVED = new Set([
   "GET /api/v1/me/sessions",
   "DELETE /api/v1/me/sessions",
   "DELETE /api/v1/me/sessions/:sessionId",
+  "GET /api/v1/me/preferences",
+  "PATCH /api/v1/me/preferences",
 ]);
 
 const HTTP = new Set(["get", "post", "put", "patch", "delete"]);
