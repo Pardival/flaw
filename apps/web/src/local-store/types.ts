@@ -27,8 +27,8 @@ export const QUOTA_RETRY_MS = 60_000;
 export const LOGOUT_WARNING =
   "Des modifications locales ne sont pas synchronisées. Synchronisez-les, ou confirmez explicitement la perte avant la déconnexion.";
 
-/** Fragment réservé au futur branchement ProseMirror. Le texte CRDT de ce module est `body`. */
-export const PROSEMIRROR_FRAGMENT = "prosemirror";
+/** Fragment ProseMirror du Y.Doc (A-008, `content`), lu par l'éditeur et par le serveur. */
+export const PROSEMIRROR_FRAGMENT = "content";
 
 export const BODY_TEXT = "body";
 
@@ -166,6 +166,10 @@ export type LocalStore = {
   exportStateVector: (id: string) => Promise<Uint8Array>;
   importUpdate: (id: string, update: Uint8Array) => Promise<void>;
   persist: () => Promise<void>;
+  /** Enregistre les modifications du Y.Doc ouvert : compteur, date, file de synchro. */
+  captureEdits: (id: string) => Promise<void>;
+  saveCursor: (id: string, cursor: Uint8Array) => Promise<void>;
+  loadCursor: (id: string) => Promise<Uint8Array | null>;
   subscribe: (listener: (event: StoreEvent) => void) => () => void;
   close: () => Promise<void>;
 };

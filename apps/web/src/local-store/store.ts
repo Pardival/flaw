@@ -106,6 +106,28 @@ function operationHeaders(idempotencyKey: string, schema: boolean): Record<strin
   return headers;
 }
 
+/** Texte brut du contenu : fragment ProseMirror s'il existe, sinon `body` (repli T-017). */
+function documentText(doc: Y.Doc): string {
+  const fragment = doc.getXmlFragment(PROSEMIRROR_FRAGMENT);
+  if (fragment.length === 0) {
+    return doc.getText(BODY_TEXT).toString();
+  }
+  const blocks: string[] = [];
+  const walk = (node: Y.XmlElement | Y.XmlFragment, into: string[]): void => {
+    for (const child of node.toArray()) {
+      if (child instanceof Y.XmlText) {
+        into.push(child.toString().replace(/<[^>]*>/gu, ""));
+      } else if (child instanceof Y.XmlElement) {
+        const inner: string[] = [];
+        walk(child, inner);
+        blocks.push(inner.join(""));
+      }
+    }
+  };
+  walk(fragment, blocks);
+  return blocks.join("\n");
+}
+
 async function clearAccountCaches(): Promise<void> {
   const cachesApi = globalThis.caches;
   if (!cachesApi) {
@@ -529,7 +551,7 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
       return;
     }
     const seen = entry.localEdits;
-    const text = entry.doc.getText(BODY_TEXT).toString();
+    const text = documentText(entry.doc);
     const update = Y.encodeStateAsUpdate(entry.doc);
     const vector = Y.encodeStateVector(entry.doc);
     await writeContentSnapshot(id, text, update, vector);
@@ -967,6 +989,19 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
     await rememberLast(row.id);
   }
 
+  /** Position relative Yjs encodée (éditeur ProseMirror), rangée telle quelle. */
+  async function saveCursor(id: string, cursor: Uint8Array): Promise<void> {
+    assertOpen();
+    const row = await mustActive(id);
+    await commit({ documents: [{ ...row, cursor: bytesToBase64(cursor) }] });
+  }
+
+  async function loadCursor(id: string): Promise<Uint8Array | null> {
+    assertOpen();
+    const row = await mustRow(id);
+    return row.cursor === null ? null : base64ToBytes(row.cursor);
+  }
+
   async function cursorIndex(id: string): Promise<number | null> {
     assertOpen();
     const row = await mustRow(id);
@@ -1129,6 +1164,12 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
     exportStateVector,
     importUpdate,
     persist: () => track(retryPersistentWrite),
+    saveCursor: (id: string, cursor: Uint8Array) => track(() => saveCursor(normalizeUuidV7(id), cursor)),
+    loadCursor: (id: string) => loadCursor(normalizeUuidV7(id)),
+    captureEdits: (id: string) => {
+      assertOpen();
+      return track(() => captureIfEdited(normalizeUuidV7(id)));
+    },
     subscribe: (listener) => {
       listeners.add(listener);
       return () => listeners.delete(listener);

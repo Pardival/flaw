@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
+import { Editor } from "../editor/index.ts";
 import { useTranslate } from "../i18n/i18n.ts";
 import type { LocalDocument, LocalStore } from "../local-store/index.ts";
 import { CreateFlow } from "./CreateFlow.tsx";
@@ -13,7 +14,7 @@ export type TextView = (props: { store: LocalStore; document: LocalDocument }) =
  * Bibliothèque : liste, création, ouverture d'un texte.
  * Après connexion, le dernier texte se rouvre une fois (AC-025) ; la liste reste à un geste (retour).
  */
-export function Library({ renderText = PendingEditor }: { renderText?: TextView }) {
+export function Library({ renderText = DefaultEditor }: { renderText?: TextView }) {
   const t = useTranslate("library");
   const state = useLocalStore();
   const store = state.status === "ready" ? state.store : null;
@@ -65,18 +66,6 @@ export function Library({ renderText = PendingEditor }: { renderText?: TextView 
   return <TextList store={store} documents={documents} />;
 }
 
-function PendingEditor({ document }: { store: LocalStore; document: LocalDocument }) {
-  const t = useTranslate("library");
-  return (
-    <div className="library">
-      <header className="library-bar">
-        <button type="button" onClick={() => navigate({ name: "list" })}>
-          ← {t("backToList")}
-        </button>
-      </header>
-      <p>
-        {document.title} — {t("editorPending")}
-      </p>
-    </div>
-  );
+function DefaultEditor({ store, document }: { store: LocalStore; document: LocalDocument }) {
+  return <Editor key={document.id} store={store} document={document} />;
 }

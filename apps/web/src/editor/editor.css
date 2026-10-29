@@ -1,0 +1,290 @@
+/* Éditeur au format livre (T-022) : D-026, D-027, D-028, D-037. */
+
+.page:has(> .page-ui > .editor-desk) {
+  width: 100%;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+  flex: 1;
+  overflow: visible;
+  background: var(--couleur-bureau);
+}
+
+.page-ui:has(> .editor-desk) {
+  padding: 0;
+}
+
+.editor-desk {
+  min-height: 100%;
+  padding-bottom: 40vh;
+}
+
+.editor-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--espace-3);
+  padding: var(--espace-2) var(--espace-4);
+  background: var(--couleur-bureau);
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+  transition: opacity var(--duree-ui-apparition);
+}
+
+.editor-desk[data-chrome-hidden="true"] .editor-bar {
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--duree-ui-disparition);
+}
+
+.page .editor-back {
+  border: none;
+  background: transparent;
+  font-size: var(--taille-ui-l);
+  padding: 0 var(--espace-3);
+}
+
+.editor-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.editor-head {
+  margin-left: auto;
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
+}
+
+.book {
+  --book-text-size: calc(var(--roman-taille) * var(--book-scale));
+  position: relative;
+  box-sizing: border-box;
+  width: min(calc(var(--book-width) * var(--book-scale)), calc(100vw - 2rem));
+  margin: var(--espace-4) auto 0;
+  padding: calc(var(--book-margin-top) * var(--book-scale)) calc(var(--book-margin-right) * var(--book-scale))
+    calc(var(--book-margin-bottom) * var(--book-scale)) calc(var(--book-margin-left) * var(--book-scale));
+  min-height: calc(var(--book-height) * var(--book-scale));
+  background: var(--couleur-papier);
+  color: var(--couleur-encre);
+  border-radius: var(--rayon-page);
+  box-shadow: var(--ombre-page);
+  transition: background-color var(--duree-theme), color var(--duree-theme);
+}
+
+.book[data-mode="novel"] {
+  font-family: var(--police-roman);
+  line-height: var(--roman-interligne);
+}
+
+.book[data-mode="screenplay"] {
+  --book-text-size: calc(var(--script-taille) * var(--book-scale));
+  font-family: var(--police-script);
+  line-height: var(--script-interligne);
+}
+
+.book[data-mode="document"] {
+  --book-text-size: calc(var(--document-taille) * var(--book-scale));
+  font-family: var(--police-document);
+  line-height: var(--document-interligne);
+}
+
+.book[data-mode="blank"] {
+  --book-text-size: calc(var(--page-blanche-taille) * var(--book-scale));
+  font-family: var(--police-page-blanche);
+  line-height: var(--page-blanche-interligne);
+}
+
+.book {
+  font-size: var(--book-text-size);
+}
+
+.book[data-ready="false"] {
+  opacity: 0.6;
+}
+
+.book-text {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  caret-color: var(--couleur-accent);
+}
+
+.book-text ::selection {
+  background: var(--couleur-selection);
+}
+
+/* A-005 : les blocs restent dans le DOM, le navigateur saute ceux hors écran. */
+.book-text > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.5em;
+}
+
+.book-text p {
+  margin: 0;
+}
+
+.book-text [data-align="left"] { text-align: left; }
+.book-text [data-align="center"] { text-align: center; }
+.book-text [data-align="right"] { text-align: right; }
+.book-text [data-align="justify"] { text-align: justify; }
+
+/* Roman : alinéa, justification, titres de chapitre centrés. */
+.book[data-mode="novel"] .book-text p[data-flaw-node="paragraph"] {
+  text-align: justify;
+  text-indent: var(--roman-alinea);
+}
+
+.book[data-mode="novel"] .book-text p[data-flaw-node="chapter_title"] + p[data-flaw-node="paragraph"],
+.book[data-mode="novel"] .book-text hr + p[data-flaw-node="paragraph"] {
+  text-indent: 0;
+}
+
+.book-text p[data-flaw-node="chapter_title"] {
+  font-size: calc(var(--roman-titre-chapitre) * var(--book-scale));
+  line-height: 1.2;
+  text-align: center;
+  margin: 2.5em 0 1.5em;
+}
+
+.book-text p[data-flaw-node="chapter_title"]:empty::before,
+.book-text p[data-flaw-node="chapter_title"]:has(> br:only-child)::before {
+  content: "Chapitre";
+  color: var(--couleur-encre-3);
+}
+
+.book-text p[data-flaw-node="title"] {
+  font-size: 1.4em;
+  text-align: center;
+  margin-bottom: 1em;
+}
+
+.book-text hr[data-flaw-node="scene_break"] {
+  border: none;
+  margin: 1em 0;
+  text-align: center;
+  height: auto;
+}
+
+.book-text hr[data-flaw-node="scene_break"]::after {
+  content: "*\00a0\00a0*\00a0\00a0*";
+  color: var(--couleur-encre-2);
+}
+
+/* Sauts de page : pied (folio), bureau, haut de page (en-tête du chapitre). */
+.flaw-page-break {
+  display: flex;
+  flex-direction: column;
+  margin: 0 calc(var(--book-margin-right) * var(--book-scale) * -1) 0 calc(var(--book-margin-left) * var(--book-scale) * -1);
+  user-select: none;
+  font-family: var(--police-roman);
+  font-size: calc(var(--roman-folio) * var(--book-scale));
+  color: var(--couleur-encre-3);
+  text-indent: 0;
+}
+
+.flaw-folio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--book-margin-bottom) * var(--book-scale));
+}
+
+.flaw-gap {
+  height: var(--espace-5);
+  background: var(--couleur-bureau);
+  box-shadow: inset 0 6px 8px -6px rgba(60, 45, 25, 0.12), inset 0 -6px 8px -6px rgba(60, 45, 25, 0.12);
+}
+
+.flaw-running-head {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--book-margin-top) * var(--book-scale));
+  font-size: calc(var(--roman-entete) * var(--book-scale));
+  font-variant: small-caps;
+  letter-spacing: 0.06em;
+}
+
+.flaw-page-break[data-first="true"] {
+  display: none;
+}
+
+/* D-037 : chapitre lointain pas encore mis en pages, état neutre. */
+.flaw-page-break[data-layout="pending"] .flaw-folio {
+  opacity: 0.6;
+}
+
+.flaw-page-end {
+  text-align: center;
+  padding-top: calc(var(--book-margin-bottom) * var(--book-scale) * 0.6);
+  font-size: calc(var(--roman-folio) * var(--book-scale));
+  color: var(--couleur-encre-3);
+  text-indent: 0;
+  user-select: none;
+}
+
+/* Téléphone : page fluide pleine largeur, sauts marqués (AC-004), corps 19 px (AC-051). */
+.book[data-surface="phone"] {
+  width: 100%;
+  margin-top: 0;
+  min-height: 100dvh;
+  padding: var(--espace-4);
+  border-radius: 0;
+  box-shadow: none;
+  font-size: 19px;
+}
+
+.book[data-surface="phone"] .flaw-page-break {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--espace-3);
+  margin: var(--espace-4) 0;
+  font-size: var(--taille-ui-xs);
+}
+
+.book[data-surface="phone"] .flaw-folio,
+.book[data-surface="phone"] .flaw-running-head {
+  height: auto;
+}
+
+.book[data-surface="phone"] .flaw-gap {
+  flex: 1;
+  height: 0;
+  background: none;
+  box-shadow: none;
+  border-top: 1px dashed var(--couleur-trait-fort);
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--espace-6) + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--espace-4);
+  padding: var(--espace-2) var(--espace-2) var(--espace-2) var(--espace-4);
+  background: var(--couleur-encre);
+  color: var(--couleur-papier);
+  border-radius: var(--rayon-m);
+  box-shadow: var(--ombre-flottante);
+  font-size: var(--taille-ui-s);
+}
+
+.page .toast button {
+  background: transparent;
+  color: var(--couleur-papier);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-bar {
+    transition: none;
+  }
+}
