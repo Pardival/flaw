@@ -8,6 +8,7 @@ import { redo, undo } from "y-prosemirror";
 import type { DocumentMode } from "../local-store/index.ts";
 import { documentInputRules, documentKeys } from "./modes/document/keys.ts";
 import { scriptKeys } from "./modes/script/keys.ts";
+import { inFocus } from "./focus.ts";
 
 const ALIGN_KEYS: Record<string, "left" | "center" | "right" | "justify"> = {
   "7": "left",
@@ -102,6 +103,10 @@ function commonKeys(): Record<string, Command> {
 
 function novelKeys(onChapter: () => void): Record<string, Command> {
   const chapter: Command = (state, dispatch) => {
+    // Pas d'insertion de chapitre en focus (AC-041).
+    if (inFocus(state)) {
+      return true;
+    }
     const done = insertChapter(state, dispatch);
     if (done && dispatch) {
       onChapter();

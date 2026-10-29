@@ -466,3 +466,77 @@
   opacity: 0;
   transition: opacity var(--duree-ui-disparition);
 }
+
+/* Mode focus (T-027, D-047 à D-050) : une seule ligne, rien d'autre. */
+.page .editor-focus {
+  border: none;
+  background: transparent;
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+}
+
+.editor-desk[data-focus="true"] .editor-bar,
+.editor-desk[data-focus="true"] .sync-banners,
+.editor-desk[data-focus="true"] .toast {
+  display: none;
+}
+
+.editor-desk[data-focus="true"] .book {
+  position: fixed;
+  left: 50%;
+  top: 42%;
+  transform: translateX(-50%);
+  height: 1lh;
+  min-height: 0;
+  padding: 0 calc(var(--book-margin-right) * var(--book-scale)) 0 calc(var(--book-margin-left) * var(--book-scale));
+  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+  line-height: var(--roman-interligne);
+}
+
+.editor-desk[data-focus="true"] .book[data-surface="phone"] {
+  top: auto;
+  bottom: calc(env(keyboard-inset-height, 0px) + 30vh);
+  width: 100%;
+}
+
+.editor-desk[data-focus="true"] .book-mount {
+  transform: translateY(var(--focus-offset, 0px));
+}
+
+.editor-desk[data-focus="true"] .book-text > * {
+  content-visibility: visible;
+}
+
+.editor-desk[data-focus="true"] .flaw-page-break,
+.editor-desk[data-focus="true"] .flaw-page-end {
+  display: none;
+}
+
+.page .focus-exit {
+  position: fixed;
+  top: 22%;
+  right: var(--espace-4);
+  z-index: 7;
+  border: none;
+  background: transparent;
+  color: var(--couleur-encre-3);
+  opacity: 0.6;
+}
+
+@media (min-width: 600px) {
+  .page .focus-exit {
+    display: none;
+  }
+}
+
+.focus-hint {
+  position: fixed;
+  left: 50%;
+  top: 30%;
+  transform: translateX(-50%);
+  z-index: 7;
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-3);
+}

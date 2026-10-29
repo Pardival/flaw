@@ -25,6 +25,7 @@ import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.
 import { frenchTypographyOn, useMeta } from "./meta.ts";
 import { changeSize } from "./size.ts";
 import { typographyPlugin } from "./typography.ts";
+import { caretLineOffset, focusPlugin, setFocusMode } from "./focus.ts";
 import { keymap } from "prosemirror-keymap";
 import { totalWords } from "./pagination/words.ts";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
@@ -78,6 +79,11 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const geometry = geometryFor(document, width);
   const surfaceKey = `${geometry.surface}:${document.pageFormat}`;
   const [focused, setFocused] = useState(false);
+  const [focusMode, setFocusModeState] = useState(false);
+  const [focusHint, setFocusHint] = useState(false);
+  const focusRef = useRef(false);
+  focusRef.current = focusMode;
+  const bookRef = useRef<HTMLDivElement>(null);
   const { hidden: typingHidden, onTyping } = useEditorChrome();
   // Page blanche : aucune interface tant que la page a le focus (AC-020, D-032).
   const hidden = typingHidden || (document.mode === "blank" && focused);
@@ -103,6 +109,60 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     viewRef.current?.setProps({ editable: () => !readOnly });
   }, [readOnly]);
   useKeyboardClearance(viewRef);
+
+  /** En focus, la page ne laisse voir que la ligne du curseur. */
+  const alignFocusLine = (view: EditorView) => {
+    const offset = caretLineOffset(view);
+    if (offset !== null && bookRef.current) {
+      bookRef.current.style.setProperty("--focus-offset", `${String(-offset)}px`);
+    }
+  };
+
+  const toggleFocus = (active: boolean) => {
+    const view = viewRef.current;
+    if (!view) {
+      return;
+    }
+    setFocusMode(view, active);
+    setFocusModeState(active);
+    if (active) {
+      void store.getPreference("focusHintSeen").then((seen) => {
+        if (seen !== "true") {
+          setFocusHint(true);
+          window.setTimeout(() => {
+            setFocusHint(false);
+          }, 2_000);
+          void store.setPreference("focusHintSeen", "true");
+        }
+      });
+      requestAnimationFrame(() => {
+        alignFocusLine(view);
+        view.focus();
+      });
+    } else {
+      requestAnimationFrame(() => {
+        view.dispatch(view.state.tr.scrollIntoView());
+        view.focus();
+      });
+    }
+  };
+
+  // Ctrl/⌘+Maj+F entre et sort ; Échap sort (AC-034, AC-039).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.shiftKey && (event.key === "f" || event.key === "F")) {
+        event.preventDefault();
+        toggleFocus(!focusRef.current);
+      } else if (event.key === "Escape" && focusRef.current) {
+        event.preventDefault();
+        toggleFocus(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  });
 
   useEffect(() => {
     const onResize = () => {
@@ -202,6 +262,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
               }, TOAST_MS);
             },
           }),
+          focusPlugin(),
           pastePlugin(),
           typographyPlugin({ enabled: () => typographyRef.current.on, mode: () => typographyRef.current.mode }),
           keymap({
@@ -246,6 +307,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
             return;
           }
           current.updateState(current.state.apply(tr));
+          if (focusRef.current) {
+            alignFocusLine(current);
+          }
           const name = current.state.selection.$from.parent.type.name;
           setElement((previous) => (previous === name ? previous : name));
           setMenu(menuPosition(current));
@@ -342,7 +406,12 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   } as React.CSSProperties;
 
   return (
-    <div className="editor-desk" data-chrome-hidden={hidden ? "true" : "false"} onKeyDown={onTyping}>
+    <div
+      className="editor-desk"
+      data-chrome-hidden={hidden || focusMode ? "true" : "false"}
+      data-focus={focusMode ? "true" : "false"}
+      onKeyDown={onTyping}
+    >
       <header className="editor-bar">
         <button type="button" className="editor-back" onClick={() => navigate({ name: "list" })} aria-label={t("backToList")}>
           ←
@@ -351,6 +420,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
+        <button type="button" className="editor-focus" onClick={() => toggleFocus(true)} title="Ctrl/⌘+Maj+F">
+          {t("focus")}
+        </button>
         <span className="editor-count" aria-live="off">
           {document.mode === "screenplay" ? `${t("pages", { count: words.pages })} · ` : ""}
           {t("words", { count: words.words })}
@@ -370,6 +442,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         }}
       />
       <div
+        ref={bookRef}
         className="book"
         data-mode={document.mode}
         data-format={document.pageFormat}
@@ -380,9 +453,19 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       >
         <div ref={mount} className="book-mount" />
       </div>
-      <SelectionMenu view={viewRef.current} mode={document.mode} position={menu} baseSize={() => baseSizeRef.current} />
+      {focusMode ? (
+        <button type="button" className="focus-exit" aria-label={t("exitFocus")} onClick={() => toggleFocus(false)}>
+          ✕
+        </button>
+      ) : null}
+      {focusHint ? (
+        <div className="focus-hint" role="status">
+          {window.innerWidth < 600 ? t("focusHintPhone") : t("focusHint")}
+        </div>
+      ) : null}
+      <SelectionMenu view={viewRef.current} mode={document.mode} position={focusMode ? null : menu} baseSize={() => baseSizeRef.current} />
       {document.mode === "screenplay" ? (
-        <ElementBar view={viewRef.current} current={element} />
+        <ElementBar view={viewRef.current} current={element} discreet={focusMode} />
       ) : null}
       {toast ? (
         <div className="toast" role="status">
