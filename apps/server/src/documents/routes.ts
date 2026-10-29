@@ -49,6 +49,7 @@ const RESERVED = new Set([
   "GET /api/v1/documents/:documentId/versions",
   "POST /api/v1/documents/:documentId/versions",
   "POST /api/v1/documents/:documentId/versions/:versionId/restore",
+  "POST /api/v1/documents/:documentId/exports",
 ]);
 
 const HTTP = new Set(["get", "post", "put", "patch", "delete"]);

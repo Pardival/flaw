@@ -9,8 +9,10 @@
   },
   "dependencies": {
     "@flaw/crypto": "workspace:*",
+    "@flaw/exporters": "workspace:*",
     "@flaw/schema": "workspace:*",
     "@hocuspocus/server": "4.7.1",
+    "@myriaddreamin/typst-ts-node-compiler": "0.7.0",
     "@node-rs/argon2": "2.2.2",
     "drizzle-orm": "0.45.3",
     "fastify": "5.12.5",
