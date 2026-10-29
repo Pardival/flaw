@@ -21,6 +21,7 @@ import { attachDocument, type Attachment } from "../sync-client/connection.ts";
 import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } from "../sync-client/status.ts";
 import { editorKeymaps, pastePlugin } from "./commands.ts";
 import { ElementBar } from "./modes/script/ElementBar.tsx";
+import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.tsx";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
 import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
 import { runningHead } from "./pagination/paginate.ts";
@@ -59,6 +60,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const [head, setHead] = useState<{ chapter: string; folio: string }>({ chapter: "", folio: "" });
   const [toast, setToast] = useState(false);
   const [element, setElement] = useState("");
+  const [menu, setMenu] = useState<MenuPosition>(null);
   const [width, setWidth] = useState(() => window.innerWidth);
   const geometry = geometryFor(document, width);
   const surfaceKey = `${geometry.surface}:${document.pageFormat}`;
@@ -198,6 +200,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
           current.updateState(current.state.apply(tr));
           const name = current.state.selection.$from.parent.type.name;
           setElement((previous) => (previous === name ? previous : name));
+          setMenu(menuPosition(current));
           const model = paginationOf(current.state);
           if (model !== undefined) {
             const running = runningHead(model, current.state.selection.from);
@@ -317,6 +320,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       >
         <div ref={mount} className="book-mount" />
       </div>
+      <SelectionMenu view={viewRef.current} mode={document.mode} position={menu} />
       {document.mode === "screenplay" ? (
         <ElementBar view={viewRef.current} current={element} />
       ) : null}

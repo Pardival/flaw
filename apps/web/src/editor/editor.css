@@ -379,3 +379,79 @@
     pointer-events: none;
   }
 }
+
+/* Document (T-024, D-030) : titres 1 à 3, listes à deux niveaux. */
+.book[data-mode="document"] .book-text p {
+  margin: 0 0 0.6em;
+}
+
+.book-text h1,
+.book-text h2,
+.book-text h3 {
+  font-weight: var(--document-titre-graisse);
+  line-height: 1.25;
+  margin: 1.2em 0 0.5em;
+}
+
+.book-text h1 { font-size: calc(var(--document-h1) * var(--book-scale)); }
+.book-text h2 { font-size: calc(var(--document-h2) * var(--book-scale)); }
+.book-text h3 { font-size: calc(var(--document-h3) * var(--book-scale)); }
+
+.book-text > h1:first-child,
+.book-text > h2:first-child,
+.book-text > h3:first-child {
+  margin-top: 0;
+}
+
+.book-text ul,
+.book-text ol {
+  margin: 0 0 0.6em;
+  padding-left: 1.6em;
+}
+
+.book-text li > p {
+  margin: 0 0 0.2em;
+}
+
+.book-text ul[data-flaw-depth="2"] {
+  list-style-type: circle;
+}
+
+.book-text ol[data-flaw-depth="2"] {
+  list-style-type: lower-alpha;
+}
+
+.selection-menu {
+  position: absolute;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--espace-1);
+  transform: translate(-50%, calc(-100% - var(--espace-2)));
+  background: var(--couleur-encre);
+  border-radius: var(--rayon-m);
+  box-shadow: var(--ombre-flottante);
+}
+
+.page .selection-menu button {
+  min-height: 36px;
+  min-width: 36px;
+  padding: 0 var(--espace-2);
+  border: none;
+  background: transparent;
+  color: var(--couleur-papier);
+  font-size: var(--taille-ui-s);
+  font-weight: 600;
+}
+
+.page .selection-menu button[aria-pressed="true"] {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.selection-menu-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--espace-1);
+  background: rgba(255, 255, 255, 0.25);
+}
