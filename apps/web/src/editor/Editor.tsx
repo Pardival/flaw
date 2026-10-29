@@ -7,6 +7,7 @@ import {
   prosemirrorToYXmlFragment,
   relativePositionToAbsolutePosition,
   undo,
+  yXmlFragmentToProseMirrorRootNode,
   ySyncPlugin,
   ySyncPluginKey,
   yUndoPlugin,
@@ -19,7 +20,7 @@ import { navigate, takePendingPanel } from "../library/route.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { attachDocument, type Attachment } from "../sync-client/connection.ts";
 import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } from "../sync-client/status.ts";
-import { editorKeymaps, pastePlugin } from "./commands.ts";
+import { editorKeymaps, insertChapter, pastePlugin } from "./commands.ts";
 import { ElementBar } from "./modes/script/ElementBar.tsx";
 import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.tsx";
 import { frenchTypographyOn, useMeta, writeMeta } from "./meta.ts";
@@ -44,7 +45,7 @@ import { DailyGoal } from "../stats/DailyGoal.tsx";
 import { recordWords } from "../stats/daily.ts";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
 import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
-import { runningHead } from "./pagination/paginate.ts";
+import { lastFolio, runningHead } from "./pagination/paginate.ts";
 import { useEditorChrome } from "./useEditorChrome.ts";
 import { useKeyboardClearance } from "./useKeyboardClearance.ts";
 
@@ -78,6 +79,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const viewRef = useRef<EditorView | null>(null);
   const [ready, setReady] = useState(false);
   const [head, setHead] = useState<{ chapter: string; folio: string }>({ chapter: "", folio: "" });
+  const [endFolio, setEndFolio] = useState("1");
   const [toast, setToast] = useState(false);
   const [element, setElement] = useState("");
   const [menu, setMenu] = useState<MenuPosition>(null);
@@ -258,21 +260,32 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         localChanges: pending.some((operation) => operation.documentId === id && operation.path.endsWith("/sync")),
       });
       // Contenu initial seulement si ni l'appareil ni le serveur n'ont de contenu.
-      if (fragment.length === 0 && navigator.onLine) {
+      // Texte tout juste créé sur cet appareil : rien à attendre du serveur.
+      const fresh = Date.now() - new Date(document.createdAt).getTime() < 120_000;
+      if (fragment.length === 0 && navigator.onLine && !fresh) {
         await new Promise<void>((resolve) => {
           const done = () => {
             resolve();
           };
           attachment?.provider.on("synced", done);
-          window.setTimeout(done, 3_000);
+          window.setTimeout(done, 1_500);
         });
       }
       if (!alive || mount.current === null) {
         return;
       }
       seed(opened, fragment, document.mode);
+      // L'état part du contenu du Y.Doc : jamais d'un document vide qui l'écraserait.
+      let initial;
+      try {
+        initial = yXmlFragmentToProseMirrorRootNode(fragment, schema);
+        initial.check();
+      } catch {
+        initial = undefined;
+      }
       const state = EditorState.create({
         schema,
+        doc: initial,
         plugins: [
           ySyncPlugin(fragment),
           yUndoPlugin(),
@@ -350,6 +363,8 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
               recordWords(total - lastTotal);
             }
             lastTotal = total;
+            const folio = String(lastFolio(model));
+            setEndFolio((previous) => (previous === folio ? previous : folio));
             const running = runningHead(model, current.state.selection.from);
             setHead((previous) =>
               previous.chapter === running.chapterTitle && previous.folio === String(running.folio)
@@ -497,32 +512,58 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       data-focus={focusMode ? "true" : "false"}
       onKeyDown={onTyping}
     >
+      {/* Barre minimale (WF-05) : retour, titre · chapitre · synchro, chapitre, focus, réglages, export, plus. */}
       <header className="editor-bar">
-        <button type="button" className="editor-back" onClick={() => navigate({ name: "list" })} aria-label={t("backToList")}>
-          ←
+        <button type="button" className="editor-back" onClick={() => navigate({ name: "list" })} title="Alt+← / ⌘+[">
+          ‹ {t("texts")}
         </button>
-        <span className="editor-title">{document.title}</span>
-        <span className="editor-head" aria-live="off">
-          {head.chapter}
-        </span>
-        <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "export", "shortcuts"]} />
-        <button type="button" className="editor-focus" onClick={() => setSettingsOpen(true)} aria-label={t("settings")}>
-          Aa
-        </button>
-        <button type="button" className="editor-focus" onClick={() => toggleFocus(true)} title="Ctrl/⌘+Maj+F">
-          {t("focus")}
-        </button>
-        <span className="editor-count" aria-live="off">
-          {prefs.showWordCount ? (
-            <>
-              {document.mode === "screenplay" ? `${t("pages", { count: words.pages })} · ` : ""}
-              {t("words", { count: words.words })}
-            </>
+        <div className="editor-center">
+          <span className="editor-title">{document.title}</span>
+          {head.chapter ? <span className="editor-head"> · {head.chapter}</span> : null}
+          <span aria-hidden="true"> · </span>
+          <SyncIndicator />
+        </div>
+        <div className="editor-actions">
+          {document.mode === "novel" ? (
+            <button
+              type="button"
+              className="editor-chapter"
+              title="Ctrl/⌘+Maj+Entrée"
+              onClick={() => {
+                const view = viewRef.current;
+                if (view && insertChapter(view.state, view.dispatch)) {
+                  view.focus();
+                  setToast(true);
+                  window.setTimeout(() => setToast(false), TOAST_MS);
+                }
+              }}
+            >
+              {t("chapter")}
+            </button>
           ) : null}
-        </span>
-        <DailyGoal />
-        <SyncIndicator />
+          <button type="button" className="editor-icon" onClick={() => toggleFocus(true)} title={`${t("focus")} (Ctrl/⌘+Maj+F)`} aria-label={t("focus")}>
+            F
+          </button>
+          <button type="button" className="editor-icon" onClick={() => setSettingsOpen(true)} title={t("settings")} aria-label={t("settings")}>
+            Aa
+          </button>
+          <button type="button" className="editor-icon" onClick={() => setPanel("export")} title={t("menu_export")} aria-label={t("menu_export")}>
+            ⇪
+          </button>
+          <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "export", "shortcuts"]} />
+        </div>
       </header>
+      {/* Compteur et objectif, coin bas droit, masquables (WF-05). */}
+      <footer className="editor-footer">
+        {prefs.showWordCount ? (
+          <span className="editor-count">
+            {document.mode === "screenplay" ? `${t("pages", { count: words.pages })} · ` : ""}
+            {t("words", { count: words.words })}
+          </span>
+        ) : null}
+        {prefs.showWordCount && prefs.showDailyGoal ? <span aria-hidden="true"> · </span> : null}
+        <DailyGoal />
+      </footer>
       <SyncBanners
         documentId={document.id}
         actions={{
@@ -550,6 +591,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         style={style}
       >
         <div ref={mount} className="book-mount" />
+        <div className="flaw-page-end" aria-hidden="true">
+          {endFolio}
+        </div>
       </div>
       {panel === "search" && viewRef.current && !focusMode ? (
         <SearchBar view={viewRef.current} onClose={() => setPanel(null)} />

@@ -4,6 +4,7 @@ import { useTranslate } from "../i18n/i18n.ts";
 import type { DocumentMode, LocalDocument, PageFormat } from "../local-store/index.ts";
 import { DOCUMENT_MODES } from "../local-store/index.ts";
 import { FORMATS_BY_MODE, defaultFormat, formatDimensions } from "../library/formats-by-mode.ts";
+import { pageSize } from "../layout/formats.ts";
 import { tokens } from "../theme/tokens.ts";
 import { usePreferences, type Preferences } from "./preferences.tsx";
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
@@ -134,19 +135,25 @@ function TextTab({ text }: { text: TextSettings }) {
 
       <fieldset className="settings-field">
         <legend>{t("format")}</legend>
-        {FORMATS_BY_MODE[mode].map((format) => (
-          <label key={format} className="settings-radio">
-            <input
-              type="radio"
-              name="format"
-              checked={text.document.pageFormat === format}
-              onChange={() => text.onFormat(format)}
-            />
-            <span>
-              {t(`format_${format}`)} — {formatDimensions(format)}
-            </span>
-          </label>
-        ))}
+        <div className="settings-silhouettes" role="radiogroup" aria-label={t("format")}>
+          {FORMATS_BY_MODE[mode].map((format) => {
+            const { widthMm, heightMm } = pageSize(format);
+            const scale = 80 / 297;
+            return (
+              <button
+                key={format}
+                type="button"
+                role="radio"
+                aria-checked={text.document.pageFormat === format}
+                title={`${t(`format_${format}`)} — ${formatDimensions(format)}`}
+                onClick={() => text.onFormat(format)}
+              >
+                <span className="settings-silhouette" style={{ width: `${String(widthMm * scale)}px`, height: `${String(heightMm * scale)}px` }} />
+                <small>{t(`format_${format}`)}</small>
+              </button>
+            );
+          })}
+        </div>
       </fieldset>
 
       <label className="settings-field">
@@ -164,23 +171,22 @@ function TextTab({ text }: { text: TextSettings }) {
         )}
       </label>
 
-      <label className="settings-field">
+      <div className="settings-field">
         <span>{t("size")}</span>
-        <input
-          type="number"
-          min={8}
-          max={24}
-          step={0.5}
-          value={text.baseFontSizePt}
-          disabled={mode === "screenplay"}
-          onChange={(event) => {
-            const value = Number(event.currentTarget.value);
-            if (Number.isFinite(value) && value >= 8 && value <= 24) {
-              text.onSize(value);
-            }
-          }}
-        />
-      </label>
+        {mode === "screenplay" ? (
+          <span className="settings-locked">12 pt</span>
+        ) : (
+          <div className="settings-stepper">
+            <button type="button" aria-label={t("smaller")} onClick={() => text.onSize(Math.max(8, text.baseFontSizePt - 0.5))}>
+              −
+            </button>
+            <output>{text.baseFontSizePt.toLocaleString("fr-FR")} pt</output>
+            <button type="button" aria-label={t("larger")} onClick={() => text.onSize(Math.min(24, text.baseFontSizePt + 0.5))}>
+              +
+            </button>
+          </div>
+        )}
+      </div>
 
       <label className="settings-field">
         <span>{t("lang")}</span>

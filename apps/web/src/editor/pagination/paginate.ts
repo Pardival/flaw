@@ -128,24 +128,6 @@ function decorationsFor(doc: PMNode, chapters: readonly ChapterModel[]): Decorat
       );
     }
   }
-  const last = chapters[chapters.length - 1];
-  if (last !== undefined) {
-    const folio: Folio = last.status === "measured" ? (last.pages[last.pages.length - 1]?.folio ?? "…") : "…";
-    widgets.push(
-      Decoration.widget(
-        doc.content.size,
-        () => {
-          const element = document.createElement("div");
-          element.className = "flaw-page-end";
-          element.setAttribute("contenteditable", "false");
-          element.setAttribute("aria-hidden", "true");
-          element.textContent = folio === "…" ? "…" : String(folio);
-          return element;
-        },
-        { side: 1, ignoreSelection: true, key: `end-${String(folio)}` },
-      ),
-    );
-  }
   return DecorationSet.create(doc, widgets);
 }
 
@@ -313,6 +295,13 @@ export function integrate(model: PaginationModel, tr: Transaction): PaginationMo
     dirtyChapter,
     geometry: model.geometry,
   };
+}
+
+/** Folio de la dernière page (affiché par l'éditeur, sans widget en fin de document). */
+export function lastFolio(model: PaginationModel): Folio {
+  const last = model.chapters[model.chapters.length - 1];
+  if (last === undefined || last.status !== "measured") return "…";
+  return last.pages[last.pages.length - 1]?.folio ?? "…";
 }
 
 export function runningHead(model: PaginationModel, pos: number): {

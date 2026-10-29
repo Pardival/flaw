@@ -676,3 +676,131 @@
   font-size: var(--taille-ui-m);
   margin: 0 0 var(--espace-4);
 }
+
+/* Barre minimale (WF-05) : trois zones, titre centré. */
+.editor-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: var(--espace-3);
+}
+
+.page .editor-back {
+  justify-self: start;
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+}
+
+.editor-center {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  white-space: nowrap;
+  color: var(--couleur-encre-2);
+}
+
+.editor-center .editor-title {
+  max-width: 22rem;
+}
+
+.editor-center .editor-head {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.editor-actions {
+  justify-self: end;
+  display: flex;
+  align-items: center;
+  gap: var(--espace-2);
+}
+
+.page .editor-chapter {
+  font-size: var(--taille-ui-s);
+  background: var(--couleur-papier);
+}
+
+.page .editor-icon {
+  min-width: 2rem;
+  padding: 0 var(--espace-2);
+  font-size: var(--taille-ui-xs);
+  border-color: var(--couleur-trait-fort);
+  background: transparent;
+}
+
+.editor-footer {
+  position: fixed;
+  right: var(--espace-4);
+  bottom: calc(var(--espace-3) + env(safe-area-inset-bottom));
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--espace-1);
+  font-size: var(--taille-ui-xs);
+  color: var(--couleur-encre-3);
+  transition: opacity var(--duree-ui-apparition);
+}
+
+.editor-desk[data-chrome-hidden="true"] .editor-footer {
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: var(--duree-ui-disparition);
+}
+
+/* Pointeur masqué pendant la frappe (WF-04). */
+.editor-desk[data-chrome-hidden="true"] .book {
+  cursor: none;
+}
+
+@media (max-width: 599.98px) {
+  .editor-bar {
+    grid-template-columns: auto 1fr auto;
+  }
+  .editor-center .editor-head,
+  .editor-center .editor-title {
+    display: none;
+  }
+  .page .editor-chapter {
+    display: none;
+  }
+}
+
+/* Mode focus (WF-06) : une ligne de 34 em, centrée verticalement. */
+.editor-desk[data-focus="true"] .book:not([data-surface="phone"]) {
+  top: 50%;
+  width: min(34em, calc(100vw - 4rem));
+  padding: 0;
+  transform: translate(-50%, -50%);
+}
+
+.editor-desk[data-focus="true"] .book-mount {
+  transition: transform 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editor-desk[data-focus="true"] .book-mount {
+    transition: none;
+  }
+}
+
+.editor-desk[data-focus="true"] {
+  background: var(--couleur-bureau);
+}
+
+.editor-desk[data-focus="true"] .editor-footer,
+.editor-desk[data-focus="true"] .element-bar[data-discreet="false"] {
+  display: none;
+}
+
+/* Le choix du thème est dans Réglages : pas de bouton flottant sur les écrans de l'app. */
+.desk:has(.library, .editor-desk, .create) > .chrome {
+  display: none;
+}
+
+.selection-menu-size {
+  min-width: 2.2em;
+  text-align: center;
+  color: var(--couleur-papier);
+  font-size: var(--taille-ui-s);
+  font-variant-numeric: tabular-nums;
+}

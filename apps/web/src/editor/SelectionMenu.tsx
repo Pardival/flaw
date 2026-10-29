@@ -11,6 +11,24 @@ import { inList, toggleList } from "./modes/document/lists.ts";
 import { setAlign } from "./commands.ts";
 import { changeSize } from "./size.ts";
 
+/** Taille affichée : celle de la sélection si elle a une marque, sinon la taille de base. */
+function currentSize(state: EditorState, base: number): number {
+  const type = schema.marks.font_size;
+  if (type === undefined) {
+    return base;
+  }
+  let size = base;
+  state.doc.nodesBetween(state.selection.from, state.selection.to, (node) => {
+    const mark = type.isInSet(node.marks);
+    if (mark) {
+      size = mark.attrs.pt as number;
+      return false;
+    }
+    return true;
+  });
+  return size;
+}
+
 export type MenuPosition = { top: number; left: number } | null;
 
 /** Position du menu au-dessus de la sélection, ou null si rien n'est sélectionné. */
@@ -85,8 +103,11 @@ export function SelectionMenu({
       {bold ? button("B", t("bold"), markActive(state, bold), toggleMark(bold)) : null}
       {italic ? button("I", t("italic"), markActive(state, italic), toggleMark(italic)) : null}
       <span className="selection-menu-sep" />
-      {button("A−", t("smaller"), false, changeSize(-0.5, baseSize))}
-      {button("A+", t("larger"), false, changeSize(0.5, baseSize))}
+      {button("−", t("smaller"), false, changeSize(-0.5, baseSize))}
+      <span className="selection-menu-size" aria-label={t("size")}>
+        {currentSize(state, baseSize()).toLocaleString("fr-FR")}
+      </span>
+      {button("+", t("larger"), false, changeSize(0.5, baseSize))}
       <span className="selection-menu-sep" />
       {button("⇤", t("alignLeft"), align === "left", setAlign("left"))}
       {button("↔", t("alignCenter"), align === "center", setAlign("center"))}

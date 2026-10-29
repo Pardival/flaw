@@ -778,3 +778,86 @@ kbd {
   outline-offset: var(--espace-2);
   border-radius: var(--rayon-l);
 }
+
+/* Création, étape 1 (WF-02) : cartes avec miniature aux proportions du format par défaut. */
+.create-step:not(.create-format) h1 {
+  text-align: center;
+}
+
+.create-step:not(.create-format) .create-actions {
+  justify-content: center;
+}
+
+.mode-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: stretch;
+  height: 9rem;
+  margin-bottom: var(--espace-2);
+  background: var(--couleur-bureau);
+  border: 1px dashed var(--couleur-trait);
+  border-radius: var(--rayon-m);
+}
+
+.mode-thumb-page {
+  height: 78%;
+  background: var(--couleur-papier);
+  border: 1px solid var(--couleur-trait-fort);
+  box-shadow: var(--ombre-page);
+}
+
+.mode-defaults {
+  font-size: var(--taille-ui-xs);
+  color: var(--couleur-encre-3);
+}
+
+/* Réglages (WF-07) : silhouettes de format, taille en pas de 0,5 pt. */
+.settings-silhouettes {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--espace-3);
+  flex-wrap: wrap;
+}
+
+.page .settings-silhouettes button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--espace-1);
+  height: auto;
+  padding: var(--espace-2);
+  border-color: transparent;
+  background: transparent;
+}
+
+.settings-silhouette {
+  display: block;
+  background: var(--couleur-papier);
+  border: 1px solid var(--couleur-trait-fort);
+}
+
+.page .settings-silhouettes button[aria-checked="true"] .settings-silhouette {
+  border: 2px solid var(--couleur-encre);
+}
+
+.settings-stepper {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  border: 1px solid var(--couleur-trait-fort);
+  border-radius: var(--rayon-m);
+}
+
+.page .settings-stepper button {
+  border: none;
+  background: transparent;
+  min-width: 2.5rem;
+}
+
+.settings-stepper output {
+  min-width: 4.5rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}

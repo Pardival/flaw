@@ -6,6 +6,9 @@ import { DOCUMENT_MODES, type DocumentMode, type LocalStore, type PageFormat } f
 import { FORMATS_BY_MODE, defaultFormat, formatCm, formatDimensions, formatMarginsCm } from "./formats-by-mode.ts";
 import { navigate } from "./route.ts";
 
+/** Police par défaut de chaque mode (AC-006). */
+const MODE_DEFAULT_FONT = { novel: "EB Garamond", screenplay: "Courier Prime", document: "Inter", blank: "Source Serif 4" } as const;
+
 /** Création en deux étapes : mode (D-024) puis format (D-025). Hors ligne possible (A-004). */
 export function CreateFlow({ store }: { store: LocalStore }) {
   const t = useTranslate("library");
@@ -93,8 +96,17 @@ export function CreateFlow({ store }: { store: LocalStore }) {
                     chooseMode(item);
                   }}
                 />
+                <span className="mode-thumb" aria-hidden="true">
+                  <span
+                    className="mode-thumb-page"
+                    style={{ aspectRatio: `${String(pageSize(defaultFormat(item)).widthMm)} / ${String(pageSize(defaultFormat(item)).heightMm)}` }}
+                  />
+                </span>
                 <span className="mode-name">{t(`mode_${item}`)}</span>
                 <span className="mode-hint">{t(`modeHint_${item}`)}</span>
+                <span className="mode-defaults">
+                  {MODE_DEFAULT_FONT[item]} · {t(`format_${defaultFormat(item)}`)}
+                </span>
               </label>
             ))}
           </fieldset>

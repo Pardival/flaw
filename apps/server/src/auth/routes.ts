@@ -24,6 +24,9 @@ import { restrictedAllows } from "./restricted-session.ts";
 import { openAuth } from "./service.ts";
 import { decodeValidatedKey } from "../crypto/kek.ts";
 import { attachSync } from "../sync/hocuspocus.ts";
+import { randomUUID } from "node:crypto";
+import { generateDek, wrapDek } from "@flaw/crypto";
+import { findActiveUserKey, insertUserKey, kekMayEncrypt } from "./store.ts";
 import { registerPreferences } from "../preferences/routes.ts";
 import { registerStats } from "../stats/routes.ts";
 import { registerVersions } from "../versions/routes.ts";
@@ -326,15 +329,51 @@ export function registerAuth(app: FastifyInstance, config: AppConfig, runtime: A
    * Développement local sans connexion (FLAW_DEV_NO_AUTH=true, refusé hors NODE_ENV=development) :
    * chaque requête agit comme le premier compte de la base. Jamais en production.
    */
+  /** Sans enrôlement TOTP, la DEK du compte n'existe pas encore : on la crée comme l'enrôlement. */
+  const ensureDevDek = async (pool: Pool, userId: string): Promise<void> => {
+    const kek = runtime.secrets === undefined ? null : decodeValidatedKey(runtime.secrets.kek);
+    if (kek === null) {
+      return;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      if ((await findActiveUserKey(client, userId)) === null && (await kekMayEncrypt(client, config.FLAW_KEK_ID))) {
+        const dek = generateDek();
+        const wrapped = wrapDek(kek, config.FLAW_KEK_ID, userId, dek);
+        dek.fill(0);
+        await insertUserKey(client, {
+          id: randomUUID(),
+          userId,
+          wrappedCt: wrapped.wrappedCt,
+          wrappedNonce: wrapped.wrappedNonce,
+          kekId: config.FLAW_KEK_ID,
+          encVersion: wrapped.encVersion,
+        });
+      }
+      await client.query("COMMIT");
+    } catch {
+      await client.query("ROLLBACK").catch(() => undefined);
+    } finally {
+      client.release();
+    }
+  };
   const devNoAuth = config.NODE_ENV === "development" && process.env.FLAW_DEV_NO_AUTH === "true";
   let devUser: Promise<string | null> | null = null;
   const devUserId = (): Promise<string | null> => {
     if (runtime.pool === undefined) {
       return Promise.resolve(null);
     }
-    devUser ??= runtime.pool
+    const pool = runtime.pool;
+    devUser ??= pool
       .query<{ id: string }>("SELECT id FROM flaw.users ORDER BY id LIMIT 1")
-      .then((result) => result.rows[0]?.id ?? null)
+      .then(async (result) => {
+        const userId = result.rows[0]?.id ?? null;
+        if (userId !== null) {
+          await ensureDevDek(pool, userId);
+        }
+        return userId;
+      })
       .catch(() => null);
     return devUser;
   };
