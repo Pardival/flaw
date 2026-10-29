@@ -1,0 +1,22 @@
+/** Ressources i18next des exports (T-033 à T-036). Français par défaut. */
+export const exportCatalog = {
+  title: "Exporter",
+  format: "Format",
+  kind_pdf: "PDF",
+  kind_docx: "Word",
+  kind_epub: "EPUB",
+  kind_fountain: "Fountain",
+  hint_pdf: "mise en page du livre, prêt à imprimer",
+  hint_docx: "à retravailler dans un traitement de texte",
+  hint_epub: "pour liseuse",
+  hint_fountain: "texte brut des logiciels de scénario",
+  pdfOptions: "Options du PDF",
+  mirrorMargins: "Marges alternées (recto verso)",
+  chaptersOnRecto: "Chapitres sur la page de droite",
+  export: "Exporter",
+  busy: "Création du fichier…",
+  cancel: "Annuler",
+  failed: "L'export a échoué. Réessayez.",
+  pdfFailed: "Le PDF n'a pas pu être créé, ni sur l'appareil ni sur le serveur. Vous pouvez exporter en Word.",
+  tryWord: "Exporter en Word",
+};

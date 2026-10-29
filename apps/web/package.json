@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@flaw/exporters": "workspace:*",
     "@flaw/schema": "workspace:*",
     "@flaw/sync": "workspace:*",
     "@hocuspocus/provider": "4.7.1",

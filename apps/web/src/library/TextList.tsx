@@ -176,6 +176,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
                   setRenaming(doc.id);
                 }}
                 onHistory={() => openTextWith(doc.id, "history")}
+                onExport={() => openTextWith(doc.id, "export")}
                 onTrash={() => {
                   void askTrash(doc);
                 }}
@@ -265,6 +266,7 @@ function RowMenu({
   onOpen,
   onRename,
   onHistory,
+  onExport,
   onTrash,
 }: {
   title: string;
@@ -273,6 +275,7 @@ function RowMenu({
   onOpen: () => void;
   onRename: () => void;
   onHistory: () => void;
+  onExport: () => void;
   onTrash: () => void;
 }) {
   const t = useTranslate("library");
@@ -338,7 +341,7 @@ function RowMenu({
           <button type="button" role="menuitem" onClick={onHistory}>
             {t("history")}
           </button>
-          <button type="button" role="menuitem" disabled title={t("soon")}>
+          <button type="button" role="menuitem" onClick={onExport}>
             {t("export")}
           </button>
           <hr />

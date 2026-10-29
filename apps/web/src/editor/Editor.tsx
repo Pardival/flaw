@@ -37,6 +37,7 @@ import { ChapterJump } from "./ChapterJump.tsx";
 import { EditorMenu, type EditorPanel } from "./EditorMenu.tsx";
 import { Shortcuts } from "./Shortcuts.tsx";
 import { History } from "./History.tsx";
+import { ExportDialog } from "../export/ExportDialog.tsx";
 import { keymap } from "prosemirror-keymap";
 import { totalWords } from "./pagination/words.ts";
 import { DailyGoal } from "../stats/DailyGoal.tsx";
@@ -504,7 +505,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
-        <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "shortcuts"]} />
+        <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "export", "shortcuts"]} />
         <button type="button" className="editor-focus" onClick={() => setSettingsOpen(true)} aria-label={t("settings")}>
           Aa
         </button>
@@ -557,6 +558,21 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <ChapterJump view={viewRef.current} onClose={() => setPanel(null)} />
       ) : null}
       {panel === "history" && !focusMode ? <History documentId={document.id} doc={ydoc} onClose={() => setPanel(null)} /> : null}
+      {panel === "export" && viewRef.current && !focusMode ? (
+        <ExportDialog
+          id={document.id}
+          onClose={() => setPanel(null)}
+          input={() => ({
+            title: document.title,
+            mode: document.mode,
+            pageFormat: document.pageFormat,
+            lang: meta?.lang ?? "fr",
+            fontFamily: fontFamily ?? undefined,
+            baseFontSizePt: baseSize ?? undefined,
+            doc: (viewRef.current?.state.doc.toJSON() ?? { type: "doc", content: [] }) as never,
+          })}
+        />
+      ) : null}
       {panel === "shortcuts" ? <Shortcuts mode={document.mode} onClose={() => setPanel(null)} /> : null}
       {settingsOpen && !focusMode ? (
         <SettingsPanel text={textSettings()} onClose={() => setSettingsOpen(false)} />

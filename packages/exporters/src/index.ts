@@ -1,2 +1,6 @@
-/** Point d'entrée placeholder (T-001). */
-export {};
+/** Exports sur l'appareil (A-016, T-033) : Word, EPUB 3, Fountain. Le PDF arrive avec T-034. */
+export { exportDocx } from "./docx/index.ts";
+export { exportEpub } from "./epub/index.ts";
+export { exportFountain } from "./fountain/index.ts";
+export { formatsForMode, type ExportKind } from "./formats.ts";
+export { safeFileName, type ExportInput, type ExportMode, type PMJson } from "./model.ts";
