@@ -455,3 +455,14 @@
   margin: var(--espace-1);
   background: rgba(255, 255, 255, 0.25);
 }
+
+.editor-count {
+  white-space: nowrap;
+  color: var(--couleur-encre-3);
+}
+
+/* Page blanche (D-032) : la barre disparaît entièrement pendant l'écriture. */
+.editor-desk[data-chrome-hidden="true"] .sync-banners .banner:not([role="alert"]) {
+  opacity: 0;
+  transition: opacity var(--duree-ui-disparition);
+}

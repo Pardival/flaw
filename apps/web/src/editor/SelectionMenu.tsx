@@ -8,6 +8,8 @@ import { useTranslate } from "../i18n/i18n.ts";
 import type { DocumentMode } from "../local-store/index.ts";
 import { toggleHeading } from "./modes/document/keys.ts";
 import { inList, toggleList } from "./modes/document/lists.ts";
+import { setAlign } from "./commands.ts";
+import { changeSize } from "./size.ts";
 
 export type MenuPosition = { top: number; left: number } | null;
 
@@ -38,7 +40,17 @@ function markActive(state: EditorState, type: MarkType | undefined): boolean {
  * Menu de mise en forme à la sélection (F3, D-031) : gras, italique ; en document,
  * titres 1 à 3, puces et numéros. Les mêmes actions existent au clavier.
  */
-export function SelectionMenu({ view, mode, position }: { view: EditorView | null; mode: DocumentMode; position: MenuPosition }) {
+export function SelectionMenu({
+  view,
+  mode,
+  position,
+  baseSize,
+}: {
+  view: EditorView | null;
+  mode: DocumentMode;
+  position: MenuPosition;
+  baseSize: () => number;
+}) {
   const t = useTranslate("editor");
   if (view === null || position === null || mode === "screenplay") {
     return null;
@@ -50,6 +62,7 @@ export function SelectionMenu({ view, mode, position }: { view: EditorView | nul
   };
   const heading = state.selection.$from.parent.type.name === "heading" ? (state.selection.$from.parent.attrs.level as number) : 0;
   const list = mode === "document" ? inList(state) : null;
+  const align = state.selection.$from.parent.attrs.align as string | null | undefined;
   const button = (label: string, title: string, active: boolean, command: Command) => (
     <button
       type="button"
@@ -71,6 +84,14 @@ export function SelectionMenu({ view, mode, position }: { view: EditorView | nul
     <div className="selection-menu" role="toolbar" aria-label={t("format")} style={{ top: position.top, left: position.left }}>
       {bold ? button("B", t("bold"), markActive(state, bold), toggleMark(bold)) : null}
       {italic ? button("I", t("italic"), markActive(state, italic), toggleMark(italic)) : null}
+      <span className="selection-menu-sep" />
+      {button("A−", t("smaller"), false, changeSize(-0.5, baseSize))}
+      {button("A+", t("larger"), false, changeSize(0.5, baseSize))}
+      <span className="selection-menu-sep" />
+      {button("⇤", t("alignLeft"), align === "left", setAlign("left"))}
+      {button("↔", t("alignCenter"), align === "center", setAlign("center"))}
+      {button("⇥", t("alignRight"), align === "right", setAlign("right"))}
+      {button("☰", t("alignJustify"), align === "justify", setAlign("justify"))}
       {mode === "document" ? (
         <>
           <span className="selection-menu-sep" />

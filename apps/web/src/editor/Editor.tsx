@@ -22,6 +22,11 @@ import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } f
 import { editorKeymaps, pastePlugin } from "./commands.ts";
 import { ElementBar } from "./modes/script/ElementBar.tsx";
 import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.tsx";
+import { frenchTypographyOn, useMeta } from "./meta.ts";
+import { changeSize } from "./size.ts";
+import { typographyPlugin } from "./typography.ts";
+import { keymap } from "prosemirror-keymap";
+import { totalWords } from "./pagination/words.ts";
 import { MODE_TYPE, pageGeometry, surfaceOf, type Geometry } from "./pagination/geometry.ts";
 import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
 import { runningHead } from "./pagination/paginate.ts";
@@ -61,10 +66,30 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const [toast, setToast] = useState(false);
   const [element, setElement] = useState("");
   const [menu, setMenu] = useState<MenuPosition>(null);
+  const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
+  const [words, setWords] = useState<{ words: number; pages: number }>({ words: document.wordCount, pages: 1 });
+  const [generalFrench, setGeneralFrench] = useState(true);
+  const meta = useMeta(ydoc);
+  const typographyRef = useRef({ on: true, mode: document.mode });
+  typographyRef.current = { on: meta === null ? generalFrench : frenchTypographyOn(meta, generalFrench), mode: document.mode };
+  const baseSizeRef = useRef(MODE_TYPE[document.mode].sizePt);
+  baseSizeRef.current = meta?.baseFontSizePt ?? document.baseFontSizePt ?? MODE_TYPE[document.mode].sizePt;
   const [width, setWidth] = useState(() => window.innerWidth);
   const geometry = geometryFor(document, width);
   const surfaceKey = `${geometry.surface}:${document.pageFormat}`;
-  const { hidden, onTyping } = useEditorChrome();
+  const [focused, setFocused] = useState(false);
+  const { hidden: typingHidden, onTyping } = useEditorChrome();
+  // Page blanche : aucune interface tant que la page a le focus (AC-020, D-032).
+  const hidden = typingHidden || (document.mode === "blank" && focused);
+
+  useEffect(() => {
+    void store.getPreference("frenchTypography").then(
+      (value) => {
+        setGeneralFrench(value !== "false");
+      },
+      () => undefined,
+    );
+  }, [store]);
   const sync = useSyncStatus();
   const readOnly = sync.state === "update-required";
 
@@ -140,6 +165,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         return;
       }
       doc = opened;
+      setYdoc(opened);
       const fragment = opened.getXmlFragment(PROSEMIRROR_FRAGMENT);
       const pending = await store.pendingOperations().catch(() => []);
       if (!alive) {
@@ -177,17 +203,39 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
             },
           }),
           pastePlugin(),
+          typographyPlugin({ enabled: () => typographyRef.current.on, mode: () => typographyRef.current.mode }),
+          keymap({
+            "Mod-Shift-.": changeSize(0.5, () => baseSizeRef.current),
+            "Mod-Shift-,": changeSize(-0.5, () => baseSizeRef.current),
+          }),
           paginationPlugin(geometry),
         ],
       });
       view = new EditorView(mount.current, {
         state,
         editable: () => !readFlags().updateRequired,
+        markViews: {
+          font_size: (mark) => {
+            const span = window.document.createElement("span");
+            span.dataset.fontSize = String(mark.attrs.pt);
+            span.style.fontSize = `calc(${String(mark.attrs.pt)}pt * var(--book-scale))`;
+            return { dom: span };
+          },
+        },
+        handleDOMEvents: {
+          focus: () => {
+            setFocused(true);
+            return false;
+          },
+          blur: () => {
+            setFocused(false);
+            return false;
+          },
+        },
         attributes: {
           class: "book-text",
           "data-mode": document.mode,
           spellcheck: "true",
-          lang: "fr",
           "aria-label": t("textArea"),
           "aria-multiline": "true",
           role: "textbox",
@@ -203,6 +251,13 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
           setMenu(menuPosition(current));
           const model = paginationOf(current.state);
           if (model !== undefined) {
+            const total = totalWords(model.counts);
+            const pages = model.chapters.reduce(
+              (sum, chapter) =>
+                sum + (chapter.status === "measured" ? chapter.pages.length : Math.max(1, Math.ceil(chapter.words / model.geometry.wordsPerPage))),
+              0,
+            );
+            setWords((previous) => (previous.words === total && previous.pages === pages ? previous : { words: total, pages }));
             const running = runningHead(model, current.state.selection.from);
             setHead((previous) =>
               previous.chapter === running.chapterTitle && previous.folio === String(running.folio)
@@ -296,6 +351,10 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <span className="editor-head" aria-live="off">
           {head.chapter}
         </span>
+        <span className="editor-count" aria-live="off">
+          {document.mode === "screenplay" ? `${t("pages", { count: words.pages })} · ` : ""}
+          {t("words", { count: words.words })}
+        </span>
         <SyncIndicator />
       </header>
       <SyncBanners
@@ -316,11 +375,12 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         data-format={document.pageFormat}
         data-surface={geometry.surface}
         data-ready={ready ? "true" : "false"}
+        lang={meta?.lang ?? "fr"}
         style={style}
       >
         <div ref={mount} className="book-mount" />
       </div>
-      <SelectionMenu view={viewRef.current} mode={document.mode} position={menu} />
+      <SelectionMenu view={viewRef.current} mode={document.mode} position={menu} baseSize={() => baseSizeRef.current} />
       {document.mode === "screenplay" ? (
         <ElementBar view={viewRef.current} current={element} />
       ) : null}

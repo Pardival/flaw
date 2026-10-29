@@ -53,7 +53,7 @@ const sceneBreakOnEnter: Command = (state, dispatch) => {
   return true;
 };
 
-function setAlign(align: "left" | "center" | "right" | "justify"): Command {
+export function setAlign(align: "left" | "center" | "right" | "justify"): Command {
   return (state, dispatch) => {
     const { from, to } = state.selection;
     let applicable = false;
