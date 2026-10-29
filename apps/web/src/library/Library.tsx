@@ -7,6 +7,7 @@ import { CreateFlow } from "./CreateFlow.tsx";
 import { navigate, useRoute } from "./route.ts";
 import { useDocuments, useLocalStore } from "./store-context.tsx";
 import { TextList } from "./TextList.tsx";
+import { Trash } from "./Trash.tsx";
 
 export type TextView = (props: { store: LocalStore; document: LocalDocument; trashed?: boolean }) => ReactNode;
 
@@ -57,6 +58,9 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
 
   if (route.name === "create") {
     return <CreateFlow store={store} />;
+  }
+  if (route.name === "trash") {
+    return <Trash store={store} />;
   }
   if (route.name === "text") {
     const current = documents.find((doc) => doc.id === route.id);

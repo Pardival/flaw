@@ -736,3 +736,31 @@ kbd {
   height: 100%;
   background: var(--couleur-succes);
 }
+
+/* Corbeille (T-031, D-021). */
+.trash-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--espace-3);
+}
+
+.trash-row .library-open {
+  flex: 1;
+  padding-right: var(--espace-4);
+}
+
+.trash-actions {
+  display: flex;
+  gap: var(--espace-2);
+  padding-right: var(--espace-3);
+}
+
+.page .danger-link {
+  color: var(--couleur-danger);
+}
+
+.library > .toast,
+.library .toast {
+  position: fixed;
+}

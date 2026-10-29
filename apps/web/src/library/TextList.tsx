@@ -26,6 +26,19 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
   const t = useTranslate("library");
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [trashedToast, setTrashedToast] = useState<LocalDocument | null>(null);
+
+  useEffect(() => {
+    if (trashedToast === null) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setTrashedToast(null);
+    }, 4_000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [trashedToast]);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [trashing, setTrashing] = useState<{ doc: LocalDocument; confirmationId: string } | null>(null);
   const rows = useRef<(HTMLAnchorElement | null)[]>([]);
@@ -170,6 +183,23 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
           ))}
         </ul>
       </section>
+      {trashedToast ? (
+        <div className="toast" role="status">
+          <span>{t("trashed", { title: trashedToast.title || t("untitled") })}</span>
+          <button
+            type="button"
+            onClick={() => {
+              void store.restoreDocument(trashedToast.id);
+              setTrashedToast(null);
+            }}
+          >
+            {t("cancel")}
+          </button>
+          <button type="button" onClick={() => navigate({ name: "trash" })}>
+            {t("viewTrash")}
+          </button>
+        </div>
+      ) : null}
       {trashing ? (
         <ConfirmTrash
           title={trashing.doc.title || t("untitled")}
@@ -180,6 +210,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
             const { doc, confirmationId } = trashing;
             setTrashing(null);
             await store.confirmTrash(doc.id, confirmationId);
+            setTrashedToast(doc);
           }}
         />
       ) : null}

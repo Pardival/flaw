@@ -276,6 +276,29 @@ function summary(view: DocumentView): Pick<DocumentView, "id" | "title" | "mode"
   };
 }
 
+const TRASH_DAYS = 30;
+const purgedOn = new Map<string, string>();
+
+/**
+ * Purge quotidienne de la corbeille (F17) : un texte placé il y a plus de 30 jours est
+ * effacé ; le déclencheur journaliser_effacement_documents l'inscrit dans erasure_log.
+ * Faite par utilisateur (RLS), au plus une fois par jour, à la lecture de la liste.
+ */
+export async function purgeExpiredTrash(pool: Pool, actor: AccessActor): Promise<void> {
+  const day = new Date().toISOString().slice(0, 10);
+  if (!validActor(actor) || purgedOn.get(actor.userId) === day) {
+    return;
+  }
+  purgedOn.set(actor.userId, day);
+  await withActor(pool, actor.userId, async (sql) => {
+    await sql.query(
+      `DELETE FROM flaw.documents
+       WHERE owner_id = $1 AND deleted_at IS NOT NULL AND deleted_at < now() - make_interval(days => $2)`,
+      [actor.userId, TRASH_DAYS],
+    );
+  });
+}
+
 export async function listDocuments(
   pool: Pool,
   actor: AccessActor,

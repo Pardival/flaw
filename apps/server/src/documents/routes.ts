@@ -18,6 +18,7 @@ import {
   readContent,
   restoreDocument,
   updateDocument,
+  purgeExpiredTrash,
   type DocumentView,
   type ListQuery,
 } from "./store.ts";
@@ -237,6 +238,7 @@ export function registerContentRoutes(app: FastifyInstance, deps: ContentRouteDe
     if (query === undefined) {
       return sendStatus(reply, 422);
     }
+    await purgeExpiredTrash(ready.pool, ready.actor).catch(() => undefined);
     const listed = await listDocuments(ready.pool, ready.actor, ready.kek, query);
     if ("status" in listed) {
       return sendProblem(reply, problemStatus(listed.status));
