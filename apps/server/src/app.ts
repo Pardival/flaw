@@ -18,6 +18,7 @@ import { assertAppRole } from "./db/migrate.ts";
 import { resolvedClientIp } from "./platform/healthz.ts";
 import { sendProblem, type ProblemStatus } from "./platform/problem.ts";
 import { writeSecurityLog } from "./platform/security-log.ts";
+import { consignerResultatPurge } from "./crypto/purge.ts";
 import { documentTitleSchema, SERVER_ASSIGNED_KEYS } from "./platform/validation.ts";
 
 const healthQuerySchema = z.object({}).strict();
@@ -268,10 +269,44 @@ async function start(config: AppConfig, secrets: LoadedSecrets): Promise<void> {
   try {
     await whenAuthReady(app);
     await app.listen({ host: "0.0.0.0", port: config.PORT });
+    schedulePurge(pool, config);
   } catch {
     await pool.end().catch(() => undefined);
     throw new Error("refus de démarrer : écoute impossible");
   }
+}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Purge quotidienne des journaux (T-042, § 7.8) : flaw.purge_journaux(), consignée
+ * dans audit_events pour chaque administrateur (sans contenu) ; échec = alerte.
+ */
+function schedulePurge(pool: Pool, config: AppConfig): void {
+  const run = async (): Promise<void> => {
+    const admins = await pool.query<{ id: string }>("SELECT id FROM flaw.users WHERE role = 'admin' ORDER BY id LIMIT 1");
+    const ownerId = admins.rows[0]?.id;
+    try {
+      if (ownerId === undefined) {
+        await pool.query("SELECT flaw.purge_journaux()");
+      } else {
+        await consignerResultatPurge({
+          query: (sql, params) => pool.query(sql, [...params]),
+          purge: async () => {
+            await pool.query("SELECT flaw.purge_journaux()");
+          },
+          ownerId,
+        });
+      }
+      process.stdout.write(`${JSON.stringify({ ts: new Date().toISOString(), type: "purge_journaux", result: "succes" })}\n`);
+    } catch {
+      await notifyStartupRefusal(config, process.stderr, "purge des journaux en échec").catch(() => undefined);
+    }
+  };
+  void run().catch(() => undefined);
+  setInterval(() => {
+    void run().catch(() => undefined);
+  }, DAY_MS).unref();
 }
 
 function isDirectRun(): boolean {

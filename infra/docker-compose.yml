@@ -192,6 +192,44 @@ services:
       - internal
     mem_limit: 512m
 
+  # Sauvegardes locales (T-042) : dump vérifié toutes les 6 h, surveillance chaque heure.
+  # La copie hors site restic (Scaleway) se branche ici quand le bucket existe.
+  backup:
+    <<: *defaults
+    image: postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873
+    user: "70:70"
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        n=0
+        while true; do
+          if [ $$((n % 6)) -eq 0 ]; then sh /opt/flaw/backup.sh || true; fi
+          sh /opt/flaw/check.sh || true
+          n=$$((n + 1))
+          sleep 3600
+        done
+    environment:
+      PGHOST: db
+      PGDATABASE: ${POSTGRES_DB:-flaw}
+      PGUSER: postgres
+      PGPASSWORD_FILE: /run/secrets/postgres_password
+      BACKUP_DIR: /backups
+      ALERT_WEBHOOK_URL: ${ALERT_WEBHOOK_URL:-}
+    secrets: [postgres_password]
+    volumes:
+      - ./backup:/opt/flaw:ro
+      - backups:/backups
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop: [ALL]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+    mem_limit: 256m
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
@@ -225,6 +263,7 @@ networks:
     internal: true
 
 volumes:
+  backups: {}
   pgdata: {}
   caddy_data: {}
   caddy_config: {}
