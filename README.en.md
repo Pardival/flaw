@@ -28,8 +28,11 @@ The app is not signed with a paid certificate: on first launch, allow it in Syst
 - **Automatic French typography**: non-breaking spaces before `; : ! ?`, « » quotes, `--` becomes a dialogue dash "—".
 - **Focus mode**: a small box in the middle of the screen, showing only the last few lines.
 - **Local-first**: writing never waits for the network; sync (Yjs) catches up when the connection returns.
+- **Images** in the text: insert, drag and drop, resize with the mouse, align, crop.
+- **Covers**: a studio for the front and back cover (templates, image, colors, blurb), included in exports.
 - **Version history**, 30-day trash, daily word goal.
 - **Import** Word, PDF, Markdown, plain text; **export** PDF, Word, EPUB, Fountain, processed on the device.
+- **Backup** of the whole library to a single `.flaw` file, and restore.
 - **Encryption at rest** on the server (KEK → DEK envelope, XChaCha20-Poly1305).
 - Light and dark themes, installable as an app (PWA).
 

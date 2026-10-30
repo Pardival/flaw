@@ -26,8 +26,11 @@ L'application n'est pas signée par un certificat payant : au premier lancement,
 - **Typographie française automatique** : espaces insécables avant `; : ! ?`, guillemets « », `--` devient un tiret de dialogue « — ».
 - **Mode focus** : une boîte réduite au centre de l'écran, rien que les dernières lignes.
 - **Local d'abord** : l'écriture ne dépend jamais du réseau ; la synchronisation (Yjs) rattrape quand la connexion revient.
+- **Images** dans le texte : insertion, glisser-déposer, largeur à la souris, alignement, recadrage.
+- **Couvertures** : atelier pour la 1re et la 4e (modèles, image, couleurs, résumé), incluses dans les exports.
 - **Historique des versions**, corbeille de 30 jours, objectif de mots quotidien.
 - **Import** Word, PDF, Markdown, texte brut ; **export** PDF, Word, EPUB, Fountain, traités sur l'appareil.
+- **Sauvegarde** de toute la bibliothèque dans un fichier `.flaw`, et restauration.
 - **Chiffrement au repos** côté serveur (enveloppe KEK → DEK, XChaCha20-Poly1305).
 - Thèmes clair et sombre, installable comme application (PWA).
 
