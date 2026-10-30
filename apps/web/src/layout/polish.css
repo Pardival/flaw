@@ -1243,3 +1243,201 @@
   flex-wrap: wrap;
   gap: 8px;
 }
+
+/* ---------- Images dans le livre ---------- */
+.book-text figure.flaw-image {
+  display: flex;
+  margin: 0.8em 0;
+  padding: 0;
+  content-visibility: visible;
+}
+
+.book-text figure.flaw-image[data-align="center"] { justify-content: center; }
+.book-text figure.flaw-image[data-align="right"] { justify-content: flex-end; }
+.book-text figure.flaw-image[data-align="left"] { justify-content: flex-start; }
+
+.flaw-image-frame {
+  position: relative;
+  max-width: 100%;
+  transition: width 160ms var(--courbe-entree);
+}
+
+.flaw-image.is-resizing .flaw-image-frame { transition: none; }
+
+.flaw-image-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 2px;
+  user-select: none;
+}
+
+.flaw-image.is-missing .flaw-image-frame {
+  background: repeating-linear-gradient(45deg, var(--couleur-accent-doux) 0 8px, transparent 8px 16px);
+  outline: 1px dashed var(--couleur-trait-fort);
+}
+
+.flaw-image.is-selected .flaw-image-frame,
+.flaw-image.ProseMirror-selectednode .flaw-image-frame {
+  outline: 2px solid var(--couleur-accent);
+  outline-offset: 3px;
+}
+
+.flaw-image-handle {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 44px;
+  margin-top: -22px;
+  border-radius: 5px;
+  background: var(--couleur-papier);
+  border: 2px solid var(--couleur-accent);
+  cursor: ew-resize;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+  touch-action: none;
+}
+
+.flaw-image-handle-left { left: -8px; }
+.flaw-image-handle-right { right: -8px; }
+
+.flaw-image-toolbar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: var(--espace-1);
+  background: var(--couleur-encre);
+  border-radius: var(--rayon-m);
+  box-shadow: var(--ombre-flottante);
+  translate: -50% 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms var(--courbe-entree), translate 160ms var(--courbe-entree);
+  white-space: nowrap;
+  z-index: 16;
+}
+
+.flaw-image.is-selected .flaw-image-handle,
+.flaw-image.is-selected .flaw-image-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.flaw-image.is-selected .flaw-image-toolbar { translate: -50% 0; }
+
+.page .flaw-image-toolbar button,
+.flaw-image-toolbar button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 var(--espace-2);
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--couleur-papier);
+  font: 600 var(--taille-ui-s) / 1 var(--police-ui, system-ui);
+  cursor: pointer;
+}
+
+.flaw-image-toolbar button:hover { background: rgba(255, 255, 255, 0.12); }
+.flaw-image-toolbar button[aria-pressed="true"] { background: rgba(255, 255, 255, 0.2); }
+
+.flaw-image-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--espace-1);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* La copie de mesure ne montre ni barre ni poignées. */
+.flaw-measure .flaw-image-toolbar,
+.flaw-measure .flaw-image-handle { display: none; }
+
+/* ---------- Recadrage ---------- */
+.crop-dialog {
+  width: min(92vw, 760px);
+  max-width: none;
+}
+
+.crop-aspects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: var(--espace-3);
+}
+
+.crop-aspects button {
+  padding: 6px 12px;
+  border: 1px solid var(--couleur-trait);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--couleur-encre-2, inherit);
+  font-size: var(--taille-ui-s);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.crop-aspects button[aria-checked="true"] {
+  border-color: var(--couleur-accent);
+  background: var(--couleur-accent-doux);
+  color: var(--couleur-accent);
+}
+
+.crop-stage {
+  display: flex;
+  justify-content: center;
+  padding: var(--espace-3);
+  background: var(--couleur-fond, rgba(0, 0, 0, 0.04));
+  border-radius: var(--rayon-m);
+}
+
+.crop-area {
+  position: relative;
+  max-width: 100%;
+  touch-action: none;
+  user-select: none;
+}
+
+.crop-area img {
+  display: block;
+  max-width: 100%;
+  max-height: 56vh;
+}
+
+.crop-shade {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 16, 12, 0.55);
+  pointer-events: none;
+}
+
+.crop-box {
+  position: absolute;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.9);
+  cursor: move;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.35) 1px, transparent 1px);
+  background-size: 33.333% 33.333%;
+  background-position: -1px -1px;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.crop-nw { left: -8px; top: -8px; cursor: nwse-resize; }
+.crop-ne { right: -8px; top: -8px; cursor: nesw-resize; }
+.crop-sw { left: -8px; bottom: -8px; cursor: nesw-resize; }
+.crop-se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+
+.dialog-actions-spacer { flex: 1; }

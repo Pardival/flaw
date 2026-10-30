@@ -18,7 +18,7 @@ export const IMPORT_SOURCES = ["docx", "txt", "md", "pdf"] as const;
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 
 /** Aligné sur `SCHEMA_VERSION` de @flaw/schema, sans importer le baril ProseMirror. */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const DEFAULT_TITLE = "Sans titre";
 

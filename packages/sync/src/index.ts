@@ -121,6 +121,8 @@ export function payloadTooLarge(byteLength: number, limit: number): boolean {
 /** Structure du Y.Doc d'un texte (A-008) : contenu ProseMirror et métadonnées. */
 export const CONTENT_FRAGMENT = "content";
 export const META_MAP = "meta";
+/** Fichiers du texte (images, couvertures) : empreinte → octets. */
+export const ASSETS_MAP = "assets";
 
 /** WSS multiplexé (API-024). Le paramètre `schema` porte la version du client. */
 export const SYNC_PATH = "/api/v1/sync";

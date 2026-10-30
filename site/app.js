@@ -1,9 +1,10 @@
+/* global document, navigator, localStorage */
 // Langue (français par défaut, anglais si le navigateur le préfère) et système mis en avant.
 (function () {
   var lang = (navigator.language || "fr").slice(0, 2) === "fr" ? "fr" : "en";
   try {
     lang = localStorage.getItem("flaw.lang") || lang;
-  } catch (error) {
+  } catch {
     // Stockage indisponible : langue du navigateur.
   }
   var button = document.getElementById("lang");
@@ -23,7 +24,7 @@
     var next = lang === "fr" ? "en" : "fr";
     try {
       localStorage.setItem("flaw.lang", next);
-    } catch (error) {
+    } catch {
       // Rien : la langue vaut pour cette visite.
     }
     apply(next);

@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateDek, wrapDek } from "@flaw/crypto";
+import { SCHEMA_VERSION } from "@flaw/schema/src/index.ts";
 import { Client, Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -460,7 +461,7 @@ describe("documents sur PostgreSQL", () => {
       pageFormat: "novel_13x20",
       fontFamily: "EB Garamond",
       baseFontSizePt: 11,
-      schemaVersion: 1,
+      schemaVersion: SCHEMA_VERSION,
       wordCount: 0,
       deletedAt: null,
     });
@@ -695,7 +696,7 @@ describe("documents sur PostgreSQL", () => {
     expect(early.statusCode).toBe(426);
     const synced = await call("POST", `/api/v1/documents/${created.id}/sync`, user.cookie, frame, {
       "content-type": "application/octet-stream",
-      "x-flaw-schema-version": "1",
+      "x-flaw-schema-version": String(SCHEMA_VERSION),
     });
     expect(synced.statusCode).toBe(200);
     expect(synced.headers["content-type"]).toContain("application/octet-stream");

@@ -12,7 +12,8 @@ export {
   isDocumentMode,
   isTextBlockName,
 } from "./constants.ts";
-export type { Align, DocumentMode, TextBlockName } from "./constants.ts";
+export type { Align, DocumentMode, ImageAlign, TextBlockName } from "./constants.ts";
+export { ASSET_ID, IMAGE_ALIGNS, IMAGE_WIDTH_MAX, IMAGE_WIDTH_MIN } from "./constants.ts";
 export { documentFromJson, emptyDocument, nodesForMode, nodesOutsideMode, validateDocument } from "./document.ts";
 export { SchemaError, SCHEMA_ERROR_CODES } from "./errors.ts";
 export type { SchemaErrorCode } from "./errors.ts";

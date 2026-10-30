@@ -1,6 +1,6 @@
 import type { Node as PMNode } from "prosemirror-model";
 
-import { assertAlign, assertFontSize, assertLevel } from "./attrs.ts";
+import { assertAlign, assertAlt, assertImageAlign, assertAssetId, assertCrop, assertFontSize, assertImageRatio, assertImageWidth, assertLevel } from "./attrs.ts";
 import {
   COMMON_NODES,
   MODE_NODES,
@@ -17,7 +17,18 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function assertAttrValue(key: string, value: unknown): void {
+function assertAttrValue(key: string, value: unknown, typeName: string): void {
+  if (typeName === "image") {
+    if (key === "asset") assertAssetId(value, false);
+    else if (key === "original") assertAssetId(value, true);
+    else if (key === "width") assertImageWidth(value);
+    else if (key === "ratio") assertImageRatio(value);
+    else if (key === "align") assertImageAlign(value);
+    else if (key === "crop") assertCrop(value);
+    else if (key === "alt") assertAlt(value);
+    else throw new SchemaError("unknown_attr");
+    return;
+  }
   if (key === "align") {
     assertAlign(value);
     return;
@@ -40,7 +51,7 @@ function assertAttrs(typeName: string, value: unknown, mark: boolean): void {
   if (!isRecord(given)) throw new SchemaError("invalid_json");
   for (const key of Object.keys(given)) {
     if (!Object.hasOwn(defined, key)) throw new SchemaError("unknown_attr");
-    assertAttrValue(key, given[key]);
+    assertAttrValue(key, given[key], typeName);
   }
   for (const key of Object.keys(defined)) {
     const spec = defined[key];

@@ -1,4 +1,4 @@
-import { DEFAULT_FONT, DEFAULT_SIZE, MARGINS_MM, PAGE_MM, SCRIPT_MARGINS_MM, type ExportInput } from "../model.ts";
+import { DEFAULT_FONT, DEFAULT_SIZE, MARGINS_MM, PAGE_MM, SCRIPT_MARGINS_MM, extensionOf, type ExportInput } from "../model.ts";
 
 /**
  * PDF Typst (A-016) : le gabarit lit le texte depuis /data.json. Le contenu n'est
@@ -27,6 +27,21 @@ export function pdfFonts(input: ExportInput): string[] {
   return [...new Set([main, "Source Serif 4"])].filter((family) => PDF_FONT_FILES[family] !== undefined);
 }
 
+/**
+ * Fichiers binaires à monter à côté du gabarit : images (/assets/<empreinte>.<ext>)
+ * et couvertures (/cover/front.<ext>, /cover/back.<ext>). Les chemins viennent
+ * d'empreintes hexadécimales contrôlées, jamais du texte.
+ */
+export function pdfFiles(input: ExportInput): Record<string, Uint8Array> {
+  const files: Record<string, Uint8Array> = {};
+  for (const [id, asset] of Object.entries(input.assets ?? {})) {
+    if (/^[0-9a-f]{32}$/u.test(id)) files[`/assets/${id}.${extensionOf(asset)}`] = asset.bytes;
+  }
+  if (input.cover?.front) files[`/cover/front.${extensionOf(input.cover.front)}`] = input.cover.front.bytes;
+  if (input.cover?.back) files[`/cover/back.${extensionOf(input.cover.back)}`] = input.cover.back.bytes;
+  return files;
+}
+
 export function pdfData(input: ExportInput, options: PdfOptions): Uint8Array {
   const page = PAGE_MM[input.pageFormat];
   const margins = input.mode === "screenplay" ? SCRIPT_MARGINS_MM : MARGINS_MM[input.pageFormat];
@@ -44,6 +59,11 @@ export function pdfData(input: ExportInput, options: PdfOptions): Uint8Array {
       recto: novel && options.chaptersOnRecto,
       titlePage: novel || input.mode === "screenplay",
       page: { width: page.width, height: page.height, margins },
+      assets: Object.fromEntries(Object.entries(input.assets ?? {}).map(([id, asset]) => [id, extensionOf(asset)])),
+      cover: {
+        front: input.cover?.front ? `/cover/front.${extensionOf(input.cover.front)}` : "",
+        back: input.cover?.back ? `/cover/back.${extensionOf(input.cover.back)}` : "",
+      },
     },
     doc: input.doc,
   };
@@ -56,6 +76,8 @@ export const TYPST_MAIN = String.raw`
 #let m = meta.page.margins
 #let script = meta.mode == "screenplay"
 #let novel = meta.mode == "novel"
+// La 1re de couverture n'entre pas dans la pagination du livre.
+#let offset = if meta.cover.front != "" { 1 } else { 0 }
 
 #set document(title: meta.title)
 #set text(font: (meta.font, "Source Serif 4"), size: meta.size * 1pt, lang: meta.lang, hyphenate: not script)
@@ -79,13 +101,13 @@ export const TYPST_MAIN = String.raw`
     if novel {
       let page-here = here().page()
       let opening = query(heading.where(level: 1)).any(h => h.location().page() == page-here)
-      if not opening and page-here > 2 {
+      if not opening and page-here - offset > 2 {
         align(center, text(size: 8.5pt, smallcaps(chapter-title-at(here()))))
       }
     }
   },
   footer: context {
-    if here().page() > 1 or not meta.titlePage { align(center, text(size: 9pt, counter(page).display())) }
+    if here().page() - offset > 1 or not meta.titlePage { align(center, text(size: 9pt, counter(page).display())) }
   },
 )
 
@@ -147,7 +169,22 @@ export const TYPST_MAIN = String.raw`
   else if t == "dialogue" { block(above: 0em, below: 0.6em, pad(left: 1in, right: 1.5in, inline(node))) }
   else if t == "transition" { block(above: 0.6em, below: 0.6em, align(right, upper(inline(node)))) }
   else if t == "centered" { align(center, inline(node)) }
+  else if t == "image" {
+    let a = node.at("attrs", default: (:))
+    let id = a.at("asset", default: "")
+    if id in meta.assets {
+      let side = if a.at("align", default: "center") == "left" { left } else if a.at("align", default: "center") == "right" { right } else { center }
+      block(above: 0.8em, below: 0.8em, breakable: false, align(side, image("/assets/" + id + "." + meta.assets.at(id), width: a.at("width", default: 60) * 1%)))
+    }
+  }
   else { aligned(node, par(inline(node))) }
+}
+
+#let cover-page(path) = page(margin: 0pt, header: none, footer: none, image(path, width: 100%, height: 100%, fit: "cover"))
+
+#if meta.cover.front != "" {
+  cover-page(meta.cover.front)
+  counter(page).update(1)
 }
 
 #if meta.titlePage {
@@ -159,4 +196,9 @@ export const TYPST_MAIN = String.raw`
 }
 
 #for node in data.doc.at("content", default: ()) { render(node) }
+
+#if meta.cover.back != "" {
+  pagebreak(weak: true)
+  cover-page(meta.cover.back)
+}
 `;

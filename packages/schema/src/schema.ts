@@ -1,7 +1,7 @@
 import { Schema } from "prosemirror-model";
 import type { AttributeSpec, DOMOutputSpec, Mark, Node as PMNode, NodeSpec } from "prosemirror-model";
 
-import { assertAlign, assertFontSize, assertLevel } from "./attrs.ts";
+import { assertAlign, assertAlt, assertAssetId, assertCrop, assertFontSize, assertImageAlign, assertImageRatio, assertImageWidth, assertLevel } from "./attrs.ts";
 import type { Align } from "./constants.ts";
 
 /**
@@ -9,7 +9,8 @@ import type { Align } from "./constants.ts";
  * Tous les modes partagent ce schéma : un changement de mode ne retire aucun nœud.
  * Pas de parseDOM : un DOMParser recolle le texte des éléments `script`.
  * Le collage HTML passe par `parsePastedHtml` (SEC-WEB-06).
- * Aucun lien, aucune image, aucun HTML stocké (SEC-DATA-02).
+ * Aucun lien ni HTML stocké (SEC-DATA-02). Une image ne désigne qu'un fichier du
+ * texte lui-même (empreinte), jamais une URL.
  */
 
 const alignAttr: AttributeSpec = {
@@ -76,6 +77,32 @@ const nodes: { [name: string]: NodeSpec } = {
     atom: true,
     toDOM() {
       return ["hr", { "data-flaw-node": "scene_break" }];
+    },
+  },
+  image: {
+    group: "block",
+    atom: true,
+    draggable: true,
+    selectable: true,
+    attrs: {
+      asset: { validate: (value: unknown) => assertAssetId(value, false) },
+      original: { default: null, validate: (value: unknown) => assertAssetId(value, true) },
+      width: { default: 60, validate: assertImageWidth },
+      ratio: { default: 0.75, validate: assertImageRatio },
+      align: { default: "center", validate: assertImageAlign },
+      crop: { default: null, validate: assertCrop },
+      alt: { default: "", validate: assertAlt },
+    },
+    toDOM(node) {
+      // L'éditeur affiche le fichier par une vue dédiée ; ici, seulement la place réservée.
+      return [
+        "figure",
+        {
+          "data-flaw-node": "image",
+          "data-align": String(node.attrs.align),
+          "data-width": String(node.attrs.width),
+        },
+      ];
     },
   },
   scene_heading: textBlock("scene_heading", true),

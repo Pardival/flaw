@@ -40,7 +40,7 @@ function codeOf(run: () => unknown): string {
 
 describe("schéma unique", () => {
   it("expose la version provisoire entière", () => {
-    expect(SCHEMA_VERSION).toBe(1);
+    expect(SCHEMA_VERSION).toBe(2);
     expect(Number.isInteger(SCHEMA_VERSION)).toBe(true);
   });
 
@@ -86,9 +86,9 @@ describe("schéma unique", () => {
     expect(flat).toContain("strong");
   });
 
-  it("n'a ni lien, ni image, ni parseDOM", () => {
+  it("n'a ni lien ni parseDOM ; l'image ne désigne qu'un fichier du texte", () => {
     expect(schema.nodes.link).toBeUndefined();
-    expect(schema.nodes.image).toBeUndefined();
+    expect(Object.keys(schema.nodes.image?.spec.attrs ?? {}).sort()).toEqual(["align", "alt", "asset", "crop", "original", "ratio", "width"]);
     expect(Object.keys(schema.marks).sort()).toEqual(["bold", "font_size", "italic"]);
     for (const node of Object.values(schema.nodes)) {
       expect(node.spec.parseDOM).toBeUndefined();
@@ -197,7 +197,7 @@ describe("lecture JSON", () => {
   };
 
   it("rejette un nœud, une marque ou un attribut inconnu", () => {
-    expect(codeOf(() => documentFromJson({ type: "doc", content: [{ type: "image" }] }))).toBe(
+    expect(codeOf(() => documentFromJson({ type: "doc", content: [{ type: "video" }] }))).toBe(
       "unknown_node",
     );
     expect(
@@ -318,5 +318,31 @@ describe("lecture JSON", () => {
       schema.node("scene_break"),
     ]);
     expect(documentFromJson(doc.toJSON()).eq(doc)).toBe(true);
+  });
+});
+
+describe("image", () => {
+  const asset = "0123456789abcdef0123456789abcdef";
+  const image = (attrs: Record<string, unknown>) => ({ type: "doc", content: [{ type: "image", attrs }] });
+
+  it("accepte une image du texte, avec taille, rapport, alignement et recadrage", () => {
+    const doc = documentFromJson(image({ asset, original: asset, width: 80, ratio: 0.5, align: "left", crop: [0.1, 0.2, 0.5, 0.4], alt: "Carte" }));
+    expect(doc.firstChild?.attrs).toMatchObject({ asset, width: 80, ratio: 0.5, align: "left" });
+  });
+
+  it("refuse toute URL, chemin ou valeur hors bornes", () => {
+    for (const attrs of [
+      { asset: "https://exemple.fr/a.png" },
+      { asset: "../../etc/passwd" },
+      { asset, width: 5 },
+      { asset, width: 120 },
+      { asset, ratio: 0 },
+      { asset, align: "justify" },
+      { asset, crop: [0.5, 0, 0.6, 1] },
+      { asset, alt: "x".repeat(501) },
+      { asset, src: asset },
+    ]) {
+      expect(["invalid_attr", "unknown_attr"]).toContain(codeOf(() => documentFromJson(image(attrs))));
+    }
   });
 });

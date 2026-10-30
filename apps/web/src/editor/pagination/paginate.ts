@@ -141,6 +141,10 @@ function decorationsFor(doc: PMNode, chapters: readonly ChapterModel[]): Decorat
 
 function blockHeight(node: PMNode, geometry: Geometry): number {
   if (node.type.name === "scene_break") return geometry.lineHeightPx;
+  if (node.type.name === "image") {
+    const width = ((node.attrs.width as number) / 100) * geometry.contentWidthPx;
+    return Math.min(geometry.contentHeightPx, width * (node.attrs.ratio as number)) + geometry.lineHeightPx;
+  }
   const words = node.textContent.trim().length === 0 ? 0 : node.textContent.trim().split(/\s+/).length;
   const lines =
     node.type.name === "chapter_title"

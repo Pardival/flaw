@@ -4,6 +4,7 @@ import {
   Footer,
   Header,
   HeadingLevel,
+  ImageRun,
   LevelFormat,
   Packer,
   PageBreak,
@@ -20,8 +21,10 @@ import {
   PAGE_MM,
   SCRIPT_MARGINS_MM,
   alignOf,
+  imageAttrs,
   plainText,
   runsOf,
+  type ExportAsset,
   type ExportInput,
   type PMJson,
 } from "../model.ts";
@@ -50,6 +53,19 @@ function textRuns(node: PMJson, base: { font: string; sizePt: number }, upper = 
         break: run.lineBreak ? 1 : undefined,
       }),
   );
+}
+
+const PX_PER_MM = 96 / 25.4;
+
+/** Largeur utile de la page, en pixels (96 ppp), pour dimensionner les images. */
+function contentWidthPx(input: ExportInput): number {
+  const size = PAGE_MM[input.pageFormat];
+  const [, right, , left] = input.mode === "screenplay" ? SCRIPT_MARGINS_MM : MARGINS_MM[input.pageFormat];
+  return (size.width - left - right) * PX_PER_MM;
+}
+
+function picture(asset: ExportAsset, width: number, height: number): ImageRun {
+  return new ImageRun({ type: asset.kind === "png" ? "png" : "jpg", data: asset.bytes, transformation: { width: Math.round(width), height: Math.round(height) } });
 }
 
 /** Retraits du script en pouces depuis la marge gauche (jetons --script-*). */
@@ -100,6 +116,20 @@ function paragraphs(node: PMJson, input: ExportInput, base: { font: string; size
       const size = value === 2 ? 15 : value === 3 ? 12 : 20;
       return [new Paragraph({ ...common, children: textRuns(node, { ...base, sizePt: size }), heading, spacing: { before: 240, after: 120 } })];
     }
+    case "image": {
+      const attrs = imageAttrs(node);
+      const asset = attrs ? input.assets?.[attrs.asset] : undefined;
+      if (!attrs || !asset) return [];
+      const width = (contentWidthPx(input) * attrs.width) / 100;
+      return [
+        new Paragraph({
+          children: [picture(asset, width, width * attrs.ratio)],
+          alignment: ALIGN[attrs.align],
+          spacing: { before: 160, after: 160 },
+          keepLines: true,
+        }),
+      ];
+    }
     case "scene_break":
       return [new Paragraph({ children: [new TextRun({ text: "*  *  *", font: base.font, size: base.sizePt * 2 })], alignment: AlignmentType.CENTER, spacing: { before: 240, after: 240 } })];
     case "bullet_list":
@@ -144,6 +174,17 @@ export async function exportDocx(input: ExportInput): Promise<Uint8Array> {
   };
   const state = { first: true };
   const body = (input.doc.content ?? []).flatMap((node) => paragraphs(node, input, base, state));
+  // Couvertures : pleine largeur utile, au rapport de la page.
+  const coverParagraph = (asset: ExportAsset, breakAfter: boolean) => {
+    const width = contentWidthPx(input);
+    const sizeMm = PAGE_MM[input.pageFormat];
+    return [
+      new Paragraph({ children: [picture(asset, width, width * (sizeMm.height / sizeMm.width) * 0.86)], alignment: AlignmentType.CENTER }),
+      ...(breakAfter ? [new Paragraph({ children: [new PageBreak()] })] : []),
+    ];
+  };
+  const front = input.cover?.front ? coverParagraph(input.cover.front, true) : [];
+  const back = input.cover?.back ? [new Paragraph({ children: [new PageBreak()] }), ...coverParagraph(input.cover.back, false)] : [];
   const titlePage =
     input.mode === "novel" || input.mode === "screenplay"
       ? [
@@ -189,7 +230,7 @@ export async function exportDocx(input: ExportInput): Promise<Uint8Array> {
             children: [new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ children: [PageNumber.CURRENT], font: base.font, size: 18 })] })],
           }),
         },
-        children: [...titlePage, ...body],
+        children: [...front, ...titlePage, ...body, ...back],
       },
     ],
   });

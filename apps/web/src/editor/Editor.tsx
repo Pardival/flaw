@@ -1,5 +1,5 @@
 import { emptyDocument, schema } from "@flaw/schema/src/index.ts";
-import { EditorState, TextSelection } from "prosemirror-state";
+import { EditorState, NodeSelection, TextSelection } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -51,6 +51,10 @@ import { useEditorChrome } from "./useEditorChrome.ts";
 import { useKeyboardClearance } from "./useKeyboardClearance.ts";
 import { Logo } from "../shell/Logo.tsx";
 import { InlineEdit } from "./InlineEdit.tsx";
+import { assetUrl, exportAssets, getAsset, putAsset } from "./images/assets.ts";
+import { CropDialog } from "./images/CropDialog.tsx";
+import { isImageFile, prepareImage, type Crop } from "./images/process.ts";
+import { imageNodeView, insertImage } from "./images/view.ts";
 
 export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
@@ -95,11 +99,16 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const [element, setElement] = useState("");
   const [menu, setMenu] = useState<MenuPosition>(null);
   const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
+  const ydocRef = useRef<Y.Doc | null>(null);
+  ydocRef.current = ydoc;
   const [words, setWords] = useState<{ words: number; pages: number }>({ words: document.wordCount, pages: 1 });
   const { prefs } = usePreferences();
   const generalFrench = prefs.frenchTypographyDefault;
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panel, setPanel] = useState<EditorPanel | null>(() => takePendingPanel());
+  const [cropping, setCropping] = useState<number | null>(null);
+  const [imageError, setImageError] = useState(false);
+  const imagePicker = useRef<HTMLInputElement>(null);
   const meta = useMeta(ydoc);
   const typographyRef = useRef({ on: true, mode: document.mode });
   typographyRef.current = { on: meta === null ? generalFrench : frenchTypographyOn(meta, generalFrench), mode: document.mode };
@@ -263,6 +272,54 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     };
   }, []);
 
+  /** Ajoute des images (menu, collage, glisser-déposer) : préparées sur l'appareil, rangées dans le texte. */
+  const addImages = async (target: EditorView, files: File[], at?: number) => {
+    const doc = ydocRef.current;
+    if (doc === null) return;
+    let position = at;
+    for (const file of files) {
+      try {
+        const prepared = await prepareImage(file);
+        const asset = await putAsset(doc, prepared.bytes);
+        const ratio = Math.min(20, Math.max(0.05, prepared.height / prepared.width));
+        const tr = insertImage(target.state, { asset, ratio, width: 60, align: "center" }, position);
+        if (tr !== null) {
+          target.dispatch(tr);
+          position = undefined;
+        }
+      } catch {
+        setImageError(true);
+        window.setTimeout(() => setImageError(false), TOAST_MS);
+      }
+    }
+    target.focus();
+  };
+
+  const applyCrop = async (pos: number, crop: Crop | null) => {
+    const view = viewRef.current;
+    const doc = ydocRef.current;
+    const node = view?.state.doc.nodeAt(pos);
+    if (!view || doc === null || node?.type.name !== "image") return;
+    const originalId = (node.attrs.original as string | null) ?? (node.attrs.asset as string);
+    const bytes = getAsset(doc, originalId);
+    if (bytes === null) return;
+    try {
+      const prepared = await prepareImage(new Blob([bytes as BlobPart], { type: "image/jpeg" }), crop);
+      const asset = crop === null ? originalId : await putAsset(doc, prepared.bytes);
+      const tr = view.state.tr.setNodeMarkup(pos, undefined, {
+        ...node.attrs,
+        asset,
+        original: crop === null ? null : originalId,
+        crop,
+        ratio: Math.min(20, Math.max(0.05, prepared.height / prepared.width)),
+      });
+      view.dispatch(tr.setSelection(NodeSelection.create(tr.doc, pos)));
+      view.focus();
+    } catch {
+      setImageError(true);
+    }
+  };
+
   useEffect(() => {
     let alive = true;
     let view: EditorView | null = null;
@@ -392,6 +449,37 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       view = new EditorView(mount.current, {
         state,
         editable: () => !readFlags().updateRequired,
+        nodeViews: {
+          image: imageNodeView({
+            doc: opened,
+            // L'image tient toujours dans la hauteur d'une page.
+            maxWidth: (ratio) => Math.max(10, Math.min(100, Math.floor((geometry.contentHeightPx / (geometry.contentWidthPx * ratio)) * 100))),
+            onCrop: (pos) => setCropping(pos),
+            labels: {
+              left: t("imageLeft"),
+              center: t("imageCenter"),
+              right: t("imageRight"),
+              crop: t("imageCrop"),
+              remove: t("imageRemove"),
+              resize: t("imageResize"),
+              missing: t("imageMissing"),
+            },
+          }),
+        },
+        handlePaste: (current, event) => {
+          const files = [...(event.clipboardData?.files ?? [])].filter(isImageFile);
+          if (files.length === 0 || document.mode === "screenplay") return false;
+          void addImages(current, files);
+          return true;
+        },
+        handleDrop: (current, event) => {
+          const files = [...(event.dataTransfer?.files ?? [])].filter(isImageFile);
+          if (files.length === 0 || document.mode === "screenplay") return false;
+          event.preventDefault();
+          const at = current.posAtCoords({ left: event.clientX, top: event.clientY })?.pos;
+          void addImages(current, files, at);
+          return true;
+        },
         markViews: {
           font_size: (mark) => {
             const span = window.document.createElement("span");
@@ -691,7 +779,28 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
                 view.focus();
               }
             }}
-            onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "export", "shortcuts"]} />
+            onSelect={(next) => {
+              if (next === "image") {
+                imagePicker.current?.click();
+                return;
+              }
+              setPanel(next);
+            }}
+            available={["search", "chapters", "history", "export", "shortcuts", "image"]}
+          />
+          <input
+            ref={imagePicker}
+            type="file"
+            hidden
+            accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/avif"
+            multiple
+            onChange={(event) => {
+              const files = [...(event.currentTarget.files ?? [])];
+              event.currentTarget.value = "";
+              const view = viewRef.current;
+              if (view && files.length > 0) void addImages(view, files);
+            }}
+          />
         </div>
       </header>
       {/* Compteur et objectif, coin bas droit, masquables (WF-05). */}
@@ -747,15 +856,19 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <ExportDialog
           id={document.id}
           onClose={() => setPanel(null)}
-          input={() => ({
-            title: document.title,
-            mode: document.mode,
-            pageFormat: document.pageFormat,
-            lang: meta?.lang ?? "fr",
-            fontFamily: fontFamily ?? undefined,
-            baseFontSizePt: baseSize ?? undefined,
-            doc: (viewRef.current?.state.doc.toJSON() ?? { type: "doc", content: [] }) as never,
-          })}
+          input={() => {
+            const json = (viewRef.current?.state.doc.toJSON() ?? { type: "doc", content: [] }) as { type: string };
+            return {
+              title: document.title,
+              mode: document.mode,
+              pageFormat: document.pageFormat,
+              lang: meta?.lang ?? "fr",
+              fontFamily: fontFamily ?? undefined,
+              baseFontSizePt: baseSize ?? undefined,
+              doc: json as never,
+              assets: ydoc ? exportAssets(ydoc, json) : {},
+            };
+          }}
         />
       ) : null}
       {panel === "shortcuts" ? <Shortcuts mode={document.mode} onClose={() => setPanel(null)} /> : null}
@@ -773,6 +886,28 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       {focusHint ? (
         <div className="focus-hint" role="status">
           {window.innerWidth < 600 ? t("focusHintPhone") : t("focusHint")}
+        </div>
+      ) : null}
+      {cropping !== null && ydoc ? (() => {
+        const node = viewRef.current?.state.doc.nodeAt(cropping);
+        const source = node ? assetUrl(ydoc, (node.attrs.original as string | null) ?? (node.attrs.asset as string)) : null;
+        return source ? (
+          <CropDialog
+            src={source}
+            initial={(node?.attrs.crop as Crop | null) ?? null}
+            pageAspect={geometry.contentWidthPx / geometry.contentHeightPx}
+            onClose={() => setCropping(null)}
+            onApply={(crop) => {
+              const pos = cropping;
+              setCropping(null);
+              void applyCrop(pos, crop);
+            }}
+          />
+        ) : null;
+      })() : null}
+      {imageError ? (
+        <div className="toast" role="alert">
+          <span>{t("imageFailed")}</span>
         </div>
       ) : null}
       <SelectionMenu view={viewRef.current} mode={document.mode} position={focusMode ? null : menu} baseSize={() => baseSizeRef.current} />

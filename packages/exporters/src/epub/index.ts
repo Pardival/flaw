@@ -1,6 +1,6 @@
 import { strToU8, zipSync, type Zippable } from "fflate";
 
-import { alignOf, plainText, runsOf, xml, type ExportInput, type PMJson } from "../model.ts";
+import { alignOf, extensionOf, imageAttrs, plainText, runsOf, xml, type ExportInput, type PMJson } from "../model.ts";
 
 /**
  * EPUB 3 maison (A-016) : un fichier XHTML par chapitre (roman) ou un seul (document,
@@ -26,8 +26,14 @@ function alignClass(node: PMJson): string {
   return align === null ? "" : ` class="align-${align}"`;
 }
 
-function block(node: PMJson): string {
+function block(node: PMJson, input: ExportInput): string {
   switch (node.type) {
+    case "image": {
+      const attrs = imageAttrs(node);
+      const asset = attrs ? input.assets?.[attrs.asset] : undefined;
+      if (!attrs || !asset) return "";
+      return `<figure class="image align-${attrs.align}"><img src="images/${attrs.asset}.${extensionOf(asset)}" alt="${xml(attrs.alt)}" style="width:${String(attrs.width)}%"/></figure>`;
+    }
     case "chapter_title":
       return `<h1${alignClass(node)}>${inline(node)}</h1>`;
     case "heading": {
@@ -38,13 +44,13 @@ function block(node: PMJson): string {
       return `<p class="scene-break">*&#160;&#160;*&#160;&#160;*</p>`;
     case "bullet_list":
     case "bullet_list_2":
-      return `<ul>${(node.content ?? []).map(block).join("")}</ul>`;
+      return `<ul>${(node.content ?? []).map((child) => block(child, input)).join("")}</ul>`;
     case "ordered_list":
     case "ordered_list_2":
-      return `<ol>${(node.content ?? []).map(block).join("")}</ol>`;
+      return `<ol>${(node.content ?? []).map((child) => block(child, input)).join("")}</ol>`;
     case "list_item":
     case "list_item_2":
-      return `<li>${(node.content ?? []).map(block).join("")}</li>`;
+      return `<li>${(node.content ?? []).map((child) => block(child, input)).join("")}</li>`;
     case "title":
       return "";
     default:
@@ -92,6 +98,9 @@ h2, h3, h4 { font-weight: 600; margin: 1.2em 0 0.5em; }
 .scene-break { text-align: center; text-indent: 0; margin: 1em 0; }
 .title-page { text-align: center; margin-top: 30%; }
 .title-page h1 { page-break-before: auto; font-size: 2em; }
+figure.image { margin: 1em 0; text-indent: 0; text-align: center; } figure.image img { max-width: 100%; height: auto; }
+figure.align-left { text-align: left; } figure.align-right { text-align: right; }
+.cover { margin: 0; padding: 0; text-align: center; } .cover img { max-width: 100%; max-height: 100vh; }
 .align-left { text-align: left; } .align-center { text-align: center; } .align-right { text-align: right; } .align-justify { text-align: justify; }
 `;
 
@@ -117,10 +126,34 @@ export function exportEpub(input: ExportInput, id: string, modified = new Date()
     `<item id="title" href="title.xhtml" media-type="application/xhtml+xml"/>`,
   ];
   const spine: string[] = [`<itemref idref="title"/>`];
+  const used = new Set<string>();
+  const collect = (nodes: PMJson[]) => {
+    for (const node of nodes) {
+      const attrs = node.type === "image" ? imageAttrs(node) : null;
+      if (attrs) used.add(attrs.asset);
+      collect(node.content ?? []);
+    }
+  };
+  collect(input.doc.content ?? []);
+  for (const id of used) {
+    const asset = input.assets?.[id];
+    if (!asset) continue;
+    const ext = extensionOf(asset);
+    files[`OEBPS/images/${id}.${ext}`] = [asset.bytes, { level: 0 }];
+    manifest.push(`<item id="img-${id}" href="images/${id}.${ext}" media-type="image/${asset.kind}"/>`);
+  }
+  if (input.cover?.front) {
+    const ext = extensionOf(input.cover.front);
+    files[`OEBPS/images/cover.${ext}`] = [input.cover.front.bytes, { level: 0 }];
+    manifest.push(`<item id="cover-image" href="images/cover.${ext}" media-type="image/${input.cover.front.kind}" properties="cover-image"/>`);
+    files["OEBPS/cover.xhtml"] = strToU8(page(input.title, lang, `<section class="cover" epub:type="cover"><img src="images/cover.${ext}" alt="${xml(input.title)}"/></section>`));
+    manifest.push(`<item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>`);
+    spine.unshift(`<itemref idref="cover"/>`);
+  }
   const toc: string[] = [];
   parts.forEach((chapter, index) => {
     const name = `chapter-${String(index + 1).padStart(3, "0")}.xhtml`;
-    files[`OEBPS/${name}`] = strToU8(page(chapter.title, lang, `<section class="${xml(input.mode)}">${chapter.blocks.map(block).join("\n")}</section>`));
+    files[`OEBPS/${name}`] = strToU8(page(chapter.title, lang, `<section class="${xml(input.mode)}">${chapter.blocks.map((node) => block(node, input)).join("\n")}</section>`));
     manifest.push(`<item id="c${String(index + 1)}" href="${name}" media-type="application/xhtml+xml"/>`);
     spine.push(`<itemref idref="c${String(index + 1)}"/>`);
     toc.push(`<li><a href="${name}">${xml(chapter.title)}</a></li>`);

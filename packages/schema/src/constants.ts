@@ -2,7 +2,7 @@
  * Version provisoire du schéma éditeur (entier).
  * Elle n'est pas figée : un changement de nœuds ou de marques l'incrémente.
  */
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 /** `screenplay` est le script de film (A-018). */
 export const DOCUMENT_MODES = ["novel", "screenplay", "document", "blank"] as const;
@@ -26,7 +26,7 @@ export const COMMON_NODES = ["title", "hard_break"] as const;
  * le changement de mode ne les retire pas.
  */
 export const MODE_NODES = {
-  novel: ["chapter_title", "paragraph", "scene_break"],
+  novel: ["chapter_title", "paragraph", "scene_break", "image"],
   screenplay: [
     "scene_heading",
     "action",
@@ -45,9 +45,20 @@ export const MODE_NODES = {
     "bullet_list_2",
     "ordered_list_2",
     "list_item_2",
+    "image",
   ],
-  blank: ["paragraph"],
+  blank: ["paragraph", "image"],
 } as const satisfies Record<DocumentMode, readonly string[]>;
+
+/**
+ * Image (version 2) : le fichier vit dans le texte lui-même (carte Yjs `assets`),
+ * désigné par l'empreinte de ses octets. Jamais d'URL ni de chemin.
+ */
+export const IMAGE_WIDTH_MIN = 10;
+export const IMAGE_WIDTH_MAX = 100;
+export const IMAGE_ALIGNS = ["left", "center", "right"] as const;
+export type ImageAlign = (typeof IMAGE_ALIGNS)[number];
+export const ASSET_ID = /^[0-9a-f]{32}$/u;
 
 /** Blocs de texte. `heading` porte en plus le niveau 1 à 3. */
 export const TEXT_BLOCKS = [

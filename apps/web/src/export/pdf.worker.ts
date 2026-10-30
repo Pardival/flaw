@@ -3,7 +3,7 @@ import { createTypstCompiler, type TypstCompiler } from "@myriaddreamin/typst.ts
 import { CompileFormatEnum } from "@myriaddreamin/typst.ts/compiler";
 import { disableDefaultFontAssets, loadFonts } from "@myriaddreamin/typst.ts/options.init";
 import wasmUrl from "@myriaddreamin/typst-ts-web-compiler/pkg/typst_ts_web_compiler_bg.wasm?url";
-import { PDF_FONT_FILES, TYPST_MAIN, pdfData, pdfFonts, safeFileName, type ExportInput, type PdfOptions } from "@flaw/exporters/src/index.ts";
+import { PDF_FONT_FILES, TYPST_MAIN, pdfData, pdfFiles, pdfFonts, safeFileName, type ExportInput, type PdfOptions } from "@flaw/exporters/src/index.ts";
 
 /**
  * PDF sur l'appareil (A-016, T-034) : Typst WASM dans un Web Worker, polices TTF
@@ -55,6 +55,9 @@ scope.onmessage = async (event: MessageEvent<PdfRequest>) => {
     const typst = await getCompiler(families);
     typst.addSource("/main.typ", TYPST_MAIN);
     typst.mapShadow("/data.json", pdfData(input, options));
+    for (const [path, bytes] of Object.entries(pdfFiles(input))) {
+      typst.mapShadow(path, bytes);
+    }
     const result = await typst.compile({ mainFilePath: "/main.typ", format: CompileFormatEnum.pdf, diagnostics: "none" });
     const bytes = result.result;
     if (!bytes) {

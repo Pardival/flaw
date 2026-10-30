@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslate } from "../i18n/i18n.ts";
 import type { DocumentMode } from "../local-store/index.ts";
 
-export type EditorPanel = "search" | "chapters" | "history" | "export" | "shortcuts";
+export type EditorPanel = "search" | "chapters" | "history" | "export" | "shortcuts" | "image";
 
 /** Menu ⋯ de l'éditeur (D-034) : Rechercher, Aller au chapitre, Historique, Exporter, Raccourcis. */
 export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "chapters", "shortcuts"] }: {
@@ -31,7 +31,7 @@ export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "
       document.removeEventListener("pointerdown", onPointer);
     };
   }, [open]);
-  const items: EditorPanel[] = ["search", "chapters", "history", "export", "shortcuts"];
+  const items: EditorPanel[] = ["image", "search", "chapters", "history", "export", "shortcuts"];
   return (
     <div ref={root} className="row-menu editor-menu">
       <button type="button" className="row-menu-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={t("menu")} onClick={() => setOpen(!open)}>
@@ -53,7 +53,7 @@ export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "
             </button>
           ) : null}
           {items
-            .filter((item) => item !== "chapters" || mode === "novel")
+            .filter((item) => (item !== "chapters" || mode === "novel") && (item !== "image" || mode !== "screenplay"))
             .map((item) => (
               <button
                 key={item}

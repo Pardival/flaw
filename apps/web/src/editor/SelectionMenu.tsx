@@ -1,7 +1,7 @@
 import { schema } from "@flaw/schema/src/index.ts";
 import { toggleMark } from "prosemirror-commands";
 import type { MarkType } from "prosemirror-model";
-import type { Command, EditorState } from "prosemirror-state";
+import { NodeSelection, type Command, type EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 import { useEffect, useRef, useState } from "react";
 
@@ -35,7 +35,8 @@ export type MenuPosition = { top: number; left: number } | null;
 /** Position du menu au-dessus de la sélection, ou null si rien n'est sélectionné. */
 export function menuPosition(view: EditorView): MenuPosition {
   const { from, to, empty } = view.state.selection;
-  if (empty || !view.hasFocus()) {
+  // Image sélectionnée : elle a sa propre barre d'outils.
+  if (empty || !view.hasFocus() || view.state.selection instanceof NodeSelection) {
     return null;
   }
   try {

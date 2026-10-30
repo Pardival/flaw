@@ -8,6 +8,9 @@ export type PMJson = { type: string; attrs?: Record<string, unknown>; content?: 
 export type ExportMode = "novel" | "screenplay" | "document" | "blank";
 export type ExportFormat = "novel_13x20" | "pocket_11x17_8" | "trade_15x23" | "a5" | "a4" | "us_letter";
 
+/** Fichier du texte joint à l'export (image, couverture rendue en JPEG). */
+export type ExportAsset = { bytes: Uint8Array; kind: "jpeg" | "png" };
+
 export type ExportInput = {
   title: string;
   author?: string;
@@ -17,7 +20,26 @@ export type ExportInput = {
   fontFamily?: string;
   baseFontSizePt?: number;
   doc: PMJson;
+  /** Images désignées par le texte (attribut `asset`), par empreinte. */
+  assets?: Record<string, ExportAsset>;
+  /** 1re et 4e de couverture, déjà rendues à la taille de la page. */
+  cover?: { front?: ExportAsset; back?: ExportAsset };
 };
+
+export type ImageAttrs = { asset: string; width: number; ratio: number; align: "left" | "center" | "right"; alt: string };
+
+export function imageAttrs(node: PMJson): ImageAttrs | null {
+  const attrs = node.attrs ?? {};
+  if (typeof attrs.asset !== "string" || !/^[0-9a-f]{32}$/u.test(attrs.asset)) return null;
+  const width = typeof attrs.width === "number" ? Math.min(100, Math.max(10, attrs.width)) : 60;
+  const ratio = typeof attrs.ratio === "number" && attrs.ratio > 0 ? attrs.ratio : 0.75;
+  const align = attrs.align === "left" || attrs.align === "right" ? attrs.align : "center";
+  return { asset: attrs.asset, width, ratio, align, alt: typeof attrs.alt === "string" ? attrs.alt : "" };
+}
+
+export function extensionOf(asset: ExportAsset): "jpg" | "png" {
+  return asset.kind === "png" ? "png" : "jpg";
+}
 
 export type Run = { text: string; bold: boolean; italic: boolean; sizePt: number | null; lineBreak: boolean };
 
