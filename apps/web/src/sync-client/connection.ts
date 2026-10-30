@@ -24,7 +24,7 @@ function refreshPending(): void {
   for (const provider of providers.values()) {
     pending += provider.unsyncedChanges;
   }
-  updateSync({ pending });
+  updateSync({ pending, attached: providers.size });
 }
 
 function sharedSocket(): HocuspocusProviderWebsocket {
@@ -74,6 +74,7 @@ export function attachDocument(documentId: string, doc: Y.Doc, options: { localC
   });
   provider.attach();
   providers.set(documentId, provider);
+  refreshPending();
 
   // Filet before_merge (A-010) : des changements locaux non envoyés et une mise à
   // jour distante arrive → instantané de l'état local, bandeau une fois (D-041).

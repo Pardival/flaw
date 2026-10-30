@@ -28,6 +28,8 @@ export type SyncSnapshot = {
 type Flags = {
   online: boolean;
   connected: boolean;
+  /** Textes ouverts reliés au serveur : sans texte ouvert, la connexion n'est pas attendue. */
+  attached: number;
   pending: number;
   queued: number;
   saving: boolean;
@@ -43,6 +45,7 @@ export const SYNC_ERROR_AFTER_MS = 5 * 60 * 1000;
 const flags: Flags = {
   online: typeof navigator === "undefined" ? true : navigator.onLine,
   connected: false,
+  attached: 0,
   pending: 0,
   queued: 0,
   saving: false,
@@ -73,7 +76,7 @@ function derive(): SyncState {
   if (flags.saving) {
     return "saving";
   }
-  if (flags.pending + flags.queued > 0 || !flags.connected) {
+  if (flags.pending + flags.queued > 0 || (flags.attached > 0 && !flags.connected)) {
     return "saved-local";
   }
   return "synced";

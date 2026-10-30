@@ -7,7 +7,7 @@ export const library = {
   sortNote: "Triés par dernière modification",
   countRecent_one: "{{count}} texte · récents d'abord",
   countRecent_other: "{{count}} textes · récents d'abord",
-  newText: "Nouveau texte",
+  newText: "Écrire",
   newTextShortcut: "N",
   emptyTitle: "Aucun texte pour l'instant",
   emptyHint: "Une page blanche vous attend.",

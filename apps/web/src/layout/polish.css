@@ -1161,3 +1161,45 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ---------- Réglages de l'accueil : roue discrète en bas à droite ---------- */
+.page .library-settings {
+  position: fixed;
+  right: var(--espace-4);
+  bottom: calc(var(--espace-4) + env(safe-area-inset-bottom));
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--cible-min);
+  height: var(--cible-min);
+  min-height: var(--cible-min);
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--couleur-encre-3);
+  opacity: 1;
+  animation: flaw-fade 400ms 400ms var(--courbe-entree) backwards;
+}
+
+.page .library-settings:hover:not(:disabled) {
+  color: var(--couleur-encre);
+  background: var(--couleur-surface-survol);
+}
+
+.library-settings svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 500ms var(--courbe-standard);
+}
+
+.page .library-settings:hover svg {
+  transform: rotate(60deg);
+}
