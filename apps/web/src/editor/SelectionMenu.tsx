@@ -3,6 +3,7 @@ import { toggleMark } from "prosemirror-commands";
 import type { MarkType } from "prosemirror-model";
 import type { Command, EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
+import { useEffect, useRef, useState } from "react";
 
 import { useTranslate } from "../i18n/i18n.ts";
 import type { DocumentMode } from "../local-store/index.ts";
@@ -46,6 +47,63 @@ export function menuPosition(view: EditorView): MenuPosition {
   }
 }
 
+/** Durée de la sortie (fondu) : identique à `flaw-menu-out` dans polish.css. */
+const EXIT_MS = 120;
+
+/**
+ * Apparition douce : rien pendant qu'on sélectionne à la souris (le menu ne
+ * clignote pas sous le pointeur), puis entrée animée au relâchement, glissement
+ * quand la sélection change, et sortie en fondu au lieu d'une disparition sèche.
+ */
+function useMenuPresence(position: MenuPosition): { shown: MenuPosition; leaving: boolean } {
+  const [pressed, setPressed] = useState(false);
+  const [leaving, setLeaving] = useState<MenuPosition>(null);
+  const last = useRef<MenuPosition>(null);
+  const target = pressed ? null : position;
+
+  useEffect(() => {
+    const down = (event: PointerEvent) => {
+      if (event.button === 0 && event.target instanceof Element && event.target.closest(".ProseMirror") !== null) {
+        setPressed(true);
+      }
+    };
+    const up = () => {
+      setPressed(false);
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("pointerup", up, true);
+    document.addEventListener("pointercancel", up, true);
+    return () => {
+      document.removeEventListener("pointerdown", down, true);
+      document.removeEventListener("pointerup", up, true);
+      document.removeEventListener("pointercancel", up, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (target !== null) {
+      last.current = target;
+      setLeaving(null);
+    }
+  }, [target?.top, target?.left]);
+
+  useEffect(() => {
+    if (target !== null || last.current === null) {
+      return;
+    }
+    setLeaving(last.current);
+    last.current = null;
+    const timer = window.setTimeout(() => {
+      setLeaving(null);
+    }, EXIT_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [target === null]);
+
+  return { shown: target ?? leaving, leaving: target === null };
+}
+
 function markActive(state: EditorState, type: MarkType | undefined): boolean {
   if (type === undefined) {
     return false;
@@ -70,7 +128,8 @@ export function SelectionMenu({
   baseSize: () => number;
 }) {
   const t = useTranslate("editor");
-  if (view === null || position === null || mode === "screenplay") {
+  const { shown, leaving } = useMenuPresence(position);
+  if (view === null || shown === null || mode === "screenplay") {
     return null;
   }
   const state = view.state;
@@ -99,7 +158,13 @@ export function SelectionMenu({
   const bold = schema.marks.bold;
   const italic = schema.marks.italic;
   return (
-    <div className="selection-menu" role="toolbar" aria-label={t("format")} style={{ top: position.top, left: position.left }}>
+    <div
+      className={leaving ? "selection-menu is-leaving" : "selection-menu"}
+      role="toolbar"
+      aria-label={t("format")}
+      aria-hidden={leaving || undefined}
+      style={{ top: shown.top, left: shown.left }}
+    >
       {bold ? button("B", t("bold"), markActive(state, bold), toggleMark(bold)) : null}
       {italic ? button("I", t("italic"), markActive(state, italic), toggleMark(italic)) : null}
       <span className="selection-menu-sep" />

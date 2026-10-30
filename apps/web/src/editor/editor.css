@@ -127,10 +127,14 @@
   margin: 0;
 }
 
-.book-text [data-align="left"] { text-align: left; }
-.book-text [data-align="center"] { text-align: center; }
-.book-text [data-align="right"] { text-align: right; }
-.book-text [data-align="justify"] { text-align: justify; }
+/*
+ * Alignement choisi par la personne : il l'emporte toujours sur celui du mode
+ * (roman justifié, titres centrés…), d'où !important. Centré ou à droite, pas d'alinéa.
+ */
+.book-text [data-align="left"] { text-align: left !important; }
+.book-text [data-align="center"] { text-align: center !important; text-indent: 0 !important; }
+.book-text [data-align="right"] { text-align: right !important; text-indent: 0 !important; }
+.book-text [data-align="justify"] { text-align: justify !important; }
 
 /* Roman : alinéa, justification, titres de chapitre centrés. */
 .book[data-mode="novel"] .book-text p[data-flaw-node="paragraph"] {

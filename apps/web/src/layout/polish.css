@@ -153,9 +153,29 @@
 
 /* Menus, boîtes de dialogue, panneaux, bannières. */
 .row-menu-list,
+/*
+ * Menu de sélection : `translate`/`scale` (propriétés individuelles) s'ajoutent au
+ * `transform` qui le place au-dessus de la sélection, sans l'écraser pendant l'animation.
+ */
 .selection-menu {
-  animation: flaw-pop 160ms var(--courbe-entree) backwards;
-  transform-origin: top right;
+  animation: flaw-menu-in 180ms var(--courbe-entree) backwards;
+  transform-origin: 50% 100%;
+  transition: top 140ms var(--courbe-entree), left 140ms var(--courbe-entree);
+}
+
+.selection-menu.is-leaving {
+  animation: flaw-menu-out 120ms ease-in forwards;
+  pointer-events: none;
+}
+
+@keyframes flaw-menu-in {
+  from { opacity: 0; translate: 0 6px; scale: 0.96; }
+  to { opacity: 1; translate: 0 0; scale: 1; }
+}
+
+@keyframes flaw-menu-out {
+  from { opacity: 1; translate: 0 0; scale: 1; }
+  to { opacity: 0; translate: 0 4px; scale: 0.98; }
 }
 
 .dialog-veil {
