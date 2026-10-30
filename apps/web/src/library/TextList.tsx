@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Logo } from "../shell/Logo.tsx";
 
-import { useTranslate } from "../i18n/i18n.ts";
+import { useTranslate, uiLocale } from "../i18n/i18n.ts";
 import { DOCUMENT_MODES, type LocalDocument, type LocalStore } from "../local-store/index.ts";
 import { MODE_FONT } from "./formats-by-mode.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
@@ -15,8 +15,8 @@ import { usePresence } from "../shell/presence.ts";
 import { Icon } from "../shell/Icon.tsx";
 import { LOCAL_ONLY } from "../platform/target.ts";
 
-const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
-const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const DATE = { format: (value: Date | number) => new Intl.DateTimeFormat(uiLocale(), { day: "numeric", month: "short", year: "numeric" }).format(value) };
+const TIME = { format: (value: Date | number) => new Intl.DateTimeFormat(uiLocale(), { hour: "2-digit", minute: "2-digit" }).format(value) };
 
 function shortDate(iso: string): string {
   const date = new Date(iso);
@@ -207,7 +207,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
             <ul>
               <li>{t("welcomeTipDash")}</li>
               <li>{t("welcomeTipFocus")}</li>
-              <li>{t("welcomeTipOffline")}</li>
+              <li>{t(LOCAL_ONLY ? "welcomeTipLocal" : "welcomeTipOffline")}</li>
             </ul>
           </aside>
         </section>

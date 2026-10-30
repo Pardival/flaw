@@ -2,7 +2,7 @@
 export const importCatalog = {
   import: "Importer",
   importFile: "Importer un fichier",
-  dropHere: "Déposez un fichier .docx, .md ou .txt pour l'importer",
+  dropHere: "Déposez un fichier .docx, .pdf, .md ou .txt pour l'importer",
   reading: "Lecture de « {{name}} »…",
   onDevice: "Le fichier est lu sur cet appareil ; il n'est envoyé nulle part.",
   cancel: "Annuler",

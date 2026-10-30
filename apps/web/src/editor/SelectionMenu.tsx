@@ -5,7 +5,7 @@ import { NodeSelection, type Command, type EditorState } from "prosemirror-state
 import type { EditorView } from "prosemirror-view";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { useTranslate } from "../i18n/i18n.ts";
+import { useTranslate, uiLocale } from "../i18n/i18n.ts";
 import { Icon } from "../shell/Icon.tsx";
 import type { DocumentMode } from "../local-store/index.ts";
 import { toggleHeading } from "./modes/document/keys.ts";
@@ -173,7 +173,7 @@ export function SelectionMenu({
       <span className="selection-menu-sep" />
       {button("−", t("smaller"), false, changeSize(-0.5, baseSize))}
       <span className="selection-menu-size" aria-label={t("size")}>
-        {currentSize(state, baseSize()).toLocaleString("fr-FR")}
+        {currentSize(state, baseSize()).toLocaleString(uiLocale())}
       </span>
       {button("+", t("larger"), false, changeSize(0.5, baseSize))}
       <span className="selection-menu-sep" />

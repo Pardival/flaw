@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import * as Y from "yjs";
 
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
-import { useTranslate } from "../i18n/i18n.ts";
+import { useTranslate, uiLocale } from "../i18n/i18n.ts";
 import { LOCAL_ONLY } from "../platform/target.ts";
 import { listBeforeMerge, saveSnapshot } from "../sync-client/before-merge.ts";
 import { useClosing } from "../shell/presence.ts";
@@ -17,8 +17,8 @@ type Version = {
   local?: Uint8Array;
 };
 
-const DAY = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" });
-const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const DAY = { format: (value: Date | number) => new Intl.DateTimeFormat(uiLocale(), { weekday: "long", day: "numeric", month: "long" }).format(value) };
+const TIME = { format: (value: Date | number) => new Intl.DateTimeFormat(uiLocale(), { hour: "2-digit", minute: "2-digit" }).format(value) };
 
 function localText(update: Uint8Array): { text: string; words: number } {
   const doc = new Y.Doc();

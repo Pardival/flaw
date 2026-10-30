@@ -6,7 +6,7 @@
 
 Flaw is a free and open-source writing app built for long-form work: novels, screenplays, essays, journals. You write directly on a page at its real size (trade paperback, A4, US Letter…), with margins, page numbers and page breaks, and no menus cluttering the screen. Everything is saved on your device, even offline, then synced with your own server.
 
-> The interface is currently in French. Contributions to translate it are welcome (i18next catalogs live in `apps/web/src/i18n`).
+> The interface is available in English and French (it follows your system language; change it in Settings › General). Other translations are welcome: catalogs live in `apps/web/src/i18n`.
 
 ## Download
 

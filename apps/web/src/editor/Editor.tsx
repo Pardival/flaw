@@ -59,6 +59,8 @@ import { imageNodeView, insertImage } from "./images/view.ts";
 import { CoverStudio } from "../cover/CoverStudio.tsx";
 import { coverExport, hasCover } from "../cover/export.ts";
 import { PAGE_MM } from "@flaw/exporters/src/model.ts";
+import { META_MAP } from "@flaw/sync/src/index.ts";
+import i18n from "../i18n/i18n.ts";
 
 export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
@@ -78,6 +80,9 @@ function seed(doc: Y.Doc, fragment: Y.XmlFragment, mode: LocalDocument["mode"]):
   }
   doc.transact(() => {
     prosemirrorToYXmlFragment(emptyDocument(mode), fragment);
+    // Un nouveau texte naît dans la langue de l'interface (typographie française seulement en français).
+    const meta = doc.getMap<unknown>(META_MAP);
+    if (!meta.has("lang") && i18n.language === "en") meta.set("lang", "en");
   });
 }
 

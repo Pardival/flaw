@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { useTranslate } from "../i18n/i18n.ts";
+import { readUiLanguageChoice, setUiLanguage, useTranslate, uiLocale, type UiLanguageChoice } from "../i18n/i18n.ts";
 import type { DocumentMode, LocalDocument, PageFormat } from "../local-store/index.ts";
 import { DOCUMENT_MODES } from "../local-store/index.ts";
 import { FORMATS_BY_MODE, defaultFormat, formatDimensions } from "../library/formats-by-mode.ts";
@@ -208,7 +208,7 @@ function TextTab({ text }: { text: TextSettings }) {
             <button type="button" aria-label={t("smaller")} onClick={() => text.onSize(Math.max(8, text.baseFontSizePt - 0.5))}>
               −
             </button>
-            <output>{text.baseFontSizePt.toLocaleString("fr-FR")} pt</output>
+            <output>{text.baseFontSizePt.toLocaleString(uiLocale())} pt</output>
             <button type="button" aria-label={t("larger")} onClick={() => text.onSize(Math.min(24, text.baseFontSizePt + 0.5))}>
               +
             </button>
@@ -323,6 +323,7 @@ function GeneralTab({ onTrash }: { onTrash?: () => void }) {
           ))}
         </div>
       </fieldset>
+      <UiLanguageField />
       </section>
       <section className="settings-group">
         <h3 className="settings-group-title">{t("groupWriting")}</h3>
@@ -409,6 +410,33 @@ function GeneralTab({ onTrash }: { onTrash?: () => void }) {
       {LOCAL_ONLY ? <LibraryBackup /> : <AccountExport />}
       </section>
     </div>
+  );
+}
+
+/** Langue de l'interface : automatique (celle du système), français ou anglais. */
+function UiLanguageField() {
+  const t = useTranslate("settings");
+  const [choice, setChoice] = useState<UiLanguageChoice>(() => readUiLanguageChoice());
+  return (
+    <fieldset className="settings-field">
+      <legend>{t("uiLanguage")}</legend>
+      <div className="settings-segmented">
+        {(["auto", "fr", "en"] as const).map((value) => (
+          <label key={value} className="settings-radio">
+            <input
+              type="radio"
+              name="ui-language"
+              checked={choice === value}
+              onChange={() => {
+                setChoice(value);
+                setUiLanguage(value);
+              }}
+            />
+            <span>{t(`uiLanguage_${value}`)}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
   );
 }
 

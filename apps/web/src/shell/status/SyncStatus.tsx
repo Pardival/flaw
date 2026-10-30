@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
-import { useTranslate } from "../../i18n/i18n.ts";
+import { useTranslate, uiLocale } from "../../i18n/i18n.ts";
 import { retryNow } from "../../sync-client/connection.ts";
 import { dismissBanner, useSyncStatus, type Banner } from "../../sync-client/status.ts";
 
-const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const TIME = { format: (value: Date | number) => new Intl.DateTimeFormat(uiLocale(), { hour: "2-digit", minute: "2-digit" }).format(value) };
 
 /** « Enregistrement… » n'apparaît qu'au-delà de 500 ms (A-025). */
 function useDelayedSaving(saving: boolean): boolean {

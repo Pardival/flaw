@@ -46,9 +46,22 @@ export function useClosing(onClose: () => void, ms = EXIT_MS): { closing: boolea
 /** Change d'écran avec un fondu enchaîné natif quand le moteur le permet. */
 export function withViewTransition(update: () => void): void {
   const doc = document as Document & { startViewTransition?: (callback: () => void) => unknown };
-  if (typeof doc.startViewTransition !== "function" || reducedMotion()) {
+  if (typeof doc.startViewTransition !== "function" || reducedMotion() || document.hidden) {
     update();
     return;
   }
-  doc.startViewTransition(update);
+  // Le moteur appelle `update` à la prochaine image ; si elle ne vient pas (fenêtre
+  // en arrière-plan), l'écran change quand même, une seule fois.
+  let done = false;
+  const run = () => {
+    if (done) return;
+    done = true;
+    update();
+  };
+  try {
+    doc.startViewTransition(run);
+  } catch {
+    run();
+  }
+  window.setTimeout(run, 150);
 }

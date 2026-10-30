@@ -22,6 +22,7 @@ export const library = {
   welcomeTipDash: "Tapez -- pour un tiret de dialogue « — ».",
   welcomeTipFocus: "Ctrl/⌘ + Maj + F : le mode focus, rien que la ligne en cours.",
   welcomeTipOffline: "Tout est enregistré sur cet appareil, même hors ligne, puis synchronisé.",
+  welcomeTipLocal: "Tout s'enregistre automatiquement, sur cet ordinateur seulement.",
   untitled: "Sans titre",
   words_one: "{{count}} mot",
   words_other: "{{count}} mots",

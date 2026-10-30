@@ -15,6 +15,8 @@ Flaw est une application d'écriture libre, pensée pour les textes longs : roma
 
 L'application n'est pas signée par un certificat payant : au premier lancement, ouvrez-la via Réglages Système › Confidentialité et sécurité › « Ouvrir quand même » (Mac), ou « Informations complémentaires » › « Exécuter quand même » (Windows). Pensez à **Réglages › Données › Sauvegarder la bibliothèque** de temps en temps.
 
+L'interface existe en français et en anglais : elle suit la langue du système, et se change dans Réglages › Général.
+
 ## Fonctionnalités
 
 - **Quatre modes d'écriture**

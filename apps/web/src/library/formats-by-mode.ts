@@ -1,5 +1,6 @@
 import type { DocumentMode, PageFormat } from "../local-store/index.ts";
 import { pageSize } from "../layout/formats.ts";
+import { uiLocale } from "../i18n/i18n.ts";
 
 /** Formats proposés par mode, défaut en tête (cahier § 5.4, AC-002). */
 export const FORMATS_BY_MODE: Record<DocumentMode, readonly PageFormat[]> = {
@@ -30,7 +31,7 @@ export function formatMarginsCm(format: PageFormat, mode: DocumentMode): [number
 
 /** Cotes lisibles en cm, virgule décimale française. */
 export function formatCm(mm: number): string {
-  return (Math.round(mm) / 10).toLocaleString("fr-FR", { maximumFractionDigits: 2 });
+  return (Math.round(mm) / 10).toLocaleString(uiLocale(), { maximumFractionDigits: 2 });
 }
 
 export function formatDimensions(format: PageFormat): string {

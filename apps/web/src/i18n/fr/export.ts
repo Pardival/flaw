@@ -21,6 +21,6 @@ export const exportCatalog = {
   busy: "Création du fichier…",
   cancel: "Annuler",
   failed: "L'export a échoué. Réessayez.",
-  pdfFailed: "Le PDF n'a pas pu être créé, ni sur l'appareil ni sur le serveur. Vous pouvez exporter en Word.",
+  pdfFailed: "Le PDF n'a pas pu être créé. Vous pouvez exporter en Word.",
   tryWord: "Exporter en Word",
 };
