@@ -1,7 +1,8 @@
 /* global document, navigator, localStorage */
 // Langue (français par défaut, anglais si le navigateur le préfère) et système mis en avant.
 (function () {
-  var lang = (navigator.language || "fr").slice(0, 2) === "fr" ? "fr" : "en";
+  // Anglais par défaut ; le français reste à un clic (bouton FR), et le choix est retenu.
+  var lang = "en";
   try {
     lang = localStorage.getItem("flaw.lang") || lang;
   } catch {
@@ -38,7 +39,7 @@
     }
     apply(next);
   });
-  if (lang !== "fr") {
+  if (lang !== "en") {
     apply(lang);
   }
 
