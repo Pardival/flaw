@@ -769,8 +769,9 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
           ...row,
           title: remote.title,
           pageFormat: remote.pageFormat,
-          wordCount: remote.wordCount,
-          excerpt: remote.excerpt ?? row.excerpt,
+          // Contenu local pas encore envoyé : le compte et l'extrait locaux sont les bons.
+          wordCount: row.contentPending ? row.wordCount : remote.wordCount,
+          excerpt: row.contentPending ? row.excerpt : (remote.excerpt ?? row.excerpt),
           updatedAt: remote.updatedAt,
           deletedAt: remote.deletedAt,
         }

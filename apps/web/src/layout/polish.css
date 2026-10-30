@@ -1203,3 +1203,16 @@
 .page .library-settings:hover svg {
   transform: rotate(60deg);
 }
+
+.welcome-import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--espace-3);
+}
+
+.page .welcome-samples {
+  border-color: var(--couleur-accent);
+  color: var(--couleur-accent);
+  background: var(--couleur-accent-doux);
+}

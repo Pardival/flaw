@@ -144,6 +144,8 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
     },
   };
 
+  const [loadingSamples, setLoadingSamples] = useState(false);
+
   if (documents.length === 0) {
     return (
       <div className="library" {...dropProps}>
@@ -176,9 +178,25 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
             ))}
           </ul>
           <div className="welcome-import">
-            <button type="button" onClick={() => picker.current?.click()}>
-              {t("welcomeImport")}
-            </button>
+            <div className="welcome-import-actions">
+              <button type="button" onClick={() => picker.current?.click()}>
+                {t("welcomeImport")}
+              </button>
+              <button
+                type="button"
+                className="welcome-samples"
+                disabled={loadingSamples}
+                onClick={() => {
+                  setLoadingSamples(true);
+                  void import("./samples/index.ts")
+                    .then(({ loadSamples }) => loadSamples(store))
+                    .catch(() => undefined)
+                    .finally(() => setLoadingSamples(false));
+                }}
+              >
+                {loadingSamples ? t("welcomeSamplesBusy") : t("welcomeSamples")}
+              </button>
+            </div>
             <small>{t("welcomeImportHint")}</small>
           </div>
           <aside className="welcome-tips" aria-label={t("welcomeTipsTitle")}>

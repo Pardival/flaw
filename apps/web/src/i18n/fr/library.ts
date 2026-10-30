@@ -14,6 +14,8 @@ export const library = {
   welcomeTitle: "Bienvenue dans Flaw",
   welcomeLead: "Votre premier texte commence ici. Que voulez-vous écrire ?",
   welcomeImport: "Importer un fichier",
+  welcomeSamples: "Découvrir avec des exemples",
+  welcomeSamplesBusy: "Préparation des exemples…",
   welcomeImportHint: "Word, Markdown ou texte brut — ou glissez-le n'importe où sur cette page.",
   welcomeTipsTitle: "Bon à savoir",
   welcomeTipDash: "Tapez -- pour un tiret de dialogue « — ».",
