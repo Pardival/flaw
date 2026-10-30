@@ -55,6 +55,8 @@ export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?
 
 const SAVE_DELAY_MS = 800;
 const TOAST_MS = 4_000;
+/** Hauteur, sous le haut de l'écran, de la ligne de lecture qui donne le chapitre courant. */
+const READING_LINE_PX = 120;
 /** Lignes visibles dans la boîte du mode focus. */
 const FOCUS_LINES = 4;
 
@@ -82,7 +84,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const mount = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [ready, setReady] = useState(false);
-  const [head, setHead] = useState<{ chapter: string; folio: string }>({ chapter: "", folio: "" });
+  const [head, setHead] = useState<{ chapter: string; folio: string; from: number }>({ chapter: "", folio: "", from: -1 });
+  const headRef = useRef(head);
+  headRef.current = head;
   const [endFolio, setEndFolio] = useState("1");
   const [toast, setToast] = useState(false);
   const [element, setElement] = useState("");
@@ -142,14 +146,42 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     }
   };
 
-  /** Renomme le chapitre où se trouve le curseur (son titre dans le texte). */
+  /** Chapitre affiché dans l'en-tête pour une position du texte. */
+  const showHeadAt = (view: EditorView, pos: number) => {
+    const model = paginationOf(view.state);
+    if (!model) {
+      return;
+    }
+    const running = runningHead(model, pos);
+    const chapter = model.chapters.find((item) => pos >= item.from && pos <= item.to);
+    const next = { chapter: running.chapterTitle, folio: String(running.folio), from: chapter?.from ?? -1 };
+    setHead((previous) =>
+      previous.chapter === next.chapter && previous.folio === next.folio && previous.from === next.from ? previous : next,
+    );
+  };
+
+  /** Chapitre lu : celui du texte situé sous la barre, en haut de l'écran. */
+  const showReadingHead = (view: EditorView) => {
+    const rect = view.dom.getBoundingClientRect();
+    const top = Math.max(rect.top, 0) + READING_LINE_PX;
+    if (top > rect.bottom) {
+      return;
+    }
+    const left = rect.left + rect.width / 2;
+    const found = view.posAtCoords({ left, top }) ?? view.posAtCoords({ left, top: top + READING_LINE_PX });
+    if (found) {
+      showHeadAt(view, found.pos);
+    }
+  };
+
+  /** Renomme le chapitre affiché dans l'en-tête (son titre dans le texte). */
   const renameChapter = (title: string) => {
     const view = viewRef.current;
     const model = view ? paginationOf(view.state) : undefined;
     if (!view || !model) {
       return;
     }
-    const pos = view.state.selection.from;
+    const pos = headRef.current.from >= 0 ? headRef.current.from : view.state.selection.from;
     const chapter = model.chapters.find((item) => pos >= item.from && pos <= item.to);
     const node = chapter ? view.state.doc.nodeAt(chapter.from) : null;
     if (!chapter || node?.type.name !== "chapter_title") {
@@ -395,12 +427,12 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
             lastTotal = total;
             const folio = String(lastFolio(model));
             setEndFolio((previous) => (previous === folio ? previous : folio));
-            const running = runningHead(model, current.state.selection.from);
-            setHead((previous) =>
-              previous.chapter === running.chapterTitle && previous.folio === String(running.folio)
-                ? previous
-                : { chapter: running.chapterTitle, folio: String(running.folio) },
-            );
+            // Frappe ou déplacement du curseur : le chapitre du curseur ; sinon celui de la lecture.
+            if (tr.docChanged || tr.selectionSet) {
+              showHeadAt(current, current.state.selection.from);
+            } else {
+              showReadingHead(current);
+            }
           }
         },
       });
@@ -519,6 +551,25 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     },
   });
 
+  // En lisant : le chapitre de l'en-tête suit le défilement.
+  useEffect(() => {
+    let frame = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const view = viewRef.current;
+        if (view && !focusRef.current) {
+          showReadingHead(view);
+        }
+      });
+    };
+    window.document.addEventListener("scroll", onScroll, { capture: true, passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      window.document.removeEventListener("scroll", onScroll, { capture: true });
+    };
+  }, [document.id]);
+
   // Page entière dès le départ : la dernière page va jusqu'à son pied, folio en bas.
   useEffect(() => {
     const book = bookRef.current;
@@ -577,7 +628,9 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
           />
           <span className="editor-subline">
             {head.chapter ? (
-              <InlineEdit className="editor-head" value={head.chapter} label={t("renameChapter")} onCommit={renameChapter} />
+              <span key={head.from} className="editor-head-swap">
+                <InlineEdit className="editor-head" value={head.chapter} label={t("renameChapter")} onCommit={renameChapter} />
+              </span>
             ) : null}
             {head.chapter ? <span className="editor-sep" aria-hidden="true">·</span> : null}
             <SyncIndicator />

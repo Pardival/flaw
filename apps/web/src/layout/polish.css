@@ -933,3 +933,15 @@
 .mode-card:has(input:checked) .sketch > span:not(.sketch-gap):not(.sketch-caret) {
   filter: brightness(0.9);
 }
+
+/* Chapitre courant : il glisse en fondu quand on change de chapitre. */
+@keyframes flaw-head-in {
+  from { opacity: 0; transform: translateY(6px); filter: blur(2px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+
+.editor-head-swap {
+  display: inline-flex;
+  min-width: 0;
+  animation: flaw-head-in 320ms var(--courbe-entree) backwards;
+}

@@ -10,6 +10,8 @@ import type { DocumentMode } from "../local-store/index.ts";
  * Script : U+00A0 partout (chasse fixe). Rien dans une heure, une adresse, après une
  * espace déjà insécable, ni dans les éléments personnage et transition.
  * L'espace est une transaction à part : Ctrl/⌘+Z l'annule seule (AC-072).
+ * Deux traits d'union « -- » deviennent un tiret de dialogue « — » (suivi d'une espace
+ * insécable en début de paragraphe) ; Ctrl/⌘+Z rend les deux traits.
  */
 export const NNBSP = " ";
 export const NBSP = " ";
@@ -111,10 +113,34 @@ function apply(view: EditorView, from: number, to: number, char: string, options
   return false;
 }
 
+export const EM_DASH = "—";
+
+/** « -- » → « — » : le second trait est d'abord inséré tel quel, puis remplacé à part. */
+function dialogueDash(view: EditorView, from: number, to: number): boolean {
+  const $from = view.state.doc.resolve(from);
+  if (EXCLUDED_NODES.has($from.parent.type.name) || from !== to) {
+    return false;
+  }
+  const before = $from.parent.textBetween(0, $from.parentOffset, undefined, "￼");
+  if (!before.endsWith("-") || before.endsWith("--")) {
+    return false;
+  }
+  view.dispatch(view.state.tr.insertText("-", from, to));
+  stopCapturing(view.state);
+  // En tête de paragraphe, le tiret ne reste jamais seul en fin de ligne.
+  const dash = before === "-" ? EM_DASH + NBSP : EM_DASH;
+  view.dispatch(view.state.tr.insertText(dash, from - 1, from + 1));
+  stopCapturing(view.state);
+  return true;
+}
+
 export function typographyPlugin(options: TypographyOptions): Plugin {
   return new Plugin({
     props: {
       handleTextInput(view, from, to, text) {
+        if (text === "-" && dialogueDash(view, from, to)) {
+          return true;
+        }
         if (!options.enabled() || text.length !== 1) {
           return false;
         }
