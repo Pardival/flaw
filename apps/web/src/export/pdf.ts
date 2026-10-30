@@ -1,6 +1,7 @@
 import type { ExportInput } from "@flaw/exporters/src/model.ts";
 
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
 import type { PdfRequest, PdfResponse } from "./pdf.worker.ts";
 
 export type PdfOptions = { mirrorMargins: boolean; chaptersOnRecto: boolean };
@@ -44,7 +45,7 @@ function onDevice(request: PdfRequest): Promise<PdfResponse> {
 
 /** Repli serveur (T-035) : processus enfant isolé, même gabarit. */
 async function onServer(id: string, options: PdfOptions): Promise<PdfResult> {
-  if (!navigator.onLine) {
+  if (LOCAL_ONLY || !navigator.onLine) {
     return { ok: false };
   }
   const response = await fetch(`/api/v1/documents/${id}/exports`, {

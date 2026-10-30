@@ -9,6 +9,10 @@ import { tokens } from "../theme/tokens.ts";
 import { usePreferences, type Preferences } from "./preferences.tsx";
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
 import { download } from "../export/run.ts";
+import { BackupError, exportLibrary, importLibrary } from "../library/backup.ts";
+import { useLocalStore } from "../library/store-context.tsx";
+import { saveFile } from "../platform/files.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
 
 /** Écran Compte existant (T-014b), fourni par l'App pour l'onglet Compte. */
 export const AccountSlot = createContext<ReactNode>(null);
@@ -71,9 +75,11 @@ export function SettingsPanel({ text, onClose, onTrash }: { text?: TextSettings;
           <button type="button" role="tab" aria-selected={tab === "general"} onClick={() => setTab("general")}>
             {t("tabGeneral")}
           </button>
-          <button type="button" role="tab" aria-selected={tab === "account"} onClick={() => setTab("account")}>
-            {t("tabAccount")}
-          </button>
+          {LOCAL_ONLY ? null : (
+            <button type="button" role="tab" aria-selected={tab === "account"} onClick={() => setTab("account")}>
+              {t("tabAccount")}
+            </button>
+          )}
         </div>
         <button type="button" className="icon-button" aria-label={t("close")} onClick={onClose}>
           ×
@@ -398,8 +404,70 @@ function GeneralTab({ onTrash }: { onTrash?: () => void }) {
           {t("trash")}
         </button>
       ) : null}
-      <AccountExport />
+      {LOCAL_ONLY ? <LibraryBackup /> : <AccountExport />}
       </section>
+    </div>
+  );
+}
+
+/** Version de bureau : sauvegarde de toute la bibliothèque dans un fichier, et restauration. */
+function LibraryBackup() {
+  const t = useTranslate("settings");
+  const local = useLocalStore();
+  const picker = useRef<HTMLInputElement>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (local.status !== "ready") {
+    return null;
+  }
+  const { store } = local;
+  const save = async () => {
+    setBusy(true);
+    try {
+      const { bytes, name } = await exportLibrary(store);
+      const saved = await saveFile(bytes, name, "application/json");
+      setMessage(saved ? t("backupSaved") : null);
+    } catch {
+      setMessage(t("backupFailed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const restore = async (file: File) => {
+    setBusy(true);
+    try {
+      const { added, skipped } = await importLibrary(store, file);
+      setMessage(t("backupRestored", { added, skipped }));
+    } catch (error) {
+      setMessage(error instanceof BackupError && error.message === "newer" ? t("backupNewer") : t("backupInvalid"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="settings-field">
+      <div className="settings-actions">
+        <button type="button" disabled={busy} onClick={() => void save()}>
+          {t("backupSave")}
+        </button>
+        <button type="button" disabled={busy} onClick={() => picker.current?.click()}>
+          {t("backupRestore")}
+        </button>
+      </div>
+      <input
+        ref={picker}
+        type="file"
+        hidden
+        accept=".flaw,application/json"
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file) {
+            void restore(file);
+          }
+        }}
+      />
+      <small role="status">{message ?? t("backupHint")}</small>
     </div>
   );
 }

@@ -106,6 +106,10 @@ export function useShellChrome(mode: PageMode, pageFocused: boolean): boolean {
       if (chrome !== null && chrome.contains(target)) {
         show();
       }
+      // L'éditeur occupe tout le livre : c'est son curseur qu'il faut dégager (useKeyboardClearance).
+      if (target.isContentEditable) {
+        return;
+      }
       const viewport = window.visualViewport;
       if (viewport === null) {
         target.scrollIntoView({ block: "nearest" });

@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
 
 /**
  * Objectif quotidien (R-016, AC-056) : mots ajoutés nets, tous textes et appareils,
@@ -65,7 +66,7 @@ function rollover(): void {
 
 async function publish(): Promise<void> {
   const { day, mine } = state;
-  if (!navigator.onLine) {
+  if (LOCAL_ONLY || !navigator.onLine) {
     return;
   }
   const response = await fetch(`/api/v1/stats/daily/${day}/devices/${deviceId()}`, {
@@ -82,6 +83,9 @@ async function publish(): Promise<void> {
 /** Relit le total du jour (autres appareils). */
 export async function refreshDaily(): Promise<void> {
   rollover();
+  if (LOCAL_ONLY) {
+    return;
+  }
   const day = state.day;
   const response = await fetch(`/api/v1/stats/daily?from=${day}&to=${day}`, { credentials: "same-origin" }).catch(() => null);
   if (!response?.ok) {

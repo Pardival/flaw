@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
 import { openLocalStore, type LocalDocument, type LocalStore } from "../local-store/index.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
 import { isLive } from "../sync-client/connection.ts";
 import { makeSender, pullRemoteList } from "../sync-client/rest.ts";
 import { updateSync } from "../sync-client/status.ts";
@@ -21,7 +22,7 @@ export function LocalStoreProvider({ children, store: injected }: { children: Re
     }
     let closed = false;
     let opened: LocalStore | null = null;
-    openLocalStore({ send: makeSender(() => opened) }).then(
+    openLocalStore(LOCAL_ONLY ? { localOnly: true } : { send: makeSender(() => opened) }).then(
       (store) => {
         if (closed) {
           void store.close();
@@ -47,6 +48,14 @@ export function LocalStoreProvider({ children, store: injected }: { children: Re
       return;
     }
     const { store } = state;
+    if (LOCAL_ONLY) {
+      // Rien à envoyer : on surveille seulement un stockage plein.
+      const check = () => {
+        updateSync({ storageFull: store.isMemoryOnly() });
+      };
+      check();
+      return store.subscribe(check);
+    }
     const send = makeSender(() => store);
     let running = false;
     const count = () => {

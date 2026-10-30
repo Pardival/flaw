@@ -17,6 +17,15 @@
         "N=$(ls -d \"$HOME\"/.nvm/versions/node/v24.*/bin/node | tail -1); cd apps/web && exec \"$N\" ../../node_modules/vite/bin/vite.js --port 5173 --strictPort"
       ],
       "port": 5173
+    },
+    {
+      "name": "flaw-desktop-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "N=$(ls -d \"$HOME\"/.nvm/versions/node/v24.*/bin/node | tail -1); cd apps/web && VITE_FLAW_TARGET=desktop exec \"$N\" ../../node_modules/vite/bin/vite.js --port 5174 --strictPort"
+      ],
+      "port": 5174
     }
   ]
 }

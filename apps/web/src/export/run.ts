@@ -1,5 +1,6 @@
 import type { ExportInput } from "@flaw/exporters/src/model.ts";
 
+import { saveFile } from "../platform/files.ts";
 import type { ExportRequest, ExportResponse } from "./export.worker.ts";
 
 export function runExport(request: ExportRequest): Promise<ExportResponse> {
@@ -25,15 +26,7 @@ export function runExport(request: ExportRequest): Promise<ExportResponse> {
 
 /** Enregistre le fichier sur l'appareil (aucun envoi). */
 export function download(bytes: Uint8Array, name: string, mime: string): void {
-  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: mime }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = name;
-  link.rel = "noopener";
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  void saveFile(bytes, name, mime).catch(() => undefined);
 }
 
 export type { ExportInput };

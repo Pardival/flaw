@@ -145,6 +145,8 @@ export type LocalStoreOptions = {
   events?: EventTarget;
   beforeWrite?: () => void;
   send?: (operation: RestOperation) => Promise<void>;
+  /** Version de bureau : aucun serveur, donc aucune opération mise en file. */
+  localOnly?: boolean;
 };
 
 export type LocalStore = {

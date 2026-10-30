@@ -26,7 +26,8 @@ import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.
 import { frenchTypographyOn, useMeta, writeMeta } from "./meta.ts";
 import { SettingsPanel, fontsFor, type TextSettings } from "../settings/SettingsPanel.tsx";
 import { usePreferences } from "../settings/preferences.tsx";
-import { saveBeforeMerge } from "../sync-client/before-merge.ts";
+import { saveSnapshot } from "../sync-client/before-merge.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
 import { convertSpacesForMode } from "./typography.ts";
 import { FORMATS_BY_MODE, defaultFormat } from "../library/formats-by-mode.ts";
 import { changeSize } from "./size.ts";
@@ -54,6 +55,8 @@ import { InlineEdit } from "./InlineEdit.tsx";
 export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
 const SAVE_DELAY_MS = 800;
+/** Version de bureau : un instantané d’historique toutes les dix minutes d’écriture. */
+const AUTO_SNAPSHOT_MS = 10 * 60 * 1000;
 const TOAST_MS = 4_000;
 /** Hauteur, sous le haut de l'écran, de la ligne de lecture qui donne le chapitre courant. */
 const READING_LINE_PX = 120;
@@ -293,7 +296,20 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       }
     };
 
+    // Version de bureau : l'historique vient des instantanés de cet appareil.
+    let unsnapshotted = false;
+    const snapshot = (reason: string) => {
+      if (LOCAL_ONLY && unsnapshotted && doc !== null) {
+        unsnapshotted = false;
+        void saveSnapshot(id, Y.encodeStateAsUpdate(doc), reason).catch(() => undefined);
+      }
+    };
+    const snapshotTimer = window.setInterval(() => {
+      snapshot("auto");
+    }, AUTO_SNAPSHOT_MS);
+
     const onUpdate = (_update: Uint8Array, origin: unknown) => {
+      unsnapshotted = true;
       if (attachment !== null && origin === attachment.provider) {
         // Modification venue du serveur : déjà synchronisée, on met juste à jour la liste.
         timer ??= window.setTimeout(save, SAVE_DELAY_MS);
@@ -314,17 +330,19 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       doc = opened;
       setYdoc(opened);
       const fragment = opened.getXmlFragment(PROSEMIRROR_FRAGMENT);
-      const pending = await store.pendingOperations().catch(() => []);
-      if (!alive) {
-        return;
+      if (!LOCAL_ONLY) {
+        const pending = await store.pendingOperations().catch(() => []);
+        if (!alive) {
+          return;
+        }
+        attachment = attachDocument(id, opened, {
+          localChanges: pending.some((operation) => operation.documentId === id && operation.path.endsWith("/sync")),
+        });
       }
-      attachment = attachDocument(id, opened, {
-        localChanges: pending.some((operation) => operation.documentId === id && operation.path.endsWith("/sync")),
-      });
       // Contenu initial seulement si ni l'appareil ni le serveur n'ont de contenu.
       // Texte tout juste créé sur cet appareil : rien à attendre du serveur.
       const fresh = Date.now() - new Date(document.createdAt).getTime() < 120_000;
-      if (fragment.length === 0 && navigator.onLine && !fresh) {
+      if (attachment !== null && fragment.length === 0 && navigator.onLine && !fresh) {
         await new Promise<void>((resolve) => {
           const done = () => {
             resolve();
@@ -477,6 +495,8 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       window.clearTimeout(toastTimer);
       doc?.off("update", onUpdate);
       save();
+      window.clearInterval(snapshotTimer);
+      snapshot("session_end");
       attachment?.detach();
       view?.destroy();
       viewRef.current = null;
@@ -537,7 +557,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       const view = viewRef.current;
       // Instantané avant le changement : la version d'avant reste dans l'historique.
       if (ydoc) {
-        void saveBeforeMerge(document.id, Y.encodeStateAsUpdate(ydoc)).catch(() => undefined);
+        void saveSnapshot(document.id, Y.encodeStateAsUpdate(ydoc), "before_layout_change").catch(() => undefined);
         writeMeta(ydoc, { fontFamily: null });
       }
       if (view && (mode === "screenplay") !== (document.mode === "screenplay")) {

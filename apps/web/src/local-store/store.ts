@@ -272,7 +272,10 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
     memory.active = true;
   }
 
-  async function commit(batch: Batch): Promise<void> {
+  async function commit(input: Batch): Promise<void> {
+    const batch: Batch = options.localOnly
+      ? { ...input, operations: [], documents: (input.documents ?? []).map((row) => ({ ...row, contentPending: false })) }
+      : input;
     const applyMemory = (): void => {
       for (const id of batch.deleteOperationIds ?? []) {
         memory.operations.delete(id);

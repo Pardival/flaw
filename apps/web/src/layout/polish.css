@@ -1216,3 +1216,10 @@
   color: var(--couleur-accent);
   background: var(--couleur-accent-doux);
 }
+
+/* Réglages › Données : boutons côte à côte (sauvegarde, restauration). */
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

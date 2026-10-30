@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
 import { applyThemeChoice, browserPrefersDark, browserStorage, THEME_STORAGE_KEY, type ThemeChoice } from "../theme/theme.ts";
 
 /**
@@ -99,7 +100,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback(async (): Promise<void> => {
     const patch = dirty.current;
-    if (Object.keys(patch).length === 0 || !navigator.onLine) {
+    if (LOCAL_ONLY || Object.keys(patch).length === 0 || !navigator.onLine) {
       return;
     }
     const headers = new Headers({ "content-type": "application/json", [CSRF_HEADER]: CSRF_VALUE });
@@ -122,6 +123,9 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (LOCAL_ONLY) {
+      return;
+    }
     let alive = true;
     const pull = async () => {
       try {

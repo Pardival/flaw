@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 
 import { App } from "./App.tsx";
+import { LOCAL_ONLY } from "./platform/target.ts";
 import i18n from "./i18n/i18n.ts";
 import { applyThemeChoice, browserPrefersDark, browserStorage, readChoice } from "./theme/theme.ts";
 import "../../../assets/fonts/polices.css";
@@ -32,7 +33,8 @@ createRoot(root).render(
 window.setTimeout(hideBootSplash, 10_000);
 
 // PWA installable (T-056) : le service worker n'est enregistré que dans la version construite.
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+// La version de bureau embarque déjà tous ses fichiers : pas de service worker.
+if (import.meta.env.PROD && !LOCAL_ONLY && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => undefined);
   });

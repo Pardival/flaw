@@ -4,7 +4,8 @@ import * as Y from "yjs";
 
 import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
 import { useTranslate } from "../i18n/i18n.ts";
-import { listBeforeMerge } from "../sync-client/before-merge.ts";
+import { LOCAL_ONLY } from "../platform/target.ts";
+import { listBeforeMerge, saveSnapshot } from "../sync-client/before-merge.ts";
 
 type Version = {
   id: string;
@@ -63,8 +64,8 @@ export function History({ documentId, doc, onClose }: { documentId: string; doc:
     void (async () => {
       const remote: Version[] = [];
       try {
-        const response = await fetch(`/api/v1/documents/${documentId}/versions`, { credentials: "same-origin" });
-        if (response.ok) {
+        const response = LOCAL_ONLY ? null : await fetch(`/api/v1/documents/${documentId}/versions`, { credentials: "same-origin" });
+        if (response?.ok) {
           remote.push(...((await response.json()) as { items: Version[] }).items);
         }
       } catch {
@@ -73,8 +74,8 @@ export function History({ documentId, doc, onClose }: { documentId: string; doc:
       const local = (await listBeforeMerge(documentId).catch(() => [])).map((row) => ({
         id: `local-${String(row.id)}`,
         createdAt: row.createdAt,
-        reason: "before_merge",
-        label: null,
+        reason: row.reason ?? "before_merge",
+        label: row.label ?? null,
         wordCount: localText(row.update).words,
         local: row.update,
       }));
@@ -99,8 +100,7 @@ export function History({ documentId, doc, onClose }: { documentId: string; doc:
   const restore = async (version: Version) => {
     if (version.local && doc) {
       // Avant restauration : on garde l'état courant comme instantané local.
-      const { saveBeforeMerge } = await import("../sync-client/before-merge.ts");
-      await saveBeforeMerge(documentId, Y.encodeStateAsUpdate(doc));
+      await saveSnapshot(documentId, Y.encodeStateAsUpdate(doc), "before_restore");
       restoreLocal(doc, version.local);
     } else {
       await fetch(`/api/v1/documents/${documentId}/versions/${version.id}/restore`, {
@@ -114,6 +114,14 @@ export function History({ documentId, doc, onClose }: { documentId: string; doc:
   };
 
   const save = async () => {
+    if (LOCAL_ONLY) {
+      if (doc) {
+        await saveSnapshot(documentId, Y.encodeStateAsUpdate(doc), "manual", label.trim() || null);
+      }
+      setLabel("");
+      setTick((value) => value + 1);
+      return;
+    }
     await fetch(`/api/v1/documents/${documentId}/versions`, {
       method: "POST",
       headers: { "content-type": "application/json", [CSRF_HEADER]: CSRF_VALUE },

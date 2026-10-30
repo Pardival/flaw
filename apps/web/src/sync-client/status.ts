@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { LOCAL_ONLY } from "../platform/target.ts";
+
 /**
  * États de synchronisation (A-025, tableau P8) et bandeaux.
  * Un seul état global : l'indicateur de la liste et celui de l'éditeur lisent le même.
@@ -61,6 +63,10 @@ const shownOnce = new Set<string>();
 const listeners = new Set<() => void>();
 
 function derive(): SyncState {
+  if (LOCAL_ONLY) {
+    // Version de bureau : rien à synchroniser, tout est enregistré sur la machine.
+    return flags.saving ? "saving" : "saved-local";
+  }
   if (flags.updateRequired) {
     return "update-required";
   }

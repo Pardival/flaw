@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 import { Editor } from "../editor/index.ts";
 import { useTranslate } from "../i18n/i18n.ts";
@@ -37,6 +37,12 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
   }, []);
 
   const shown = ready && minimum;
+  const page = route.name === "text" ? `text:${route.id}` : route.name;
+
+  // Chaque écran part du haut : le défilement de la liste ne doit pas déporter le texte ouvert.
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [page]);
 
   useEffect(() => {
     if (shown || state.status === "error") {

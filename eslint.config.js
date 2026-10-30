@@ -13,7 +13,7 @@ const computedMember = (name) =>
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "fixtures/**", "coverage/**", "infra/secrets/**"],
+    ignores: ["**/node_modules/**", "**/dist/**", ".dev/**", "**/target/**", "fixtures/**", "coverage/**", "infra/secrets/**"],
   },
   eslint.configs.recommended,
   tseslint.configs.recommended,
