@@ -4,6 +4,7 @@ import { useTranslate } from "../i18n/i18n.ts";
 import { pageSize } from "../layout/formats.ts";
 import { DOCUMENT_MODES, type DocumentMode, type LocalStore, type PageFormat } from "../local-store/index.ts";
 import { FORMATS_BY_MODE, defaultFormat, formatCm, formatDimensions, formatMarginsCm } from "./formats-by-mode.ts";
+import { ModeSketch } from "./ModeSketch.tsx";
 import { navigate } from "./route.ts";
 
 /** Police par défaut de chaque mode (AC-006). */
@@ -110,7 +111,9 @@ export function CreateFlow({ store }: { store: LocalStore }) {
                   <span
                     className="mode-thumb-page"
                     style={{ aspectRatio: `${String(pageSize(defaultFormat(item)).widthMm)} / ${String(pageSize(defaultFormat(item)).heightMm)}` }}
-                  />
+                  >
+                    <ModeSketch mode={item} />
+                  </span>
                 </span>
                 <span className="mode-name">{t(`mode_${item}`)}</span>
                 <span className="mode-hint">{t(`modeHint_${item}`)}</span>
@@ -231,11 +234,7 @@ function PagePreview({ mode, format }: { mode: DocumentMode; format: PageFormat 
               left: pct(left, widthMm),
             }}
           >
-            <span />
-            <span />
-            <span />
-            <span />
-            <span className="short" />
+            <ModeSketch mode={mode} />
           </div>
         </div>
         <span className="preview-height">{t("heightCm", { value: formatCm(heightMm) })}</span>

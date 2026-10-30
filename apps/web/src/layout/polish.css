@@ -800,3 +800,136 @@
 .settings-account {
   animation: flaw-enter 280ms var(--courbe-entree) backwards;
 }
+
+/* ---------- Croquis de page par mode (création) ---------- */
+.mode-thumb-page {
+  position: relative;
+  overflow: hidden;
+}
+
+.sketch {
+  position: absolute;
+  inset: 11% 13%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+  font-size: 4px;
+}
+
+.preview-margins {
+  justify-content: flex-start;
+}
+
+.preview-margins .sketch {
+  height: auto;
+  background: none;
+  position: static;
+  flex: 1;
+  font-size: 11px;
+  padding: 0.6em 0;
+}
+
+.sketch > span {
+  display: block;
+  flex: none;
+  height: 0.55em;
+  border-radius: 1px;
+  background: var(--couleur-trait);
+}
+
+.sketch .sketch-short { width: 58%; }
+.sketch .sketch-indent { margin-left: 14%; }
+.sketch .sketch-gap { height: 0.8em; background: none; }
+
+/* Roman : titre de chapitre centré, folio en pied. */
+.sketch .sketch-chapter {
+  align-self: center;
+  width: 46%;
+  height: 1.1em;
+  margin-top: 1.4em;
+  background: var(--couleur-encre-3);
+}
+
+.sketch .sketch-folio {
+  align-self: center;
+  width: 7%;
+  margin-top: auto;
+  background: var(--couleur-encre-3);
+}
+
+/* Script : en-tête de scène, personnage centré, réplique étroite, transition à droite. */
+.sketch[data-mode="screenplay"] .sketch-scene {
+  width: 72%;
+  height: 0.8em;
+  background: var(--couleur-encre-2);
+}
+
+.sketch .sketch-character {
+  width: 20%;
+  margin: 0.5em 0 0 40%;
+  background: var(--couleur-encre-3);
+}
+
+.sketch .sketch-dialogue {
+  width: 52%;
+  margin-left: 24%;
+}
+
+.sketch .sketch-dialogue.sketch-short { width: 34%; }
+
+.sketch .sketch-transition {
+  align-self: flex-end;
+  width: 18%;
+  margin-top: auto;
+  background: var(--couleur-encre-3);
+}
+
+/* Document : titres et liste à puces. */
+.sketch .sketch-h1 {
+  width: 64%;
+  height: 1.3em;
+  background: var(--couleur-encre-2);
+}
+
+.sketch .sketch-h2 {
+  width: 40%;
+  height: 0.9em;
+  margin-top: 0.6em;
+  background: var(--couleur-encre-3);
+}
+
+.sketch .sketch-bullet {
+  position: relative;
+  width: 70%;
+  margin-left: 10%;
+}
+
+.sketch .sketch-bullet::before {
+  content: "";
+  position: absolute;
+  left: -1.6em;
+  top: 0;
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 50%;
+  background: var(--couleur-encre-3);
+}
+
+/* Page blanche : seulement le curseur qui attend. */
+.sketch .sketch-caret {
+  width: 0.5em;
+  height: 3.2em;
+  border-radius: 0;
+  background: var(--couleur-accent);
+  animation: sketch-blink 1.1s steps(1) infinite;
+}
+
+@keyframes sketch-blink {
+  50% { opacity: 0; }
+}
+
+/* Au survol et au choix, le croquis s'encre un peu. */
+.mode-card:hover .sketch > span:not(.sketch-gap):not(.sketch-caret),
+.mode-card:has(input:checked) .sketch > span:not(.sketch-gap):not(.sketch-caret) {
+  filter: brightness(0.9);
+}
