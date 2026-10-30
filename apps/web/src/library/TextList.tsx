@@ -2,13 +2,15 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { Logo } from "../shell/Logo.tsx";
 
 import { useTranslate } from "../i18n/i18n.ts";
-import type { LocalDocument, LocalStore } from "../local-store/index.ts";
+import { DOCUMENT_MODES, type LocalDocument, type LocalStore } from "../local-store/index.ts";
 import { MODE_FONT } from "./formats-by-mode.ts";
 import { SyncBanners, SyncIndicator } from "../shell/status/SyncStatus.tsx";
 import { SettingsPanel } from "../settings/SettingsPanel.tsx";
 import { DailyGoal } from "../stats/DailyGoal.tsx";
 import { ImportFlow } from "../import/ImportFlow.tsx";
 import { navigate, openTextWith } from "./route.ts";
+import { createWithMode } from "./CreateFlow.tsx";
+import { ModeSketch } from "./ModeSketch.tsx";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -142,13 +144,47 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
     return (
       <div className="library" {...dropProps}>
         {header}
-        <section className="library-empty">
-          <div className="empty-page" aria-hidden="true" />
-          <h1>{t("emptyTitle")}</h1>
-          <p>{t("emptyHint")}</p>
-          <button type="button" className="button-primary" onClick={() => navigate({ name: "create" })}>
-            {t("newText")} <kbd>{t("newTextShortcut")}</kbd>
-          </button>
+        <section className="library-welcome" aria-labelledby="welcome-title">
+          <div className="welcome-art" aria-hidden="true">
+            <span className="welcome-sheet welcome-sheet-back" />
+            <span className="welcome-sheet welcome-sheet-mid" />
+            <span className="welcome-sheet welcome-sheet-front">
+              <span className="welcome-line" />
+              <span className="welcome-line" />
+              <span className="welcome-line" />
+              <span className="welcome-line welcome-line-short" />
+              <span className="welcome-caret" />
+            </span>
+          </div>
+          <h1 id="welcome-title">{t("welcomeTitle")}</h1>
+          <p className="welcome-lead">{t("welcomeLead")}</p>
+          <ul className="welcome-modes">
+            {DOCUMENT_MODES.map((mode) => (
+              <li key={mode}>
+                <button type="button" className="welcome-mode" data-mode={mode} onClick={() => createWithMode(mode)}>
+                  <span className="welcome-mode-page">
+                    <ModeSketch mode={mode} />
+                  </span>
+                  <span className="welcome-mode-name">{t(`mode_${mode}`)}</span>
+                  <span className="welcome-mode-hint">{t(`modeHint_${mode}`)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="welcome-import">
+            <button type="button" onClick={() => picker.current?.click()}>
+              {t("welcomeImport")}
+            </button>
+            <small>{t("welcomeImportHint")}</small>
+          </div>
+          <aside className="welcome-tips" aria-label={t("welcomeTipsTitle")}>
+            <h2>{t("welcomeTipsTitle")}</h2>
+            <ul>
+              <li>{t("welcomeTipDash")}</li>
+              <li>{t("welcomeTipFocus")}</li>
+              <li>{t("welcomeTipOffline")}</li>
+            </ul>
+          </aside>
         </section>
       </div>
     );

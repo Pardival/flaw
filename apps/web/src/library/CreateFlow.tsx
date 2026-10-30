@@ -10,12 +10,27 @@ import { navigate } from "./route.ts";
 /** Police par défaut de chaque mode (AC-006). */
 const MODE_DEFAULT_FONT = { novel: "EB Garamond", screenplay: "Courier Prime", document: "Inter", blank: "Source Serif 4" } as const;
 
+/** Mode choisi avant d'ouvrir la création (cartes de l'accueil) : on passe droit au format. */
+let pendingMode: DocumentMode | null = null;
+
+export function createWithMode(mode: DocumentMode): void {
+  pendingMode = mode;
+  navigate({ name: "create" });
+}
+
+function takePendingMode(): DocumentMode | null {
+  const mode = pendingMode;
+  pendingMode = null;
+  return mode;
+}
+
 /** Création en deux étapes : mode (D-024) puis format (D-025). Hors ligne possible (A-004). */
 export function CreateFlow({ store }: { store: LocalStore }) {
   const t = useTranslate("library");
-  const [mode, setMode] = useState<DocumentMode | null>(null);
-  const [focusMode, setFocusMode] = useState<DocumentMode>("novel");
-  const [format, setFormat] = useState<PageFormat>("novel_13x20");
+  const [initial] = useState(takePendingMode);
+  const [mode, setMode] = useState<DocumentMode | null>(initial);
+  const [focusMode, setFocusMode] = useState<DocumentMode>(initial ?? "novel");
+  const [format, setFormat] = useState<PageFormat>(initial ? defaultFormat(initial) : "novel_13x20");
   const [busy, setBusy] = useState(false);
   // Sens du passage d'une étape à l'autre, pour l'animation (avancer ou revenir).
   const [direction, setDirection] = useState<"forward" | "back" | "none">("none");
