@@ -35,6 +35,9 @@ COPY --from=build /src/packages/schema/src /app/packages/schema/src
 # Repli HTTP : import relatif depuis apps/server/src/sync (packages/sync, sans dépendance npm).
 COPY --from=build /src/packages/sync/package.json /app/packages/sync/package.json
 COPY --from=build /src/packages/sync/src /app/packages/sync/src
+# Gabarit PDF et Fountain partagés avec l'appareil (exports serveur, export du compte).
+COPY --from=build /src/packages/exporters/package.json /app/packages/exporters/package.json
+COPY --from=build /src/packages/exporters/src /app/packages/exporters/src
 COPY infra/droits-flaw.sql infra/assert-app-role.sql /app/infra/
 COPY apps/server/bin/flaw-admin /usr/local/bin/flaw-admin
 RUN dep_nm="$(dirname "$(dirname "$(readlink -f /app/node_modules/@flaw/schema)")")" \
