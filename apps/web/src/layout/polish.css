@@ -660,11 +660,6 @@
   height: 0;
 }
 
-/* Un paragraphe coupé par un saut de page ne doit pas rogner la séparation (confinement du dessin). */
-.book-text > *:has(> .flaw-page-break) {
-  content-visibility: visible;
-}
-
 /* ---------- Titre et chapitre modifiables dans l'en-tête ---------- */
 .page .inline-edit {
   min-height: 32px;
@@ -1249,7 +1244,6 @@
   display: flex;
   margin: 0.8em 0;
   padding: 0;
-  content-visibility: visible;
 }
 
 .book-text figure.flaw-image[data-align="center"] { justify-content: center; }
@@ -1868,3 +1862,54 @@
 }
 
 .page .selection-menu button:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* ---------- Premier lancement : langue ---------- */
+.language-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 100vh;
+  padding: 32px 16px;
+  text-align: center;
+  animation: flaw-enter 320ms var(--courbe-entree) backwards;
+}
+
+.language-welcome .flaw-logo { margin-bottom: 12px; transform: scale(1.3); }
+.language-welcome h1 { margin: 0; font: 500 clamp(26px, 4vw, 34px) / 1.2 var(--police-roman, serif); }
+.language-welcome-lead { margin: 0 0 12px; color: var(--couleur-encre-3, #8a8378); }
+
+.language-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  gap: 10px;
+  width: min(520px, 100%);
+}
+
+.page .language-grid button,
+.language-grid button {
+  min-height: 52px;
+  border: 1px solid var(--couleur-trait);
+  border-radius: 12px;
+  background: var(--couleur-surface, var(--couleur-papier));
+  color: var(--couleur-encre);
+  font-size: 16px;
+  cursor: pointer;
+  transition: border-color 140ms ease, background 140ms ease, transform 140ms ease;
+}
+
+.language-grid button:hover { border-color: var(--couleur-trait-fort); transform: translateY(-1px); }
+
+.language-grid button[aria-checked="true"] {
+  border-color: var(--couleur-accent);
+  background: var(--couleur-accent-doux);
+  color: var(--couleur-accent);
+  font-weight: 600;
+}
+
+.language-continue { margin-top: 18px; min-width: 200px; min-height: 44px; border-radius: 12px; }
+
+@media (max-width: 520px) {
+  .language-grid { grid-template-columns: repeat(2, 1fr); }
+}

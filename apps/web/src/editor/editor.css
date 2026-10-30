@@ -117,11 +117,11 @@
   background: var(--couleur-selection);
 }
 
-/* A-005 : les blocs restent dans le DOM, le navigateur saute ceux hors écran. */
-.book-text > * {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 1.5em;
-}
+/*
+ * A-005 : les blocs restent dans le DOM. Pas de `content-visibility: auto` : WebKit
+ * (application Mac) cache alors du texte à l'Entrée ou à la sélection, pour un gain
+ * de frappe négligeable (mesuré sur 1 957 paragraphes).
+ */
 
 .book-text p {
   margin: 0;
@@ -507,10 +507,6 @@
 
 .editor-desk[data-focus="true"] .book-mount {
   transform: translateY(var(--focus-offset, 0px));
-}
-
-.editor-desk[data-focus="true"] .book-text > * {
-  content-visibility: visible;
 }
 
 .editor-desk[data-focus="true"] .flaw-page-break,

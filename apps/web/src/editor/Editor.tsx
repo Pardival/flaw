@@ -23,7 +23,7 @@ import { dismissBanner, readFlags, showBannerOnce, updateSync, useSyncStatus } f
 import { editorKeymaps, insertChapter, pastePlugin } from "./commands.ts";
 import { ElementBar } from "./modes/script/ElementBar.tsx";
 import { SelectionMenu, menuPosition, type MenuPosition } from "./SelectionMenu.tsx";
-import { frenchTypographyOn, useMeta, writeMeta } from "./meta.ts";
+import { frenchTypographyOn, isTextLang, useMeta, writeMeta } from "./meta.ts";
 import { SettingsPanel, fontsFor, type TextSettings } from "../settings/SettingsPanel.tsx";
 import { usePreferences } from "../settings/preferences.tsx";
 import { saveSnapshot } from "../sync-client/before-merge.ts";
@@ -82,7 +82,7 @@ function seed(doc: Y.Doc, fragment: Y.XmlFragment, mode: LocalDocument["mode"]):
     prosemirrorToYXmlFragment(emptyDocument(mode), fragment);
     // Un nouveau texte naît dans la langue de l'interface (typographie française seulement en français).
     const meta = doc.getMap<unknown>(META_MAP);
-    if (!meta.has("lang") && i18n.language === "en") meta.set("lang", "en");
+    if (!meta.has("lang") && i18n.language !== "fr" && isTextLang(i18n.language)) meta.set("lang", i18n.language);
   });
 }
 

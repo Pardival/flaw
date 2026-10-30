@@ -23,19 +23,41 @@ import { mfa as mfaEn } from "./en/mfa.ts";
 import { settings as settingsEn } from "./en/settings.ts";
 import { sync as syncEn } from "./en/sync.ts";
 import { theme as themeEn } from "./en/theme.ts";
+import { de } from "./de.ts";
+import { es } from "./es.ts";
+import { it } from "./it.ts";
+import { pt } from "./pt.ts";
 
 export const defaultLanguage = "fr";
 
 /** Langues de l'interface. `auto` suit le système (français si la langue du système l'est). */
-export const UI_LANGUAGES = ["fr", "en"] as const;
+export const UI_LANGUAGES = ["fr", "en", "es", "de", "it", "pt"] as const;
 export type UiLanguage = (typeof UI_LANGUAGES)[number];
 export type UiLanguageChoice = UiLanguage | "auto";
 const UI_LANGUAGE_KEY = "flaw.uiLanguage";
+const UI_LANGUAGE_CHOSEN_KEY = "flaw.uiLanguageChosen";
+
+/** Faux tant que la personne n'a pas choisi sa langue au premier lancement. */
+export function uiLanguageChosen(): boolean {
+  try {
+    return window.localStorage.getItem(UI_LANGUAGE_CHOSEN_KEY) === "true";
+  } catch {
+    return true;
+  }
+}
+
+export function markUiLanguageChosen(): void {
+  try {
+    window.localStorage.setItem(UI_LANGUAGE_CHOSEN_KEY, "true");
+  } catch {
+    // Rien : l'écran reviendra au prochain lancement.
+  }
+}
 
 export function readUiLanguageChoice(): UiLanguageChoice {
   try {
     const stored = window.localStorage.getItem(UI_LANGUAGE_KEY);
-    if (stored === "fr" || stored === "en") return stored;
+    if (stored !== null && (UI_LANGUAGES as readonly string[]).includes(stored)) return stored as UiLanguage;
   } catch {
     // Stockage indisponible : langue du système.
   }
@@ -44,8 +66,11 @@ export function readUiLanguageChoice(): UiLanguageChoice {
 
 function systemLanguage(): UiLanguage {
   if (typeof navigator === "undefined") return defaultLanguage;
-  const preferred = navigator.languages?.[0] ?? navigator.language ?? defaultLanguage;
-  return preferred.toLowerCase().startsWith("fr") ? "fr" : "en";
+  for (const preferred of navigator.languages ?? [navigator.language]) {
+    const code = (preferred ?? "").slice(0, 2).toLowerCase();
+    if ((UI_LANGUAGES as readonly string[]).includes(code)) return code as UiLanguage;
+  }
+  return "en";
 }
 
 export function resolveUiLanguage(choice: UiLanguageChoice): UiLanguage {
@@ -54,7 +79,8 @@ export function resolveUiLanguage(choice: UiLanguageChoice): UiLanguage {
 
 /** Locale des dates et nombres de l'interface. */
 export function uiLocale(): string {
-  return i18n.language === "en" ? "en-US" : "fr-FR";
+  const locales: Record<string, string> = { fr: "fr-FR", en: "en-US", es: "es-ES", de: "de-DE", it: "it-IT", pt: "pt-BR" };
+  return locales[i18n.language] ?? "fr-FR";
 }
 
 const namespaces = ["auth", "mfa", "account", "theme", "library", "editor", "sync", "settings", "export", "import", "cover"] as const;
@@ -66,7 +92,8 @@ type Vars = Record<string, string | number>;
 if (!i18n.isInitialized) {
   void i18n.use(initReactI18next).init({
     lng: typeof window === "undefined" ? defaultLanguage : resolveUiLanguage(readUiLanguageChoice()),
-    fallbackLng: defaultLanguage,
+    // Langues sans écrans de connexion traduits : anglais, puis français.
+    fallbackLng: { fr: [], default: ["en", "fr"] },
     supportedLngs: [...UI_LANGUAGES],
     defaultNS: "auth",
     ns: [...namespaces],
@@ -85,6 +112,10 @@ if (!i18n.isInitialized) {
         import: importEn,
         cover: coverEn,
       },
+      es,
+      de,
+      it,
+      pt,
     },
     interpolation: { escapeValue: false },
     initAsync: false,

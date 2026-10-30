@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-import { readUiLanguageChoice, setUiLanguage, useTranslate, uiLocale, type UiLanguageChoice } from "../i18n/i18n.ts";
+import { UI_LANGUAGES, readUiLanguageChoice, setUiLanguage, useTranslate, uiLocale, type UiLanguageChoice } from "../i18n/i18n.ts";
+import { LANGS, LANG_NAMES, isTextLang, type TextLang } from "../editor/meta.ts";
 import type { DocumentMode, LocalDocument, PageFormat } from "../local-store/index.ts";
 import { DOCUMENT_MODES } from "../local-store/index.ts";
 import { FORMATS_BY_MODE, defaultFormat, formatDimensions } from "../library/formats-by-mode.ts";
@@ -29,7 +30,7 @@ export function fontsFor(mode: DocumentMode): string[] {
 
 export type TextSettings = {
   document: LocalDocument;
-  lang: "fr" | "en";
+  lang: TextLang;
   frenchTypography: boolean | null;
   fontFamily: string;
   baseFontSizePt: number;
@@ -37,7 +38,7 @@ export type TextSettings = {
   onFormat: (format: PageFormat) => void;
   onFont: (font: string) => void;
   onSize: (size: number) => void;
-  onLang: (lang: "fr" | "en") => void;
+  onLang: (lang: TextLang) => void;
   onFrenchTypography: (value: boolean | null) => void;
   onMode: (mode: DocumentMode) => void;
 };
@@ -218,9 +219,18 @@ function TextTab({ text }: { text: TextSettings }) {
 
       <label className="settings-field">
         <span>{t("lang")}</span>
-        <select value={text.lang} onChange={(event) => text.onLang(event.currentTarget.value === "en" ? "en" : "fr")}>
-          <option value="fr">Français</option>
-          <option value="en">English</option>
+        <select
+          value={text.lang}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            if (isTextLang(value)) text.onLang(value);
+          }}
+        >
+          {LANGS.map((lang) => (
+            <option key={lang} value={lang}>
+              {LANG_NAMES[lang]}
+            </option>
+          ))}
         </select>
       </label>
 
@@ -421,7 +431,7 @@ function UiLanguageField() {
     <fieldset className="settings-field">
       <legend>{t("uiLanguage")}</legend>
       <div className="settings-segmented">
-        {(["auto", "fr", "en"] as const).map((value) => (
+        {(["auto", ...UI_LANGUAGES] as const).map((value) => (
           <label key={value} className="settings-radio">
             <input
               type="radio"
@@ -432,7 +442,7 @@ function UiLanguageField() {
                 setUiLanguage(value);
               }}
             />
-            <span>{t(`uiLanguage_${value}`)}</span>
+            <span>{value === "auto" ? t("uiLanguage_auto") : LANG_NAMES[value]}</span>
           </label>
         ))}
       </div>

@@ -38,7 +38,8 @@ describe("catalogues i18next", () => {
   it("sert le français par défaut, avec les mêmes clés que les anciens catalogues", () => {
     expect(defaultLanguage).toBe("fr");
     expect(i18n.language).toBe("fr");
-    expect(i18n.options.fallbackLng).toEqual(["fr"]);
+    // Le français ne retombe sur rien ; les autres langues, sur l'anglais puis le français.
+    expect(i18n.options.fallbackLng).toEqual({ fr: [], default: ["en", "fr"] });
     const catalogs = { auth, mfa, account, theme };
     for (const [ns, catalog] of Object.entries(catalogs)) {
       for (const [key, value] of leaves(catalog)) {
@@ -67,5 +68,18 @@ describe("catalogues i18next", () => {
       const source = readFileSync(file, "utf8");
       expect(source, file).not.toMatch(directImport);
     }
+  });
+});
+
+describe("langues de l'interface", () => {
+  it("traduit chaque langue et retombe sur l'anglais pour les écrans serveur", async () => {
+    const expected: Record<string, string> = { fr: "Réglages", en: "Settings", es: "Ajustes", de: "Einstellungen", it: "Impostazioni", pt: "Ajustes" };
+    for (const [lang, label] of Object.entries(expected)) {
+      await i18n.changeLanguage(lang);
+      expect(t("settings:title"), lang).toBe(label);
+    }
+    await i18n.changeLanguage("de");
+    expect(t("auth:connexionTitle")).toBe("Sign in");
+    await i18n.changeLanguage("fr");
   });
 });

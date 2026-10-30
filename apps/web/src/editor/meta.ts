@@ -7,13 +7,29 @@ import type * as Y from "yjs";
  * police, taille. Synchronisées comme le contenu ; une valeur gagne en cas de conflit.
  */
 export type TextMeta = {
-  lang: "fr" | "en";
+  lang: TextLang;
   frenchTypography: boolean | null;
   fontFamily: string | null;
   baseFontSizePt: number | null;
 };
 
-export const LANGS = ["fr", "en"] as const;
+/** Langues d'un texte (césure, correcteur, export). La typographie française ne vaut qu'en français. */
+export const LANGS = ["fr", "en", "es", "de", "it", "pt"] as const;
+export type TextLang = (typeof LANGS)[number];
+
+export function isTextLang(value: unknown): value is TextLang {
+  return typeof value === "string" && (LANGS as readonly string[]).includes(value);
+}
+
+/** Nom de chaque langue dans cette langue. */
+export const LANG_NAMES: Record<TextLang, string> = {
+  fr: "Français",
+  en: "English",
+  es: "Español",
+  de: "Deutsch",
+  it: "Italiano",
+  pt: "Português",
+};
 
 export function readMeta(doc: Y.Doc): TextMeta {
   const map = doc.getMap<unknown>(META_MAP);
@@ -22,7 +38,7 @@ export function readMeta(doc: Y.Doc): TextMeta {
   const font = map.get("fontFamily");
   const size = map.get("baseFontSizePt");
   return {
-    lang: lang === "en" ? "en" : "fr",
+    lang: isTextLang(lang) ? lang : "fr",
     frenchTypography: typeof french === "boolean" ? french : null,
     fontFamily: typeof font === "string" ? font : null,
     baseFontSizePt: typeof size === "number" ? size : null,

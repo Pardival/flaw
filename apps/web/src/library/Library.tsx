@@ -8,6 +8,8 @@ import { useRoute } from "./route.ts";
 import { hideBootSplash } from "../shell/boot-splash.ts";
 import { useDocuments, useLocalStore } from "./store-context.tsx";
 import { TextList } from "./TextList.tsx";
+import { LanguageWelcome } from "./LanguageWelcome.tsx";
+import { uiLanguageChosen } from "../i18n/i18n.ts";
 import { Trash } from "./Trash.tsx";
 
 export type TextView = (props: { store: LocalStore; document: LocalDocument; trashed?: boolean }) => ReactNode;
@@ -29,6 +31,7 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
   // Texte ouvert puis placé dans la corbeille ailleurs : il reste affiché avec un bandeau (D-023).
   const lastOpened = useRef<LocalDocument | null>(null);
   const [minimum, setMinimum] = useState(false);
+  const [languageChosen, setLanguageChosen] = useState(() => uiLanguageChosen());
   const ready = store !== null && documents !== null;
 
   useEffect(() => {
@@ -58,6 +61,9 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
     return <span className="visually-hidden" role="status">{t("loading")}</span>;
   }
 
+  if (!languageChosen) {
+    return <LanguageWelcome onDone={() => setLanguageChosen(true)} />;
+  }
   if (route.name === "create") {
     return <CreateFlow store={store} />;
   }
