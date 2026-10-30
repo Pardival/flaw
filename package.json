@@ -1,5 +1,6 @@
 {
   "name": "flaw",
+  "license": "AGPL-3.0-or-later",
   "private": true,
   "type": "module",
   "description": "Monorepo pnpm du projet Flaw.",
@@ -12,7 +13,10 @@
     "lint": "eslint . && node scripts/check-dom-sink-lint.mjs",
     "typecheck": "pnpm --filter @flaw/crypto build && pnpm --filter \"./apps/**\" --filter \"./packages/**\" typecheck",
     "test": "pnpm --filter @flaw/crypto build && vitest run --exclude apps/server/src/platform/healthz.test.ts && node --test apps/server/src/platform/healthz.test.ts",
-    "licenses:check": "node scripts/check-licenses.mjs"
+    "licenses:check": "node scripts/check-licenses.mjs",
+    "local": "sh scripts/local.sh",
+    "local:stop": "sh scripts/local.sh stop",
+    "local:reset": "sh scripts/local.sh reset"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

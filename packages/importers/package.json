@@ -2,7 +2,8 @@
   "name": "@flaw/importers",
   "private": true,
   "version": "0.0.0",
-  "description": "Import .docx, .md, .txt sur l'appareil, en Web Worker (A-017, T-037 \u00e0 T-039).",
+  "license": "AGPL-3.0-or-later",
+  "description": "Import .docx, .md, .txt sur l'appareil, en Web Worker (A-017, T-037 à T-039).",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

@@ -9,7 +9,7 @@ NODE=$(ls -d "$HOME"/.nvm/versions/node/v24.*/bin/node 2>/dev/null | tail -1)
 NODE=${NODE:-node}
 export NODE_ENV=development LOG_LEVEL=info PORT=3000
 export PUBLIC_URL=http://localhost:5173 TRUSTED_ORIGINS=http://localhost:5173 TRUSTED_PROXY_CIDR=127.0.0.1/32
-export DATABASE_HOST=127.0.0.1 DATABASE_PORT=55432 DATABASE_NAME=flaw DATABASE_USER=flaw_app
+export DATABASE_HOST=127.0.0.1 DATABASE_PORT=${FLAW_DB_PORT:-55432} DATABASE_NAME=flaw DATABASE_USER=flaw_app
 export DATABASE_PASSWORD_FILE="$S/app_db_password" BETTER_AUTH_SECRET_FILE="$S/better_auth_secret"
 export BETTER_AUTH_URL=http://localhost:5173
 export FLAW_KEK_FILE="$S/flaw_kek" FLAW_KEK_ID=kek-dev-2026

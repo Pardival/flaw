@@ -2,6 +2,7 @@
   "name": "@flaw/web",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "description": "Coquille SPA React (T-012). Vite 7.3.7, JSX compilé par esbuild.",
   "type": "module",
   "scripts": {

@@ -2,6 +2,7 @@
   "name": "@flaw/i18n",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "description": "Placeholder internationalisation (A-019).",
   "type": "module",
   "scripts": {

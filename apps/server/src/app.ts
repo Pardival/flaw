@@ -268,7 +268,9 @@ async function start(config: AppConfig, secrets: LoadedSecrets): Promise<void> {
   const app = buildApp(config, { pool, secrets });
   try {
     await whenAuthReady(app);
-    await app.listen({ host: "0.0.0.0", port: config.PORT });
+    // Sans connexion (local), le serveur n'écoute que cette machine : jamais le réseau.
+    const localOnly = config.NODE_ENV === "development" && process.env.FLAW_DEV_NO_AUTH === "true";
+    await app.listen({ host: localOnly ? "127.0.0.1" : "0.0.0.0", port: config.PORT });
     schedulePurge(pool, config);
   } catch {
     await pool.end().catch(() => undefined);

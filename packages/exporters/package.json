@@ -2,7 +2,8 @@
   "name": "@flaw/exporters",
   "private": true,
   "version": "0.0.0",
-  "description": "Exports Word, EPUB 3 et Fountain depuis le document structur\u00e9 (A-016, T-033).",
+  "license": "AGPL-3.0-or-later",
+  "description": "Exports Word, EPUB 3 et Fountain depuis le document structuré (A-016, T-033).",
   "type": "module",
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit"

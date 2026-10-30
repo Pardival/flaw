@@ -2,6 +2,7 @@
   "name": "@flaw/schema",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "description": "Schéma ProseMirror unique des quatre modes (A-018, T-015).",
   "type": "module",
   "scripts": {

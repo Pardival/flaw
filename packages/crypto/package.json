@@ -2,6 +2,7 @@
   "name": "@flaw/crypto",
   "private": true,
   "version": "0.0.0",
+  "license": "AGPL-3.0-or-later",
   "description": "Enveloppe KEK vers DEK, XChaCha20-Poly1305 (A-013, T-006).",
   "type": "module",
   "main": "./dist/index.js",
@@ -13,7 +14,9 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
