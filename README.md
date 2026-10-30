@@ -6,6 +6,15 @@
 
 Flaw est une application d'écriture libre, pensée pour les textes longs : romans, scénarios, essais, journaux. On écrit directement sur une page au format réel (roman broché, A4, US Letter…), avec ses marges, son folio et ses sauts de page, sans menus qui encombrent l'écran. Tout est enregistré sur l'appareil, même hors ligne, puis synchronisé avec votre propre serveur.
 
+## Télécharger
+
+**Application de bureau pour Mac et Windows**, 100 % locale : ni compte, ni serveur, vos textes restent sur votre ordinateur.
+
+- [Flaw pour Mac](https://github.com/Pardival/flaw/releases/latest/download/Flaw-mac.dmg) (macOS 11 ou plus, Intel et Apple Silicon)
+- [Flaw pour Windows](https://github.com/Pardival/flaw/releases/latest/download/Flaw-windows.exe) (Windows 10 et 11, 64 bits)
+
+L'application n'est pas signée par un certificat payant : au premier lancement, ouvrez-la via Réglages Système › Confidentialité et sécurité › « Ouvrir quand même » (Mac), ou « Informations complémentaires » › « Exécuter quand même » (Windows). Pensez à **Réglages › Données › Sauvegarder la bibliothèque** de temps en temps.
+
 ## Fonctionnalités
 
 - **Quatre modes d'écriture**
@@ -18,7 +27,7 @@ Flaw est une application d'écriture libre, pensée pour les textes longs : roma
 - **Mode focus** : une boîte réduite au centre de l'écran, rien que les dernières lignes.
 - **Local d'abord** : l'écriture ne dépend jamais du réseau ; la synchronisation (Yjs) rattrape quand la connexion revient.
 - **Historique des versions**, corbeille de 30 jours, objectif de mots quotidien.
-- **Import** Word, Markdown, texte brut ; **export** PDF, Word, EPUB, Fountain, traités sur l'appareil.
+- **Import** Word, PDF, Markdown, texte brut ; **export** PDF, Word, EPUB, Fountain, traités sur l'appareil.
 - **Chiffrement au repos** côté serveur (enveloppe KEK → DEK, XChaCha20-Poly1305).
 - Thèmes clair et sombre, installable comme application (PWA).
 
@@ -46,6 +55,17 @@ Sur l'accueil vide, **Découvrir avec des exemples** charge quatre textes de dé
 
 > **Mode local = une seule personne, sur cette machine.** Pour aller vite, la connexion est désactivée (`FLAW_DEV_NO_AUTH`) : toute personne qui atteint le serveur agit comme le compte local. Ce mode est refusé hors `NODE_ENV=development` et n'écoute que sur `localhost`. Ne l'exposez jamais sur un réseau. Pour un serveur accessible en ligne, voir [docs/deploiement](docs/deploiement/publication.md).
 
+## Construire l'application de bureau
+
+Prérequis supplémentaires : [Rust](https://rustup.rs/) (stable) et, sous Windows, les outils de compilation C++ de Visual Studio.
+
+```bash
+corepack pnpm --filter @flaw/desktop dev     # fenêtre de développement
+corepack pnpm --filter @flaw/desktop build   # .dmg (Mac) ou installateur .exe (Windows)
+```
+
+Une version publique se publie en poussant un tag `desktop-vX.Y.Z` (même numéro que `apps/desktop/src-tauri/tauri.conf.json`) : le workflow `desktop` construit les deux systèmes et crée la version GitHub. La page de téléchargement (`site/`) est publiée par le workflow `pages`.
+
 ## Développement
 
 ```bash
@@ -60,6 +80,8 @@ Organisation du dépôt (monorepo pnpm) :
 | Dossier | Contenu |
 | --- | --- |
 | `apps/web` | interface React 19 + Vite, éditeur ProseMirror, stockage local (IndexedDB) |
+| `apps/desktop` | application de bureau Tauri 2 (Mac, Windows), 100 % locale |
+| `site` | page de téléchargement (GitHub Pages) |
 | `apps/server` | API Fastify 5, synchronisation Hocuspocus, PostgreSQL 18 avec RLS |
 | `packages/schema` | schéma de document commun (ProseMirror) |
 | `packages/sync` | protocole de synchronisation partagé |

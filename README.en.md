@@ -8,6 +8,15 @@ Flaw is a free and open-source writing app built for long-form work: novels, scr
 
 > The interface is currently in French. Contributions to translate it are welcome (i18next catalogs live in `apps/web/src/i18n`).
 
+## Download
+
+**Desktop app for Mac and Windows**, fully local: no account, no server, your texts stay on your computer.
+
+- [Flaw for Mac](https://github.com/Pardival/flaw/releases/latest/download/Flaw-mac.dmg) (macOS 11+, Intel and Apple Silicon)
+- [Flaw for Windows](https://github.com/Pardival/flaw/releases/latest/download/Flaw-windows.exe) (Windows 10 and 11, 64-bit)
+
+The app is not signed with a paid certificate: on first launch, allow it in System Settings › Privacy & Security › “Open Anyway” (Mac), or “More info” › “Run anyway” (Windows). Use **Réglages › Données › Sauvegarder la bibliothèque** (library backup) from time to time.
+
 ## Features
 
 - **Four writing modes**
@@ -20,7 +29,7 @@ Flaw is a free and open-source writing app built for long-form work: novels, scr
 - **Focus mode**: a small box in the middle of the screen, showing only the last few lines.
 - **Local-first**: writing never waits for the network; sync (Yjs) catches up when the connection returns.
 - **Version history**, 30-day trash, daily word goal.
-- **Import** Word, Markdown, plain text; **export** PDF, Word, EPUB, Fountain, processed on the device.
+- **Import** Word, PDF, Markdown, plain text; **export** PDF, Word, EPUB, Fountain, processed on the device.
 - **Encryption at rest** on the server (KEK → DEK envelope, XChaCha20-Poly1305).
 - Light and dark themes, installable as an app (PWA).
 
@@ -48,6 +57,17 @@ On the empty home screen, **Découvrir avec des exemples** loads four demo texts
 
 > **Local mode = one person, on this machine.** To keep things simple, sign-in is disabled (`FLAW_DEV_NO_AUTH`): anyone who can reach the server acts as the local account. This mode is refused outside `NODE_ENV=development` and only listens on `localhost`. Never expose it on a network. For an online server, see [docs/deploiement](docs/deploiement/publication.md).
 
+## Building the desktop app
+
+Extra requirements: [Rust](https://rustup.rs/) (stable) and, on Windows, the Visual Studio C++ build tools.
+
+```bash
+corepack pnpm --filter @flaw/desktop dev     # development window
+corepack pnpm --filter @flaw/desktop build   # .dmg (Mac) or .exe installer (Windows)
+```
+
+Push a `desktop-vX.Y.Z` tag (matching `apps/desktop/src-tauri/tauri.conf.json`) to publish a release: the `desktop` workflow builds both systems and creates the GitHub release. The download page (`site/`) is deployed by the `pages` workflow.
+
 ## Development
 
 ```bash
@@ -62,6 +82,8 @@ Repository layout (pnpm monorepo):
 | Folder | Contents |
 | --- | --- |
 | `apps/web` | React 19 + Vite interface, ProseMirror editor, local storage (IndexedDB) |
+| `apps/desktop` | Tauri 2 desktop app (Mac, Windows), fully local |
+| `site` | download page (GitHub Pages) |
 | `apps/server` | Fastify 5 API, Hocuspocus sync, PostgreSQL 18 with row-level security |
 | `packages/schema` | shared document schema (ProseMirror) |
 | `packages/sync` | shared sync protocol |

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flaw — écrire sur une vraie page</title>
+    <meta name="description" content="Flaw, application d'écriture libre et gratuite pour Mac et Windows : romans, scénarios, essais, sur une vraie page de livre. Tout reste sur votre ordinateur." />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <a class="brand" href="#"><img src="icon.png" alt="" width="36" height="36" /><span>Flaw</span></a>
+      <nav>
+        <a href="#fonctions" data-fr="Fonctions" data-en="Features">Fonctions</a>
+        <a href="https://github.com/Pardival/flaw" data-fr="Code source" data-en="Source code">Code source</a>
+        <button type="button" id="lang" class="lang" aria-label="English">EN</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-text">
+          <h1 data-fr="Écrire sans distraction, sur une vraie page de livre." data-en="Distraction-free writing, on a real book page.">Écrire sans distraction, sur une vraie page de livre.</h1>
+          <p class="lead" data-fr="Romans, scénarios, essais, journaux. Flaw met votre texte en page au format réel, avec ses marges et ses numéros de page. Libre, gratuit, et tout reste sur votre ordinateur." data-en="Novels, screenplays, essays, journals. Flaw lays out your text at its real size, with margins and page numbers. Free, open source, and everything stays on your computer.">Romans, scénarios, essais, journaux. Flaw met votre texte en page au format réel, avec ses marges et ses numéros de page. Libre, gratuit, et tout reste sur votre ordinateur.</p>
+          <div class="downloads">
+            <a class="download" id="dl-mac" href="https://github.com/Pardival/flaw/releases/latest/download/Flaw-mac.dmg">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.2-1.7-3-1.9-3.6-2-1.5-.2-3 .9-3.8.9s-2-.9-3.3-.9C6.1 7 4.5 8 3.6 9.6c-1.8 3.2-.5 7.9 1.3 10.4.9 1.2 1.9 2.6 3.2 2.6s1.8-.8 3.3-.8 2 .8 3.3.8 2.2-1.3 3-2.5c1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.6zM14 5.4c.7-.8 1.1-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>
+              <span><strong data-fr="Télécharger pour Mac" data-en="Download for Mac">Télécharger pour Mac</strong><small data-fr="macOS 11 ou plus · Intel et Apple Silicon" data-en="macOS 11+ · Intel and Apple Silicon">macOS 11 ou plus · Intel et Apple Silicon</small></span>
+            </a>
+            <a class="download" id="dl-win" href="https://github.com/Pardival/flaw/releases/latest/download/Flaw-windows.exe">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5.5l7.5-1v7H3zM11.5 4.3L21 3v8.5h-9.5zM3 12.5h7.5v7L3 18.5zM11.5 12.5H21V21l-9.5-1.3z"/></svg>
+              <span><strong data-fr="Télécharger pour Windows" data-en="Download for Windows">Télécharger pour Windows</strong><small data-fr="Windows 10 et 11 · 64 bits" data-en="Windows 10 and 11 · 64-bit">Windows 10 et 11 · 64 bits</small></span>
+            </a>
+          </div>
+          <p class="note"><a href="https://github.com/Pardival/flaw/releases" data-fr="Toutes les versions et empreintes SHA-256" data-en="All releases and SHA-256 checksums">Toutes les versions et empreintes SHA-256</a></p>
+        </div>
+
+        <div class="book" aria-hidden="true">
+          <div class="page">
+            <p class="chapter">Les carnets</p>
+            <p class="first">Élias Morel avait toujours cru qu'il se connaissait. C'était, pensait-il, la seule chose qu'un homme de soixante-trois ans pouvait affirmer sans trembler.</p>
+            <p>Il avait passé sa vie à dessiner des cartes, à corriger des côtes mal relevées, à déplacer d'un millimètre des rivières que d'autres avaient tracées trop vite.</p>
+            <p>— Tu te trompes, dit Paul. Tu ne t'es jamais regardé.</p>
+            <p>Il ne répondit pas. Dehors, la mer montait sous les fenêtres de la vieille maison, et quelque chose en lui, qu'il ne savait pas nommer, montait avec elle.</p>
+            <span class="folio">12</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="fonctions" class="features">
+        <article>
+          <h2 data-fr="Une vraie page" data-en="A real page">Une vraie page</h2>
+          <p data-fr="Roman broché, poche, A4 ou US Letter : pages pleines, coupures à la ligne près, numéro en pied de page." data-en="Trade paperback, pocket, A4 or US Letter: full pages, line-accurate breaks, page numbers at the foot.">Roman broché, poche, A4 ou US Letter : pages pleines, coupures à la ligne près, numéro en pied de page.</p>
+        </article>
+        <article>
+          <h2 data-fr="Quatre façons d'écrire" data-en="Four ways to write">Quatre façons d'écrire</h2>
+          <p data-fr="Roman avec chapitres, script de film à la mise en page standard, document structuré, ou page blanche." data-en="Novel with chapters, screenplay in standard format, structured document, or blank page.">Roman avec chapitres, script de film à la mise en page standard, document structuré, ou page blanche.</p>
+        </article>
+        <article>
+          <h2 data-fr="Rien que le texte" data-en="Nothing but the text">Rien que le texte</h2>
+          <p data-fr="Les menus s'effacent pendant que vous écrivez. Le mode focus ne garde que les dernières lignes." data-en="Menus fade away while you write. Focus mode keeps only the last few lines.">Les menus s'effacent pendant que vous écrivez. Le mode focus ne garde que les dernières lignes.</p>
+        </article>
+        <article>
+          <h2 data-fr="Typographie soignée" data-en="Careful typography">Typographie soignée</h2>
+          <p data-fr="Espaces insécables, guillemets « », tiret de dialogue : la typographie française se fait toute seule." data-en="Non-breaking spaces, « » quotes, dialogue dashes: French typography is handled for you.">Espaces insécables, guillemets « », tiret de dialogue : la typographie française se fait toute seule.</p>
+        </article>
+        <article>
+          <h2 data-fr="Import et export" data-en="Import and export">Import et export</h2>
+          <p data-fr="Importez Word, PDF, Markdown ou texte. Exportez en PDF prêt à imprimer, Word, EPUB ou Fountain." data-en="Import Word, PDF, Markdown or text. Export print-ready PDF, Word, EPUB or Fountain.">Importez Word, PDF, Markdown ou texte. Exportez en PDF prêt à imprimer, Word, EPUB ou Fountain.</p>
+        </article>
+        <article>
+          <h2 data-fr="À vous, et seulement à vous" data-en="Yours, and only yours">À vous, et seulement à vous</h2>
+          <p data-fr="Ni compte, ni cloud, ni publicité. Vos textes restent sur votre ordinateur ; une sauvegarde en un clic." data-en="No account, no cloud, no ads. Your texts stay on your computer, with one-click backups.">Ni compte, ni cloud, ni publicité. Vos textes restent sur votre ordinateur ; une sauvegarde en un clic.</p>
+        </article>
+      </section>
+
+      <section class="install">
+        <h2 data-fr="Premier lancement" data-en="First launch">Premier lancement</h2>
+        <p data-fr="Flaw est un projet libre, sans certificat payant : votre système vous demandera une confirmation la première fois." data-en="Flaw is a free project without a paid certificate: your system will ask for confirmation the first time.">Flaw est un projet libre, sans certificat payant : votre système vous demandera une confirmation la première fois.</p>
+        <div class="steps">
+          <div>
+            <h3>Mac</h3>
+            <ol>
+              <li data-fr="Ouvrez Flaw-mac.dmg et glissez Flaw dans Applications." data-en="Open Flaw-mac.dmg and drag Flaw into Applications.">Ouvrez Flaw-mac.dmg et glissez Flaw dans Applications.</li>
+              <li data-fr="Lancez Flaw. Si macOS refuse, ouvrez Réglages Système › Confidentialité et sécurité." data-en="Launch Flaw. If macOS refuses, open System Settings › Privacy &amp; Security.">Lancez Flaw. Si macOS refuse, ouvrez Réglages Système › Confidentialité et sécurité.</li>
+              <li data-fr="Cliquez sur « Ouvrir quand même », puis confirmez." data-en="Click “Open Anyway”, then confirm.">Cliquez sur « Ouvrir quand même », puis confirmez.</li>
+            </ol>
+          </div>
+          <div>
+            <h3>Windows</h3>
+            <ol>
+              <li data-fr="Lancez Flaw-windows.exe." data-en="Run Flaw-windows.exe.">Lancez Flaw-windows.exe.</li>
+              <li data-fr="Si Windows affiche « Windows a protégé votre ordinateur », cliquez sur « Informations complémentaires »." data-en="If Windows shows “Windows protected your PC”, click “More info”.">Si Windows affiche « Windows a protégé votre ordinateur », cliquez sur « Informations complémentaires ».</li>
+              <li data-fr="Cliquez sur « Exécuter quand même ». Flaw s'installe pour vous seul, sans droits d'administrateur." data-en="Click “Run anyway”. Flaw installs for you only, without admin rights.">Cliquez sur « Exécuter quand même ». Flaw s'installe pour vous seul, sans droits d'administrateur.</li>
+            </ol>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <p data-fr="Flaw est un logiciel libre sous licence AGPL-3.0. © 2026 Kevin Dufour et les contributeurs." data-en="Flaw is free software under the AGPL-3.0 license. © 2026 Kevin Dufour and contributors.">Flaw est un logiciel libre sous licence AGPL-3.0. © 2026 Kevin Dufour et les contributeurs.</p>
+      <p><a href="https://github.com/Pardival/flaw" data-fr="Code source sur GitHub" data-en="Source code on GitHub">Code source sur GitHub</a> · <a href="https://github.com/Pardival/flaw/issues" data-fr="Signaler un problème" data-en="Report an issue">Signaler un problème</a></p>
+    </footer>
+    <script src="app.js"></script>
+  </body>
+</html>
