@@ -5,16 +5,15 @@ import { useTranslate } from "../i18n/i18n.ts";
 import type { LocalDocument, LocalStore } from "../local-store/index.ts";
 import { CreateFlow } from "./CreateFlow.tsx";
 import { useRoute } from "./route.ts";
-import { Splash } from "../shell/Splash.tsx";
+import { hideBootSplash } from "../shell/boot-splash.ts";
 import { useDocuments, useLocalStore } from "./store-context.tsx";
 import { TextList } from "./TextList.tsx";
 import { Trash } from "./Trash.tsx";
 
 export type TextView = (props: { store: LocalStore; document: LocalDocument; trashed?: boolean }) => ReactNode;
 
-/** Durée minimale de l'écran de chargement, puis son fondu de sortie. */
+/** Durée minimale de l'écran de chargement (logo de index.html). */
 const SPLASH_MS = 1_100;
-const SPLASH_OUT_MS = 380;
 
 /**
  * Bibliothèque : liste, création, ouverture d'un texte.
@@ -27,7 +26,6 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
   const store = state.status === "ready" ? state.store : null;
   const documents = useDocuments(store);
   const route = useRoute();
-  const [splash, setSplash] = useState<"shown" | "leaving" | "done">("shown");
   // Texte ouvert puis placé dans la corbeille ailleurs : il reste affiché avec un bandeau (D-023).
   const lastOpened = useRef<LocalDocument | null>(null);
   const [minimum, setMinimum] = useState(false);
@@ -38,25 +36,20 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
     return () => window.clearTimeout(timer);
   }, []);
 
-  useEffect(() => {
-    if (splash === "shown" && ready && minimum) {
-      setSplash("leaving");
-    }
-  }, [splash, ready, minimum]);
+  const shown = ready && minimum;
 
   useEffect(() => {
-    if (splash !== "leaving") {
-      return;
+    if (shown || state.status === "error") {
+      hideBootSplash();
     }
-    const timer = window.setTimeout(() => setSplash("done"), SPLASH_OUT_MS);
-    return () => window.clearTimeout(timer);
-  }, [splash]);
+  }, [shown, state.status]);
 
   if (state.status === "error") {
     return <p role="alert">{t("storageError")}</p>;
   }
-  if (!store || documents === null || splash !== "done") {
-    return <Splash label={t("loading")} leaving={splash === "leaving"} />;
+  if (!store || documents === null || !shown) {
+    // Sous le logo de chargement : rien d'autre ne s'affiche.
+    return <span className="visually-hidden" role="status">{t("loading")}</span>;
   }
 
   if (route.name === "create") {

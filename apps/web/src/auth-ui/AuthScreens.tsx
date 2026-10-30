@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { hideBootSplash } from "../shell/boot-splash.ts";
 
 import {
   createAuthClient,
@@ -33,6 +34,12 @@ export function AuthScreens({ children, client, initialPhase, onMfaRequired }: A
   const api = client ?? (owned.current ??= createAuthClient());
   const [phase, setPhase] = useState<AuthPhase>(initialPhase ?? { name: "loading" });
   const [pending, setPending] = useState(false);
+  // Un écran à remplir (connexion, 2FA) remplace le logo de chargement.
+  useEffect(() => {
+    if (phase.name !== "loading" && phase.name !== "ready") {
+      hideBootSplash();
+    }
+  }, [phase.name]);
   const preserveLocal = useRef(nextPreserve(initialPhase ?? { name: "loading" }, false));
   const alive = useRef(true);
   const busy = useRef(false);

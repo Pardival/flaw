@@ -1,4 +1,5 @@
 import { StrictMode } from "react";
+import { hideBootSplash } from "./shell/boot-splash.ts";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
 
@@ -26,6 +27,9 @@ createRoot(root).render(
     </I18nextProvider>
   </StrictMode>,
 );
+
+// Filet de sécurité : le logo de chargement ne reste jamais au-delà de 10 s.
+window.setTimeout(hideBootSplash, 10_000);
 
 // PWA installable (T-056) : le service worker n'est enregistré que dans la version construite.
 if (import.meta.env.PROD && "serviceWorker" in navigator) {

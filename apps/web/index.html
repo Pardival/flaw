@@ -9,8 +9,17 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="stylesheet" href="/boot.css" />
   </head>
   <body>
+    <div id="boot-splash" role="status" aria-label="Chargement de Flaw">
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <rect width="16" height="16" rx="3.5" class="boot-tile" />
+        <path d="M5 3.5h6.5v2H7v2h3v2H7v3H5z" class="boot-f" pathLength="1" />
+        <circle cx="11" cy="11.5" r="1.05" class="boot-dot" />
+      </svg>
+      <span class="boot-bar" aria-hidden="true"></span>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
