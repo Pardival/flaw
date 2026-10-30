@@ -149,6 +149,40 @@ h1 {
 
 .folio { position: absolute; bottom: 7%; left: 0; right: 0; text-align: center; color: var(--encre-3); font-size: 12px; }
 
+.demo { padding: 0 0 72px; text-align: center; }
+
+.demo h2 { margin: 0 0 20px; font: 500 30px var(--serif); }
+
+.demo-video {
+  display: block;
+  width: 100%;
+  max-width: 1040px;
+  margin: 0 auto;
+  border-radius: 14px;
+  border: 1px solid var(--trait);
+  box-shadow: var(--ombre);
+  background: var(--papier);
+}
+
+.shots {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+  margin-top: 28px;
+}
+
+.shots figure { margin: 0; }
+
+.shots img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--trait);
+}
+
+.shots figcaption { margin-top: 10px; color: var(--encre-2); font-size: 14px; }
+
 .features {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -201,6 +235,7 @@ h1 {
 @media (max-width: 860px) {
   .hero { grid-template-columns: 1fr; gap: 40px; padding-top: 24px; }
   .features { grid-template-columns: 1fr 1fr; }
+  .shots { grid-template-columns: 1fr; }
   .page { transform: none; }
 }
 

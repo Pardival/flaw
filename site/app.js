@@ -18,6 +18,15 @@
     button.textContent = next === "fr" ? "EN" : "FR";
     button.setAttribute("aria-label", next === "fr" ? "English" : "Français");
     document.title = next === "fr" ? "Flaw — écrire sur une vraie page" : "Flaw — write on a real page";
+    document.querySelectorAll("img[data-src-fr]").forEach(function (img) {
+      img.src = img.getAttribute("data-src-" + next);
+    });
+    var video = document.querySelector("video[data-src-fr]");
+    if (video) {
+      video.poster = video.getAttribute("data-poster-" + next);
+      video.querySelector("source").src = video.getAttribute("data-src-" + next);
+      video.load();
+    }
   }
 
   button.addEventListener("click", function () {

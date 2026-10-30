@@ -141,6 +141,13 @@ export function typographyPlugin(options: TypographyOptions): Plugin {
         if (text === "-" && dialogueDash(view, from, to)) {
           return true;
         }
+        // « -- » puis espace : le tiret porte déjà son espace insécable, on n'en ajoute pas une seconde.
+        if (text === " " && from === to) {
+          const $from = view.state.doc.resolve(from);
+          if ($from.parent.textBetween(0, $from.parentOffset, undefined, "￼") === EM_DASH + NBSP) {
+            return true;
+          }
+        }
         if (!options.enabled() || text.length !== 1) {
           return false;
         }

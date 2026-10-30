@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Flaw — écrire sur une vraie page</title>
     <meta name="description" content="Flaw, application d'écriture libre et gratuite pour Mac et Windows : romans, scénarios, essais, sur une vraie page de livre. Tout reste sur votre ordinateur." />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; base-uri 'none'; form-action 'none'" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="style.css" />
   </head>
@@ -49,6 +49,28 @@
         </div>
       </section>
 
+      <section class="demo" aria-labelledby="demo-title">
+        <h2 id="demo-title" data-fr="Flaw en une minute" data-en="Flaw in one minute">Flaw en une minute</h2>
+        <video class="demo-video" controls muted playsinline preload="metadata" poster="media/fr-03-image.jpg"
+          data-src-fr="media/flaw-demo-fr.mp4" data-src-en="media/flaw-demo-en.mp4" data-poster-fr="media/fr-03-image.jpg" data-poster-en="media/en-03-image.jpg">
+          <source src="media/flaw-demo-fr.mp4" type="video/mp4" />
+        </video>
+        <div class="shots">
+          <figure>
+            <img src="media/fr-02-ecrire.jpg" data-src-fr="media/fr-02-ecrire.jpg" data-src-en="media/en-02-ecrire.jpg" alt="" loading="lazy" width="1440" height="900" />
+            <figcaption data-fr="Une vraie page, mise en page pendant que vous écrivez" data-en="A real page, laid out as you write">Une vraie page, mise en page pendant que vous écrivez</figcaption>
+          </figure>
+          <figure>
+            <img src="media/fr-03-image.jpg" data-src-fr="media/fr-03-image.jpg" data-src-en="media/en-03-image.jpg" alt="" loading="lazy" width="1440" height="900" />
+            <figcaption data-fr="Des images, recadrées et alignées en un clic" data-en="Images, cropped and aligned in one click">Des images, recadrées et alignées en un clic</figcaption>
+          </figure>
+          <figure>
+            <img src="media/fr-05-couverture.jpg" data-src-fr="media/fr-05-couverture.jpg" data-src-en="media/en-05-couverture.jpg" alt="" loading="lazy" width="1440" height="900" />
+            <figcaption data-fr="La 1re et la 4e de couverture, prêtes à imprimer" data-en="Front and back covers, ready to print">La 1re et la 4e de couverture, prêtes à imprimer</figcaption>
+          </figure>
+        </div>
+      </section>
+
       <section id="fonctions" class="features">
         <article>
           <h2 data-fr="Une vraie page" data-en="A real page">Une vraie page</h2>
@@ -64,7 +86,7 @@
         </article>
         <article>
           <h2 data-fr="Import et export" data-en="Import and export">Import et export</h2>
-          <p data-fr="Importez Word, PDF, Markdown ou texte. Exportez en PDF prêt à imprimer, Word, EPUB ou Fountain." data-en="Import Word, PDF, Markdown or text. Export print-ready PDF, Word, EPUB or Fountain.">Importez Word, PDF, Markdown ou texte. Exportez en PDF prêt à imprimer, Word, EPUB ou Fountain.</p>
+          <p data-fr="Importez Word, PDF, Markdown ou texte. Exportez en PDF prêt à imprimer, Word, EPUB ou Fountain. Interface en six langues." data-en="Import Word, PDF, Markdown or text. Export print-ready PDF, Word, EPUB or Fountain. Interface in six languages.">Importez Word, PDF, Markdown ou texte. Exportez en PDF prêt à imprimer, Word, EPUB ou Fountain. Interface en six langues.</p>
         </article>
         <article>
           <h2 data-fr="Images et couvertures" data-en="Images and covers">Images et couvertures</h2>

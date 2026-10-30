@@ -1485,7 +1485,7 @@
   justify-content: center;
   gap: 28px;
   padding: 32px;
-  background: var(--couleur-fond, #ece7df);
+  background: var(--couleur-bureau);
   overflow: hidden;
 }
 
@@ -1544,6 +1544,9 @@
 }
 
 .cover-form-title { margin: 0; font-size: 15px; font-weight: 600; }
+
+/* Colonne à hauteur fixe : les champs défilent, ils ne s'écrasent pas. */
+.cover-form > * { flex-shrink: 0; }
 
 .cover-form .settings-field { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: none; }
 
