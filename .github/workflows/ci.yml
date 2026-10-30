@@ -54,6 +54,10 @@ jobs:
           node scripts/check-db-tests.mjs "$RUNNER_TEMP/test.log"
           exit "${status}"
 
+      # T-041 — corpus de fichiers malveillants rejoué sans aucun accès réseau.
+      - name: Corpus d'import sans réseau
+        run: unshare -rn pnpm exec vitest run packages/importers/test/corpus.test.ts
+
       # A-015 — openapi.json est le contrat 0.4.18, chemins préfixés /api/v1.
       # oasdiff --fail-on ERR sur GET /me puis sur tout le document.
       # Aucun fichier d'exceptions.
