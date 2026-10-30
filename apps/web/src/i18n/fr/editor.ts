@@ -40,6 +40,7 @@ export const editor = {
   versionLabel: "Nom de la version (facultatif)",
   noVersions: "Pas encore de version enregistrée.",
   menu_image: "Insérer une image…",
+  menu_cover: "Couverture…",
   imageLeft: "Aligner l'image à gauche",
   imageCenter: "Centrer l'image",
   imageRight: "Aligner l'image à droite",

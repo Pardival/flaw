@@ -1,5 +1,5 @@
 import { formatsForMode, type ExportKind } from "@flaw/exporters/src/formats.ts";
-import type { ExportInput } from "@flaw/exporters/src/model.ts";
+import type { ExportAsset, ExportInput } from "@flaw/exporters/src/model.ts";
 import { useEffect, useRef, useState } from "react";
 
 import { useTranslate } from "../i18n/i18n.ts";
@@ -10,13 +10,31 @@ import { exportPdf, type PdfOptions } from "./pdf.ts";
  * Export (D-054, D-055) : formats du mode seulement (AC-047), fichier créé sur
  * l'appareil ; PDF roman : marges alternées et chapitres en belle page par défaut.
  */
-export function ExportDialog({ input, id, onClose }: { input: () => ExportInput; id: string; onClose: () => void }) {
+type CoverSource = (include: boolean) => Promise<{ front?: ExportAsset; back?: ExportAsset } | undefined>;
+
+export function ExportDialog({
+  input,
+  id,
+  onClose,
+  cover,
+  hasCover = false,
+  onEditCover,
+}: {
+  input: () => ExportInput;
+  id: string;
+  onClose: () => void;
+  cover?: CoverSource;
+  hasCover?: boolean;
+  onEditCover?: () => void;
+}) {
   const t = useTranslate("export");
   const mode = input().mode;
   const kinds = formatsForMode(mode);
   const [kind, setKind] = useState<ExportKind>(kinds[0] ?? "pdf");
   const [options, setOptions] = useState<PdfOptions>({ mirrorMargins: mode === "novel", chaptersOnRecto: mode === "novel" });
   const [state, setState] = useState<"idle" | "busy" | "failed">("idle");
+  const [withCover, setWithCover] = useState(true);
+  const coverable = kind !== "fountain";
   const first = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -25,7 +43,8 @@ export function ExportDialog({ input, id, onClose }: { input: () => ExportInput;
 
   const start = async () => {
     setState("busy");
-    const data = input();
+    const covers = cover && hasCover && coverable ? await cover(withCover).catch(() => undefined) : undefined;
+    const data = { ...input(), ...(covers ? { cover: covers } : {}) };
     if (kind === "pdf") {
       const result = await exportPdf(data, id, options);
       if (result.ok) {
@@ -80,6 +99,22 @@ export function ExportDialog({ input, id, onClose }: { input: () => ExportInput;
               <input type="checkbox" checked={options.chaptersOnRecto} onChange={(event) => setOptions({ ...options, chaptersOnRecto: event.currentTarget.checked })} />
               <span>{t("chaptersOnRecto")}</span>
             </label>
+          </fieldset>
+        ) : null}
+        {cover && coverable ? (
+          <fieldset className="settings-field">
+            <legend>{t("cover")}</legend>
+            {hasCover ? (
+              <label className="settings-toggle">
+                <input type="checkbox" checked={withCover} onChange={(event) => setWithCover(event.currentTarget.checked)} />
+                <span>{t("includeCover")}</span>
+              </label>
+            ) : null}
+            {onEditCover ? (
+              <button type="button" className="settings-link" onClick={onEditCover}>
+                {hasCover ? t("editCover") : t("createCover")}
+              </button>
+            ) : null}
           </fieldset>
         ) : null}
         {state === "failed" ? (

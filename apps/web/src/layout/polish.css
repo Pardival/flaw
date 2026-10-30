@@ -1441,3 +1441,143 @@
 .crop-se { right: -8px; bottom: -8px; cursor: nwse-resize; }
 
 .dialog-actions-spacer { flex: 1; }
+
+/* ---------- Atelier de couverture ---------- */
+.cover-veil { padding: 24px; }
+
+.cover-studio {
+  display: flex;
+  flex-direction: column;
+  width: min(1120px, 100%);
+  max-height: calc(100vh - 48px);
+  background: var(--couleur-papier);
+  border-radius: 14px;
+  box-shadow: var(--ombre-flottante);
+  overflow: hidden;
+  animation: flaw-rise 260ms var(--courbe-entree) backwards;
+}
+
+.cover-head {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: var(--espace-3);
+  padding: var(--espace-3) var(--espace-4);
+  border-bottom: 1px solid var(--couleur-trait);
+}
+
+.cover-head h2 { margin: 0; font-size: 17px; font-weight: 600; }
+.cover-head .icon-button { justify-self: end; }
+
+.cover-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);
+  min-height: 0;
+  flex: 1;
+}
+
+.cover-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  padding: 28px;
+  background: var(--couleur-fond, #ece7df);
+  overflow: auto;
+}
+
+.cover-preview {
+  margin: 0;
+  flex: 1 1 0;
+  max-width: 300px;
+  text-align: center;
+  transition: transform 260ms var(--courbe-entree), opacity 260ms ease;
+}
+
+.cover-preview canvas {
+  display: block;
+  width: 100%;
+  border-radius: 2px 6px 6px 2px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 14px 32px rgba(40, 30, 20, 0.22);
+}
+
+.cover-preview figcaption {
+  margin-top: 10px;
+  color: var(--couleur-encre-3, #8a8378);
+  font-size: var(--taille-ui-s);
+}
+
+/* La face en cours d'édition passe devant, l'autre recule. */
+.cover-stage[data-side="front"] .cover-preview:first-child,
+.cover-stage[data-side="back"] .cover-preview:last-child {
+  transform: scale(0.9);
+  opacity: 0.6;
+}
+
+.cover-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-3);
+  padding: var(--espace-4);
+  overflow-y: auto;
+  animation: flaw-fade 200ms var(--courbe-entree) backwards;
+}
+
+.cover-form .settings-field { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; border: none; }
+.cover-form legend, .cover-form .settings-field > span { font-size: var(--taille-ui-s); font-weight: 600; color: var(--couleur-encre-2, inherit); padding: 0; margin-bottom: 6px; }
+.cover-form input:not([type]), .cover-form input[type="text"], .cover-form textarea, .cover-form select { width: 100%; font: inherit; }
+.cover-form textarea { resize: vertical; min-height: 9em; line-height: 1.5; }
+
+.cover-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.cover-chips button {
+  padding: 6px 12px;
+  border: 1px solid var(--couleur-trait);
+  border-radius: 999px;
+  background: transparent;
+  font-size: var(--taille-ui-s);
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+
+.cover-chips button[aria-pressed="true"] {
+  border-color: var(--couleur-accent);
+  background: var(--couleur-accent-doux);
+  color: var(--couleur-accent);
+}
+
+.cover-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.cover-swatches button {
+  width: 42px;
+  height: 42px;
+  border: 2px solid;
+  border-radius: 50%;
+  font: 600 14px var(--police-titre, serif);
+  cursor: pointer;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.cover-swatches button[aria-pressed="true"] {
+  box-shadow: 0 0 0 3px var(--couleur-papier), 0 0 0 5px var(--couleur-accent);
+  transform: scale(1.06);
+}
+
+.cover-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--espace-3);
+  margin-top: auto;
+  padding-top: var(--espace-3);
+  border-top: 1px solid var(--couleur-trait);
+}
+
+.cover-footer small { flex: 1; color: var(--couleur-encre-3, #8a8378); }
+
+@media (max-width: 820px) {
+  .cover-veil { padding: 0; }
+  .cover-studio { max-height: 100vh; border-radius: 0; height: 100%; }
+  .cover-body { grid-template-columns: 1fr; overflow-y: auto; }
+  .cover-stage { padding: 18px; }
+  .cover-preview { max-width: 180px; }
+}

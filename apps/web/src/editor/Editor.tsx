@@ -55,6 +55,9 @@ import { assetUrl, exportAssets, getAsset, putAsset } from "./images/assets.ts";
 import { CropDialog } from "./images/CropDialog.tsx";
 import { isImageFile, prepareImage, type Crop } from "./images/process.ts";
 import { imageNodeView, insertImage } from "./images/view.ts";
+import { CoverStudio } from "../cover/CoverStudio.tsx";
+import { coverExport, hasCover } from "../cover/export.ts";
+import { PAGE_MM } from "@flaw/exporters/src/model.ts";
 
 export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
@@ -786,7 +789,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
               }
               setPanel(next);
             }}
-            available={["search", "chapters", "history", "export", "shortcuts", "image"]}
+            available={["search", "chapters", "history", "export", "shortcuts", "image", "cover"]}
           />
           <input
             ref={imagePicker}
@@ -869,7 +872,13 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
               assets: ydoc ? exportAssets(ydoc, json) : {},
             };
           }}
+          cover={ydoc ? (include) => coverExport(ydoc, document.pageFormat, include) : undefined}
+          hasCover={hasCover(ydoc)}
+          onEditCover={() => setPanel("cover")}
         />
+      ) : null}
+      {panel === "cover" && ydoc && !focusMode ? (
+        <CoverStudio doc={ydoc} title={document.title} pageMm={PAGE_MM[document.pageFormat]} onClose={() => setPanel(null)} />
       ) : null}
       {panel === "shortcuts" ? <Shortcuts mode={document.mode} onClose={() => setPanel(null)} /> : null}
       {settingsOpen && !focusMode ? (

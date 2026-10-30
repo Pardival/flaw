@@ -1,5 +1,9 @@
 /** Ressources i18next des exports (T-033 à T-036). Français par défaut. */
 export const exportCatalog = {
+  cover: "Couverture",
+  includeCover: "Inclure la 1re et la 4e de couverture",
+  editCover: "Modifier la couverture…",
+  createCover: "Créer une couverture…",
   title: "Exporter",
   format: "Format",
   kind_pdf: "PDF",

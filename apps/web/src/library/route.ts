@@ -72,14 +72,14 @@ export function useRoute(): Route {
 }
 
 /** Panneau à ouvrir à l'arrivée dans l'éditeur (menu ⋯ de la liste : Historique, Exporter). */
-let pendingPanel: "history" | "export" | null = null;
+let pendingPanel: "history" | "export" | "cover" | null = null;
 
-export function openTextWith(id: string, panel: "history" | "export"): void {
+export function openTextWith(id: string, panel: "history" | "export" | "cover"): void {
   pendingPanel = panel;
   navigate({ name: "text", id });
 }
 
-export function takePendingPanel(): "history" | "export" | null {
+export function takePendingPanel(): "history" | "export" | "cover" | null {
   const panel = pendingPanel;
   pendingPanel = null;
   return panel;

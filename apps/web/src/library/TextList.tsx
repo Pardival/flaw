@@ -285,6 +285,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
                 }}
                 onHistory={() => openTextWith(doc.id, "history")}
                 onExport={() => openTextWith(doc.id, "export")}
+                onCover={doc.mode === "screenplay" ? undefined : () => openTextWith(doc.id, "cover")}
                 onTrash={() => {
                   void askTrash(doc);
                 }}
@@ -379,6 +380,7 @@ function RowMenu({
   onRename,
   onHistory,
   onExport,
+  onCover,
   onTrash,
 }: {
   title: string;
@@ -388,6 +390,7 @@ function RowMenu({
   onRename: () => void;
   onHistory: () => void;
   onExport: () => void;
+  onCover?: () => void;
   onTrash: () => void;
 }) {
   const t = useTranslate("library");
@@ -453,6 +456,11 @@ function RowMenu({
           <button type="button" role="menuitem" onClick={onHistory}>
             {t("history")}
           </button>
+          {onCover ? (
+            <button type="button" role="menuitem" onClick={onCover}>
+              {t("cover")}
+            </button>
+          ) : null}
           <button type="button" role="menuitem" onClick={onExport}>
             {t("export")}
           </button>
