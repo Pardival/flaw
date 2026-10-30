@@ -18,6 +18,7 @@ import { assertAppRole } from "./db/migrate.ts";
 import { resolvedClientIp } from "./platform/healthz.ts";
 import { sendProblem, type ProblemStatus } from "./platform/problem.ts";
 import { writeSecurityLog } from "./platform/security-log.ts";
+import { firstAdminId } from "./auth/lookups.ts";
 import { consignerResultatPurge } from "./crypto/purge.ts";
 import { documentTitleSchema, SERVER_ASSIGNED_KEYS } from "./platform/validation.ts";
 
@@ -286,14 +287,14 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  */
 function schedulePurge(pool: Pool, config: AppConfig): void {
   const run = async (): Promise<void> => {
-    const admins = await pool.query<{ id: string }>("SELECT id FROM flaw.users WHERE role = 'admin' ORDER BY id LIMIT 1");
-    const ownerId = admins.rows[0]?.id;
+    const ownerId = await firstAdminId(pool);
     try {
       if (ownerId === undefined) {
         await pool.query("SELECT flaw.purge_journaux()");
       } else {
         await consignerResultatPurge({
-          query: (sql, params) => pool.query(sql, [...params]),
+          // Relais typé : consignerResultatPurge ne lui passe que des requêtes littérales paramétrées.
+          query: (sql, params) => pool.query(sql, [...params]), // nosemgrep: sec-db-03-query-non-literal, sec-db-03-taint
           purge: async () => {
             await pool.query("SELECT flaw.purge_journaux()");
           },

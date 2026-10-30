@@ -33,6 +33,7 @@ import type { LoadedSecrets } from "../src/config/secrets.ts";
 import { applyMigrations, assertAppRole } from "../src/db/migrate.ts";
 import { validateKeyMaterial } from "../src/platform/healthz.ts";
 import { problem } from "../src/platform/problem.ts";
+import { SCHEMA_VERSION } from "@flaw/schema/src/index.ts";
 
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -540,7 +541,7 @@ describe("anti-IDOR sur PostgreSQL", () => {
         cookie: userA.cookie,
         origin: ORIGIN,
         "content-type": "application/json",
-        "x-flaw-schema-version": "1",
+        "x-flaw-schema-version": String(SCHEMA_VERSION),
       },
       payload: "{}",
     });

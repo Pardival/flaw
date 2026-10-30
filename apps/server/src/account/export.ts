@@ -15,6 +15,7 @@ import { safeFileName, type ExportInput } from "../../../../packages/exporters/s
 import type { AccessActor } from "../access/can.ts";
 import { getDocument, listDocuments, readContent } from "../documents/store.ts";
 import { sendProblem } from "../platform/problem.ts";
+import { sessionReauthenticatedAt } from "../auth/lookups.ts";
 
 export type AccountExportDeps = {
   pool: () => Pool | undefined;
@@ -57,11 +58,7 @@ export function registerAccountExport(app: FastifyInstance, deps: AccountExportD
     if (pool === undefined || actor === undefined || sessionId === undefined) {
       return sendProblem(reply, 401);
     }
-    const session = await pool.query<{ reauthenticated_at: Date | null }>(
-      "SELECT reauthenticated_at FROM flaw.sessions WHERE id = $1 AND owner_id = $2",
-      [sessionId, actor.userId],
-    );
-    const at = session.rows[0]?.reauthenticated_at;
+    const at = await sessionReauthenticatedAt(pool, sessionId, actor.userId);
     if (!at || Date.now() - at.getTime() >= REAUTH_WINDOW_MS) {
       return reply
         .code(403)

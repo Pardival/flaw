@@ -30,6 +30,7 @@ import {
   parseSchemaHeader,
   payloadTooLarge,
 } from "../../../../packages/sync/src/index.ts";
+import { SCHEMA_VERSION } from "@flaw/schema/src/index.ts";
 
 const POSTGRES_IMAGE =
   "postgres:18.6-alpine@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873";
@@ -440,10 +441,10 @@ describe("journal sur PostgreSQL", () => {
     });
     expect(ancient.statusCode).toBe(426);
     const broken = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, Buffer.from([0x80]), {
-      "x-flaw-schema-version": "1",
+      "x-flaw-schema-version": String(SCHEMA_VERSION),
     });
     expect(broken.statusCode).toBe(422);
-    const headers = { "x-flaw-schema-version": "1" };
+    const headers = { "x-flaw-schema-version": String(SCHEMA_VERSION) };
     const known = Y.encodeStateVector(client);
     const synced = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(update, known), headers);
     expect(synced.statusCode).toBe(200);
@@ -478,7 +479,7 @@ describe("journal sur PostgreSQL", () => {
     }
     const read = await call("GET", `/api/v1/documents/${id}`, user.cookie);
     expect(read.statusCode).toBe(200);
-    expect(read.json()).toMatchObject({ title: "Sync", schemaVersion: 1 });
+    expect(read.json()).toMatchObject({ title: "Sync", schemaVersion: SCHEMA_VERSION });
   });
 
   dbTest("refuse le texte d'un autre compte comme un texte absent", async () => {
@@ -486,7 +487,7 @@ describe("journal sur PostgreSQL", () => {
     const userB = await createAccount();
     const id = await createOwned(userA.cookie);
     const payload = frame(new Uint8Array([1, 2, 3]));
-    const headers = { "x-flaw-schema-version": "1" };
+    const headers = { "x-flaw-schema-version": String(SCHEMA_VERSION) };
     const foreign = await call("POST", `/api/v1/documents/${id}/sync`, userB.cookie, payload, headers);
     const missing = await call("POST", `/api/v1/documents/${MISSING}/sync`, userB.cookie, payload, headers);
     expect(foreign.statusCode).toBe(404);
