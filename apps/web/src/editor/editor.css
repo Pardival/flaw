@@ -793,7 +793,7 @@
 }
 
 /* Le choix du thème est dans Réglages : pas de bouton flottant sur les écrans de l'app. */
-.desk:has(.library, .editor-desk, .create) > .chrome {
+.desk:has(.library, .editor-desk, .create, .language-welcome) > .chrome {
   display: none;
 }
 

@@ -1870,8 +1870,9 @@
   align-items: center;
   justify-content: center;
   gap: 14px;
-  min-height: 100vh;
-  padding: 32px 16px;
+  min-height: 100dvh;
+  padding: max(24px, 6vh) 16px;
+  box-sizing: border-box;
   text-align: center;
   animation: flaw-enter 320ms var(--courbe-entree) backwards;
 }
@@ -1882,9 +1883,9 @@
 
 .language-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px;
-  width: min(520px, 100%);
+  width: min(540px, 100%);
 }
 
 .page .language-grid button,
@@ -1912,4 +1913,11 @@
 
 @media (max-width: 520px) {
   .language-grid { grid-template-columns: repeat(2, 1fr); }
+  .language-continue { width: 100%; max-width: 340px; }
+}
+
+@media (max-height: 560px) {
+  .language-welcome { justify-content: flex-start; gap: 10px; }
+  .language-welcome .flaw-logo { transform: none; margin-bottom: 0; }
+  .page .language-grid button, .language-grid button { min-height: 42px; }
 }

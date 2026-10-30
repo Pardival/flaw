@@ -3,7 +3,8 @@
 /* La bibliothèque occupe le bureau, pas une page au format livre. */
 .page:has(> .page-ui > .library),
 .page:has(> .page-ui > .create),
-.page:has(> .page-ui > .library-loading) {
+.page:has(> .page-ui > .library-loading),
+.page:has(> .page-ui > .language-welcome) {
   width: 100%;
   max-width: none;
   max-height: none;
