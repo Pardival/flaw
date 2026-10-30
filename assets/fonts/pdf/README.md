@@ -11,3 +11,13 @@ Noms attendus (voir `PDF_FONT_FILES` dans `packages/exporters/src/pdf/template.t
 
 Sans ces fichiers, le PDF sur l'appareil n'est pas proposé : l'app bascule sur le
 repli serveur (qui lit le même dossier), puis propose Word.
+
+## Provenance (30/10/2026, fichiers non modifiés)
+
+- Courier Prime : github.com/google/fonts, `ofl/courierprime/`
+- EB Garamond : github.com/octaviopardo/EBGaramond12, `fonts/ttf/`
+- Source Serif 4 : github.com/adobe-fonts/source-serif, branche `release`, `TTF/` (`-It` → `-Italic`, `-BoldIt` → `-BoldItalic`, renommage seul)
+- Inter 4.1 : github.com/rsms/inter, version `v4.1`, `extras/ttf/`
+
+Familles alternatives (Libre Baskerville, Crimson Pro, Literata, Lora, Source Sans 3, IBM Plex Sans) : non
+fournies ; un texte dans l'une d'elles sort en Source Serif 4 dans le PDF.
