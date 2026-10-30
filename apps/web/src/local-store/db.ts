@@ -10,6 +10,8 @@ export type DocumentRow = {
   fontFamily: string | null;
   baseFontSizePt: number | null;
   wordCount: number;
+  /** Début du texte pour la liste ; absent des anciennes lignes. */
+  excerpt?: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;

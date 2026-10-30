@@ -861,3 +861,112 @@ kbd {
   text-align: center;
   font-variant-numeric: tabular-nums;
 }
+
+/* Liste (WF-01) : extrait sous le titre, compteur, bouton au pouce sur téléphone. */
+.library-excerpt {
+  grid-column: 1;
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-count {
+  display: none;
+}
+
+.page .library-settings {
+  font-size: var(--taille-ui-l);
+  border: 1px solid var(--couleur-trait-fort);
+  border-radius: var(--rayon-m);
+  padding: 0 var(--espace-2);
+}
+
+.page .library-fab {
+  display: none;
+}
+
+@media (max-width: 599.98px) {
+  .library-bar .button-primary,
+  .library-bar .library-import {
+    display: none;
+  }
+
+  .library-heading > span:not(.library-count):not(.library-goal-phone) {
+    display: none;
+  }
+
+  .library-heading {
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .library-count {
+    display: inline;
+    margin-left: var(--espace-2);
+  }
+
+  .library-list {
+    padding-bottom: 6rem;
+  }
+
+  .page .library-fab {
+    display: block;
+    position: fixed;
+    left: 50%;
+    bottom: calc(var(--espace-4) + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    z-index: 8;
+    padding: 0 var(--espace-6);
+    min-height: 3rem;
+    border-radius: var(--rayon-plein);
+    box-shadow: var(--ombre-flottante);
+  }
+
+  .library-empty ~ .library-fab,
+  .library:has(.library-empty) .library-fab {
+    display: none;
+  }
+}
+
+.library-goal-phone {
+  display: none;
+}
+
+@media (max-width: 599.98px) {
+  .library-bar {
+    gap: var(--espace-2);
+  }
+  .library-bar > .daily-goal {
+    display: none;
+  }
+  .library-goal-phone {
+    display: inline-flex;
+    margin-left: var(--espace-4);
+  }
+  .library-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .library-open {
+    padding: var(--espace-3) var(--espace-7) var(--espace-3) var(--espace-2);
+  }
+  .page .library-row .row-menu-trigger {
+    min-height: 2rem;
+    padding: 0 var(--espace-2);
+    border: none;
+    background: transparent;
+  }
+  .library-row .row-menu {
+    bottom: 50%;
+    transform: translateY(50%);
+    right: 0;
+  }
+}
+
+/* L'attribut hidden l'emporte toujours sur les règles d'affichage des champs. */
+.page [hidden] {
+  display: none !important;
+}

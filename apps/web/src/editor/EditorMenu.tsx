@@ -6,9 +6,11 @@ import type { DocumentMode } from "../local-store/index.ts";
 export type EditorPanel = "search" | "chapters" | "history" | "export" | "shortcuts";
 
 /** Menu ⋯ de l'éditeur (D-034) : Rechercher, Aller au chapitre, Historique, Exporter, Raccourcis. */
-export function EditorMenu({ mode, onSelect, available = ["search", "chapters", "shortcuts"] }: {
+export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "chapters", "shortcuts"] }: {
   mode: DocumentMode;
   onSelect: (panel: EditorPanel) => void;
+  /** Téléphone : « Chapitre » passe dans ce menu (WF-05 téléphone). */
+  onChapter?: () => void;
   available?: EditorPanel[];
 }) {
   const t = useTranslate("editor");
@@ -37,6 +39,19 @@ export function EditorMenu({ mode, onSelect, available = ["search", "chapters", 
       </button>
       {open ? (
         <div className="row-menu-list" role="menu" onKeyDown={(event) => event.key === "Escape" && setOpen(false)}>
+          {mode === "novel" && onChapter ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="editor-menu-chapter"
+              onClick={() => {
+                setOpen(false);
+                onChapter();
+              }}
+            >
+              {t("insertChapter")}
+            </button>
+          ) : null}
           {items
             .filter((item) => item !== "chapters" || mode === "novel")
             .map((item) => (

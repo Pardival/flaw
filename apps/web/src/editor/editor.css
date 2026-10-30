@@ -804,3 +804,55 @@
   font-size: var(--taille-ui-s);
   font-variant-numeric: tabular-nums;
 }
+
+/* Titre et sous-ligne (chapitre · synchro) ; deux lignes sur téléphone (WF-05). */
+.editor-subline {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+  margin-left: var(--espace-2);
+}
+
+.page .editor-menu-chapter {
+  display: none;
+}
+
+@media (max-width: 599.98px) {
+  .editor-center {
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+    font-size: var(--taille-ui-xs);
+  }
+  .editor-center .editor-title,
+  .editor-center .editor-head {
+    display: inline;
+  }
+  .editor-center .editor-title {
+    font-size: var(--taille-ui-s);
+    color: var(--couleur-encre);
+  }
+  .editor-subline {
+    margin-left: 0;
+  }
+  .page .editor-export {
+    display: none;
+  }
+  .page .editor-menu-chapter {
+    display: block;
+  }
+  .page .editor-back {
+    font-size: var(--taille-ui-l);
+  }
+  .editor-footer {
+    left: 0;
+    right: 0;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 599.98px) {
+  .editor-back-label {
+    display: none;
+  }
+}

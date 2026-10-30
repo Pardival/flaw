@@ -74,6 +74,7 @@ type RemoteList = {
     title: string;
     mode: string;
     wordCount: number;
+    excerpt?: string;
     updatedAt: string;
     deletedAt: string | null;
     pageFormat?: string;
@@ -118,6 +119,7 @@ async function pullPages(store: LocalStore, trashed: boolean): Promise<void> {
           mode: item.mode,
           pageFormat: item.pageFormat ?? local?.pageFormat ?? (isMode(item.mode) ? defaultFormat(item.mode) : "a4"),
           wordCount: item.wordCount,
+          excerpt: typeof item.excerpt === "string" ? item.excerpt : undefined,
           updatedAt: item.updatedAt,
           deletedAt: item.deletedAt,
         })

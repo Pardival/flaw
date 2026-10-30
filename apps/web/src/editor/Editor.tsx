@@ -515,13 +515,15 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       {/* Barre minimale (WF-05) : retour, titre · chapitre · synchro, chapitre, focus, réglages, export, plus. */}
       <header className="editor-bar">
         <button type="button" className="editor-back" onClick={() => navigate({ name: "list" })} title="Alt+← / ⌘+[">
-          ‹ {t("texts")}
+          ‹ <span className="editor-back-label">{t("texts")}</span>
         </button>
         <div className="editor-center">
           <span className="editor-title">{document.title}</span>
-          {head.chapter ? <span className="editor-head"> · {head.chapter}</span> : null}
-          <span aria-hidden="true"> · </span>
-          <SyncIndicator />
+          <span className="editor-subline">
+            {head.chapter ? <span className="editor-head">{head.chapter}</span> : null}
+            {head.chapter ? <span aria-hidden="true"> · </span> : null}
+            <SyncIndicator />
+          </span>
         </div>
         <div className="editor-actions">
           {document.mode === "novel" ? (
@@ -547,10 +549,18 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
           <button type="button" className="editor-icon" onClick={() => setSettingsOpen(true)} title={t("settings")} aria-label={t("settings")}>
             Aa
           </button>
-          <button type="button" className="editor-icon" onClick={() => setPanel("export")} title={t("menu_export")} aria-label={t("menu_export")}>
+          <button type="button" className="editor-icon editor-export" onClick={() => setPanel("export")} title={t("menu_export")} aria-label={t("menu_export")}>
             ⇪
           </button>
-          <EditorMenu mode={document.mode} onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "export", "shortcuts"]} />
+          <EditorMenu
+            mode={document.mode}
+            onChapter={() => {
+              const view = viewRef.current;
+              if (view && insertChapter(view.state, view.dispatch)) {
+                view.focus();
+              }
+            }}
+            onSelect={(next) => setPanel(next)} available={["search", "chapters", "history", "export", "shortcuts"]} />
         </div>
       </header>
       {/* Compteur et objectif, coin bas droit, masquables (WF-05). */}

@@ -84,6 +84,11 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+/** Extrait de la liste (D-009) : début du texte, sans le titre de chapitre isolé. */
+function excerptOf(text: string): string {
+  return text.replace(/\s+/gu, " ").trim().slice(0, 160);
+}
+
 function toDocument(row: DocumentRow): LocalDocument {
   return {
     id: row.id,
@@ -93,6 +98,7 @@ function toDocument(row: DocumentRow): LocalDocument {
     fontFamily: row.fontFamily,
     baseFontSizePt: row.baseFontSizePt,
     wordCount: row.wordCount,
+    excerpt: row.excerpt ?? "",
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -549,6 +555,7 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
     const next: DocumentRow = {
       ...row,
       wordCount: countWords(text),
+      excerpt: excerptOf(text),
       updatedAt: stamp(),
       contentPending: true,
     };
@@ -763,6 +770,7 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
           title: remote.title,
           pageFormat: remote.pageFormat,
           wordCount: remote.wordCount,
+          excerpt: remote.excerpt ?? row.excerpt,
           updatedAt: remote.updatedAt,
           deletedAt: remote.deletedAt,
         }
@@ -774,6 +782,7 @@ export async function openLocalStore(options: LocalStoreOptions = {}): Promise<L
           fontFamily: null,
           baseFontSizePt: null,
           wordCount: remote.wordCount,
+          excerpt: remote.excerpt ?? "",
           createdAt: remote.updatedAt,
           updatedAt: remote.updatedAt,
           deletedAt: remote.deletedAt,

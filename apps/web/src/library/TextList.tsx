@@ -103,8 +103,8 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
         }}
       />
       <SyncIndicator />
-      <button type="button" className="icon-button" aria-label={t("settings")} onClick={() => setSettingsOpen(true)}>
-        Aa
+      <button type="button" className="icon-button library-settings" aria-label={t("settings")} title={t("settings")} onClick={() => setSettingsOpen(true)}>
+        ⚙
       </button>
       <button type="button" className="button-primary" onClick={() => navigate({ name: "create" })}>
         + {t("newText")}
@@ -159,6 +159,10 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
       <section className="library-list" aria-labelledby="library-heading">
         <h1 id="library-heading" className="library-heading">
           {t("heading")} <span>— {t("sortNote")}</span>
+          <span className="library-count">{t("countRecent", { count: documents.length })}</span>
+          <span className="library-goal-phone">
+            <DailyGoal />
+          </span>
         </h1>
         <ul>
           {documents.map((doc, index) => (
@@ -198,6 +202,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
                   <span className="library-title" style={{ fontFamily: MODE_FONT[doc.mode] }}>
                     {doc.title || t("untitled")}
                   </span>
+                  {doc.excerpt ? <span className="library-excerpt">{doc.excerpt}</span> : null}
                   <span className="library-meta">
                     {t(`mode_${doc.mode}`)} · {t(`format_${doc.pageFormat}`)} · {t("words", { count: doc.wordCount })}
                   </span>
@@ -229,6 +234,10 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
           ))}
         </ul>
       </section>
+      {/* Téléphone : bouton principal au pouce, en bas (WF-01). */}
+      <button type="button" className="button-primary library-fab" onClick={() => navigate({ name: "create" })}>
+        + {t("newText")}
+      </button>
       {trashedToast ? (
         <div className="toast" role="status">
           <span>{t("trashed", { title: trashedToast.title || t("untitled") })}</span>

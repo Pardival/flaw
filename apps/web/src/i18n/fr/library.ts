@@ -4,6 +4,8 @@ export const library = {
   settings: "Réglages",
   importAction: "Importer",
   sortNote: "Triés par dernière modification",
+  countRecent_one: "{{count}} texte · récents d'abord",
+  countRecent_other: "{{count}} textes · récents d'abord",
   newText: "Nouveau texte",
   newTextShortcut: "N",
   emptyTitle: "Aucun texte pour l'instant",

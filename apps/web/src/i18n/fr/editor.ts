@@ -10,6 +10,7 @@ export const editor = {
   focus: "Focus",
   texts: "Textes",
   chapter: "Chapitre",
+  insertChapter: "Insérer un chapitre",
   menu: "Plus d'actions",
   menu_search: "Rechercher",
   menu_chapters: "Aller au chapitre",

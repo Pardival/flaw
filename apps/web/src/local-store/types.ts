@@ -42,6 +42,7 @@ export type LocalDocument = {
   fontFamily: string | null;
   baseFontSizePt: number | null;
   wordCount: number;
+  excerpt: string;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -64,6 +65,7 @@ export type RemoteDocument = {
   mode: string;
   pageFormat: string;
   wordCount: number;
+  excerpt?: string;
   updatedAt: string;
   deletedAt: string | null;
 };

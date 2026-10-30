@@ -1,6 +1,6 @@
 import { HocuspocusProvider, HocuspocusProviderWebsocket, WebSocketStatus } from "@hocuspocus/provider";
 import { SCHEMA_VERSION } from "@flaw/schema/src/index.ts";
-import { SYNC_CLOSE_UNAUTHORIZED, SYNC_PATH, SYNC_SCHEMA_PARAM } from "@flaw/sync/src/index.ts";
+import { CONTENT_FRAGMENT, SYNC_CLOSE_UNAUTHORIZED, SYNC_PATH, SYNC_SCHEMA_PARAM } from "@flaw/sync/src/index.ts";
 import * as Y from "yjs";
 
 import { saveBeforeMerge } from "./before-merge.ts";
@@ -86,13 +86,17 @@ export function attachDocument(documentId: string, doc: Y.Doc, options: { localC
     if (transaction.origin !== provider || snapshotTaken || (provider.unsyncedChanges === 0 && !localChanges)) {
       return;
     }
-    snapshotTaken = true;
+    // Réunion réelle seulement si le texte visible change (pas un simple échange d'état).
+    const fragment = doc.getXmlFragment(CONTENT_FRAGMENT);
+    const textBefore = fragment.toString();
     const before = Y.encodeStateAsUpdate(doc);
-    void saveBeforeMerge(documentId, before).catch(() => undefined);
-    transaction.doc.once("afterTransaction", (done: Y.Transaction) => {
-      if (done.changed.size > 0) {
-        showBannerOnce({ kind: "merged", documentId });
+    transaction.doc.once("afterTransaction", () => {
+      if (fragment.toString() === textBefore) {
+        return;
       }
+      snapshotTaken = true;
+      void saveBeforeMerge(documentId, before).catch(() => undefined);
+      showBannerOnce({ kind: "merged", documentId });
     });
   };
   doc.on("beforeTransaction", beforeTransaction);
