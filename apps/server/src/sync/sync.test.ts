@@ -9,6 +9,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateDek, wrapDek } from "@flaw/crypto";
 import { Client, Pool } from "pg";
+import * as Y from "yjs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { withActor } from "../access/scope.ts";
@@ -21,6 +22,7 @@ import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
 import { problem } from "../platform/problem.ts";
 import {
+  CONTENT_FRAGMENT,
   clientTooOld,
   decodeSyncRequest,
   encodeSyncReply,
@@ -66,8 +68,17 @@ function uuidV7(): string {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function frame(update: Uint8Array): Buffer {
-  return Buffer.from(encodeSyncRequest(new Uint8Array(), update));
+function frame(update: Uint8Array, stateVector: Uint8Array = new Uint8Array()): Buffer {
+  return Buffer.from(encodeSyncRequest(stateVector, update));
+}
+
+/** Vraie mise à jour Yjs : un paragraphe dans le fragment du contenu. */
+function realUpdate(text: string): { doc: Y.Doc; update: Uint8Array } {
+  const doc = new Y.Doc();
+  const paragraph = new Y.XmlElement("paragraph");
+  paragraph.insert(0, [new Y.XmlText(text)]);
+  doc.getXmlFragment(CONTENT_FRAGMENT).insert(0, [paragraph]);
+  return { doc, update: Y.encodeStateAsUpdate(doc) };
 }
 
 describe("trame et version de schéma", () => {
@@ -415,7 +426,7 @@ describe("journal sur PostgreSQL", () => {
   dbTest("journalise une mise à jour chiffrée, la déduplique, et refuse l'ancien schéma", async () => {
     const user = await createAccount();
     const id = await createOwned(user.cookie);
-    const update = new Uint8Array(Buffer.from(MARKER, "utf8"));
+    const { doc: client, update } = realUpdate(MARKER);
     const missingHeader = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(update));
     expect(missingHeader.statusCode).toBe(426);
     expect(missingHeader.json()).toEqual({
@@ -433,14 +444,18 @@ describe("journal sur PostgreSQL", () => {
     });
     expect(broken.statusCode).toBe(422);
     const headers = { "x-flaw-schema-version": "1" };
-    const synced = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(update), headers);
+    const known = Y.encodeStateVector(client);
+    const synced = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(update, known), headers);
     expect(synced.statusCode).toBe(200);
     expect(synced.headers["content-type"]).toContain("application/octet-stream");
-    expect(synced.rawPayload.equals(Buffer.from([0, 0]))).toBe(true);
+    // Le client connaît déjà tout : la réponse ne renvoie pas son texte.
+    expect(decodeSyncRequest(new Uint8Array(synced.rawPayload))).toBeDefined();
     expect(synced.rawPayload.includes(Buffer.from(MARKER))).toBe(false);
-    const replay = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(update), headers);
+    const replay = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(update, known), headers);
     expect(replay.statusCode).toBe(200);
-    const newer = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(new Uint8Array([4, 5, 6])), {
+    client.getXmlFragment(CONTENT_FRAGMENT).insert(1, [new Y.XmlElement("paragraph")]);
+    const next = Y.encodeStateAsUpdate(client, known);
+    const newer = await call("POST", `/api/v1/documents/${id}/sync`, user.cookie, frame(next, Y.encodeStateVector(client)), {
       "x-flaw-schema-version": "2",
     });
     expect(newer.statusCode).toBe(200);

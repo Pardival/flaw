@@ -372,7 +372,9 @@ describe("SEC-SECRET-07 via le validateur T-002", () => {
     expect(healthz.stderr).not.toContain("pep-A");
   });
 
-  it("creer-secrets.sh ne crée aucun fichier recovery_pepper_<id>", () => {
+  // sudo sans mot de passe : présent sur la CI, absent d'un poste ordinaire.
+  const sudoless = spawnSync("sudo", ["-n", "true"]).status === 0;
+  it.skipIf(!sudoless)("creer-secrets.sh ne crée aucun fichier recovery_pepper_<id>", () => {
     const directory = mkdtempSync(join(tmpdir(), "flaw-creer-"));
     try {
       mkdirSync(join(directory, "initdb"));

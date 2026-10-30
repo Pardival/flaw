@@ -1,3 +1,4 @@
+/* global self, caches, fetch, Response */
 /*
  * Service worker de Flaw (T-056), écrit à la main (pas de Workbox : dépendance
  * bloquée par la politique de confiance de pnpm).

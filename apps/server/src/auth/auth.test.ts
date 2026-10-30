@@ -424,8 +424,12 @@ describe("politique et fichiers (hors base)", () => {
     const walk = (directory: string): void => {
       for (const entry of readdirSync(directory, { withFileTypes: true })) {
         const path = join(directory, entry.name);
-        if (entry.isDirectory()) {
+        // La synchro WSS (API-024, T-019) est la seule route WebSocket, et vit dans sync/.
+        if (entry.isDirectory() && entry.name !== "sync") {
           walk(path);
+          continue;
+        }
+        if (entry.isDirectory()) {
           continue;
         }
         if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {

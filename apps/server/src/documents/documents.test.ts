@@ -21,7 +21,7 @@ import { decodeValidatedKey } from "../crypto/kek.ts";
 import { applyMigrations, assertAppRole } from "../db/migrate.ts";
 import { validateKeyMaterial } from "../platform/healthz.ts";
 import { problem } from "../platform/problem.ts";
-import { encodeSyncReply } from "../../../../packages/sync/src/index.ts";
+import { decodeSyncRequest, encodeSyncReply } from "../../../../packages/sync/src/index.ts";
 import { titledDocument } from "./prose.ts";
 
 const POSTGRES_IMAGE =
@@ -685,8 +685,9 @@ describe("documents sur PostgreSQL", () => {
     expect(put.statusCode).toBe(404);
     const legacy = await call("POST", `/api/v1/documents/${created.id}/export`, user.cookie, "{}");
     expect(legacy.statusCode).toBe(404);
-    const future = await call("POST", `/api/v1/documents/${created.id}/exports`, user.cookie, "{}");
-    expect(future.statusCode).toBe(404);
+    // POST /exports existe désormais : un corps vide est refusé, pas ignoré.
+    const exports = await call("POST", `/api/v1/documents/${created.id}/exports`, user.cookie, "{}");
+    expect(exports.statusCode).toBe(422);
     const frame = Buffer.from(encodeSyncReply(new Uint8Array(), new Uint8Array()));
     const early = await call("POST", `/api/v1/documents/${created.id}/sync`, user.cookie, frame, {
       "content-type": "application/octet-stream",
@@ -698,7 +699,8 @@ describe("documents sur PostgreSQL", () => {
     });
     expect(synced.statusCode).toBe(200);
     expect(synced.headers["content-type"]).toContain("application/octet-stream");
-    expect(synced.rawPayload.equals(frame)).toBe(true);
+    // Réponse : l'état du serveur (texte créé) et son vecteur d'état.
+    expect(decodeSyncRequest(new Uint8Array(synced.rawPayload))).toBeDefined();
     const read = await call("GET", `/api/v1/documents/${created.id}`, user.cookie);
     expect(read.statusCode).toBe(200);
     const patched = await call(

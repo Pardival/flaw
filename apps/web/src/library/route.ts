@@ -54,7 +54,9 @@ export function navigate(route: Route, options: { replace?: boolean } = {}): voi
 }
 
 export function useRoute(): Route {
-  const [route, setRoute] = useState<Route>(() => parseRoute(window.location.pathname));
+  const [route, setRoute] = useState<Route>(() =>
+    typeof window === "undefined" ? { name: "list" } : parseRoute(window.location.pathname),
+  );
   useEffect(() => {
     const update = () => {
       setRoute(parseRoute(window.location.pathname));

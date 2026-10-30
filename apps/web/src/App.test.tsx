@@ -48,11 +48,9 @@ describe("App monte les écrans d'auth", () => {
     expect(ready).toContain("texte secret");
     expect(ready).not.toContain('data-screen="connexion"');
     const fallback = html(<App initialPhase={{ name: "ready" }} />);
-    expect(fallback).toContain('data-screen="ready"');
-    expect(fallback).toContain('class="writing"');
-    expect(fallback).toContain('data-screen="reglages-compte"');
-    expect(fallback).toContain(t("account:title"));
-    expect(fallback).toContain(t("account:loading"));
+    // Sans enfant : la bibliothèque ; le compte vit dans Réglages › Compte (P7).
+    expect(fallback).toContain(t("library:loading"));
+    expect(fallback).not.toContain('data-screen="reglages-compte"');
   });
 
   it("rend chaque écran 2FA depuis App", () => {
@@ -85,7 +83,6 @@ describe("App monte les écrans d'auth", () => {
       </App>,
     );
     expect(ready).toContain("texte secret");
-    expect(ready).toContain('data-screen="reglages-compte"');
     expect(ready).not.toContain(t("mfa:challengeTitle"));
   });
 

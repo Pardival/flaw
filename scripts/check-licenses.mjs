@@ -19,6 +19,17 @@ const ALLOWED = new Set([
   "OFL-1.1",
 ]);
 
+/**
+ * Exceptions nominatives : licences permissives hors A-002, tirées par la stack figée.
+ * Paquet + licence exacte ; toute autre version de licence repasse en refus.
+ */
+const EXCEPTIONS = new Map([
+  // markdown-it → argparse : sert seulement à la CLI de markdown-it, non embarquée.
+  ["argparse", "PSF-2.0"],
+  // docx → jszip → pako : MIT et Zlib, toutes deux permissives.
+  ["pako", "(MIT AND Zlib)"],
+]);
+
 const root = fileURLToPath(new URL("..", import.meta.url));
 
 function stripOuterParens(value) {
@@ -179,7 +190,9 @@ export function checkProject(cwd) {
   const entries = collectEntries(readLicenseReport(cwd)).filter(
     (entry) => !isWorkspacePackage(entry),
   );
-  const rejected = entries.filter((entry) => !isAllowedLicense(entry.license));
+  const rejected = entries.filter(
+    (entry) => !isAllowedLicense(entry.license) && EXCEPTIONS.get(entry.name) !== entry.license,
+  );
   return { entries, rejected };
 }
 

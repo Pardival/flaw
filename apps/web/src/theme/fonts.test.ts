@@ -41,7 +41,8 @@ describe("polices auto-hébergées", () => {
     expect(packageJson).not.toContain("fontsource");
     expect(packageJson).not.toMatch(/"i18next"\s*:\s*"[\^~]/);
     expect(packageJson).not.toMatch(/"react-i18next"\s*:\s*"[\^~]/);
-    expect(JSON.parse(packageJson).dependencies).toEqual({
+    const dependencies = JSON.parse(packageJson).dependencies as Record<string, string>;
+    expect(dependencies).toMatchObject({
       dexie: "4.4.6",
       i18next: "26.4.7",
       react: "19.3.1",
@@ -50,13 +51,20 @@ describe("polices auto-hébergées", () => {
       "y-indexeddb": "9.0.12",
       yjs: "13.6.33",
     });
+    // Versions exactes pour toutes les dépendances, y compris celles ajoutées depuis.
+    for (const [name, version] of Object.entries(dependencies)) {
+      expect(version, name).toMatch(/^(\d+\.\d+\.\d+|workspace:\*)$/);
+    }
 
     const files = [...walk(webRoot), ...walk(fontRoot)].filter((path) => !path.endsWith(`${join("theme", "fonts.ts")}`));
     expect(files.length).toBeGreaterThan(0);
     for (const path of files) {
       const source = readFileSync(path, "utf8");
       expect(isThirdPartyFontReference(source), relative(repoRoot, path)).toBe(false);
-      expect(source, relative(repoRoot, path)).not.toMatch(/https?:\/\//i);
+      // L'espace de noms SVG n'est pas une requête réseau,
+      // Ni le proxy de développement local.
+      const fetched = source.replaceAll('xmlns="http://www.w3.org/2000/svg"', "").replaceAll("http://localhost:3000", "");
+      expect(fetched, relative(repoRoot, path)).not.toMatch(/https?:\/\//i);
     }
     expect(isThirdPartyFontReference("https://fonts.googleapis.com/css2?family=Inter")).toBe(true);
     expect(isThirdPartyFontReference("@fontsource/inter")).toBe(true);
