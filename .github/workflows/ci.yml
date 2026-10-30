@@ -56,7 +56,9 @@ jobs:
 
       # T-041 — corpus de fichiers malveillants rejoué sans aucun accès réseau.
       - name: Corpus d'import sans réseau
-        run: unshare -rn pnpm exec vitest run packages/importers/test/corpus.test.ts
+        # Ubuntu 24.04 interdit les espaces de noms sans droits : root coupe le réseau,
+        # puis rend la main à l'utilisateur du runner.
+        run: sudo unshare --net -- sudo -u "$USER" env "PATH=$PATH" pnpm exec vitest run packages/importers/test/corpus.test.ts
 
       # A-015 — openapi.json est le contrat 0.4.18, chemins préfixés /api/v1.
       # oasdiff --fail-on ERR sur GET /me puis sur tout le document.
@@ -141,6 +143,11 @@ jobs:
             echo "healthz divulgue une version"
             exit 1
           fi
+
+      - name: Journaux des conteneurs (en cas d'échec)
+        if: failure()
+        working-directory: infra
+        run: docker compose ps -a && docker compose logs --no-color --tail 80 app migrate caddy
 
       - name: Nettoyage compose
         if: always()
