@@ -256,9 +256,16 @@ function chapterIndexAt(chapters: readonly ChapterModel[], pos: number): number 
  * Chemin de frappe : mappe les décorations et le compteur du bloc touché.
  * Ne remet aucun chapitre en pages.
  */
+/** Titre courant du chapitre qui commence en `pos` (vide hors titre de chapitre). */
+function titleAt(doc: PMNode, pos: number, fallback: string): string {
+  const node = doc.nodeAt(pos);
+  return node?.type.name === "chapter_title" ? node.textContent : fallback;
+}
+
 function mapChapters(model: PaginationModel, tr: Transaction, counts: readonly number[]): ChapterModel[] {
   return model.chapters.map((chapter) => ({
     ...chapter,
+    title: titleAt(tr.doc, tr.mapping.map(chapter.from), chapter.title),
     from: tr.mapping.map(chapter.from),
     to: tr.mapping.map(chapter.to, -1),
     words: sumWords(counts, chapter.blockStart, chapter.blockEnd),

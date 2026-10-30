@@ -8,6 +8,11 @@ export function useEditorChrome(): { hidden: boolean; onTyping: (event: Keyboard
   const last = useRef<{ x: number; y: number } | null>(null);
 
   const onTyping = useCallback((event: KeyboardEvent) => {
+    // Frappe dans un champ (titre de l'en-tête, recherche) : la barre reste visible.
+    const target = event.target as Element | null;
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      return;
+    }
     if (isTypingKey(event.key, { meta: event.metaKey, ctrl: event.ctrlKey, alt: event.altKey })) {
       setHidden(true);
     }

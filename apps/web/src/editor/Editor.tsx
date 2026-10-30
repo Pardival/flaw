@@ -49,6 +49,7 @@ import { lastFolio, runningHead } from "./pagination/paginate.ts";
 import { useEditorChrome } from "./useEditorChrome.ts";
 import { useKeyboardClearance } from "./useKeyboardClearance.ts";
 import { Logo } from "../shell/Logo.tsx";
+import { InlineEdit } from "./InlineEdit.tsx";
 
 export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
@@ -139,6 +140,24 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       const current = mounted?.m42 ?? 0;
       book.style.setProperty("--focus-offset", `${String(current + top + line * (FOCUS_LINES - 1) - caret)}px`);
     }
+  };
+
+  /** Renomme le chapitre où se trouve le curseur (son titre dans le texte). */
+  const renameChapter = (title: string) => {
+    const view = viewRef.current;
+    const model = view ? paginationOf(view.state) : undefined;
+    if (!view || !model) {
+      return;
+    }
+    const pos = view.state.selection.from;
+    const chapter = model.chapters.find((item) => pos >= item.from && pos <= item.to);
+    const node = chapter ? view.state.doc.nodeAt(chapter.from) : null;
+    if (!chapter || node?.type.name !== "chapter_title") {
+      return;
+    }
+    const start = chapter.from + 1;
+    const end = start + node.content.size;
+    view.dispatch(title ? view.state.tr.insertText(title, start, end) : view.state.tr.delete(start, end));
   };
 
   const toggleFocus = (active: boolean) => {
@@ -548,9 +567,18 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       <header className="editor-bar">
         <Logo className="editor-logo" />
         <div className="editor-center">
-          <span className="editor-title">{document.title}</span>
+          <InlineEdit
+            className="editor-title"
+            value={document.title}
+            label={t("renameTitle")}
+            onCommit={(title) => {
+              void store.renameDocument(document.id, title || t("untitled")).catch(() => undefined);
+            }}
+          />
           <span className="editor-subline">
-            {head.chapter ? <span className="editor-head">{head.chapter}</span> : null}
+            {head.chapter ? (
+              <InlineEdit className="editor-head" value={head.chapter} label={t("renameChapter")} onCommit={renameChapter} />
+            ) : null}
             {head.chapter ? <span className="editor-sep" aria-hidden="true">·</span> : null}
             <SyncIndicator />
           </span>

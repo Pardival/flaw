@@ -106,9 +106,22 @@ function TextTab({ text }: { text: TextSettings }) {
         <input
           value={title}
           maxLength={300}
-          onChange={(event) => setTitle(event.currentTarget.value)}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            setTitle(value);
+            // Renommage au fil de la frappe ; un titre vide attend la sortie du champ.
+            if (value.trim().length > 0 && value.trim() !== text.document.title) {
+              text.onRename(value.trim());
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            }
+          }}
           onBlur={() => {
             const next = title.trim() || t("untitled");
+            setTitle(next);
             if (next !== text.document.title) {
               text.onRename(next);
             }

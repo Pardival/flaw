@@ -4,16 +4,22 @@ import { Editor } from "../editor/index.ts";
 import { useTranslate } from "../i18n/i18n.ts";
 import type { LocalDocument, LocalStore } from "../local-store/index.ts";
 import { CreateFlow } from "./CreateFlow.tsx";
-import { navigate, useRoute } from "./route.ts";
+import { useRoute } from "./route.ts";
+import { Splash } from "../shell/Splash.tsx";
 import { useDocuments, useLocalStore } from "./store-context.tsx";
 import { TextList } from "./TextList.tsx";
 import { Trash } from "./Trash.tsx";
 
 export type TextView = (props: { store: LocalStore; document: LocalDocument; trashed?: boolean }) => ReactNode;
 
+/** Durée minimale de l'écran de chargement, puis son fondu de sortie. */
+const SPLASH_MS = 1_100;
+const SPLASH_OUT_MS = 380;
+
 /**
  * Bibliothèque : liste, création, ouverture d'un texte.
- * Après connexion, le dernier texte se rouvre une fois (AC-025) ; la liste reste à un geste (retour).
+ * Au lancement, l'accueil (la liste) s'affiche après l'écran de chargement ;
+ * dans un texte, le curseur revient où l'on s'était arrêté (AC-025).
  */
 export function Library({ renderText = DefaultEditor }: { renderText?: TextView }) {
   const t = useTranslate("library");
@@ -21,39 +27,36 @@ export function Library({ renderText = DefaultEditor }: { renderText?: TextView 
   const store = state.status === "ready" ? state.store : null;
   const documents = useDocuments(store);
   const route = useRoute();
-  const [reopened, setReopened] = useState(false);
+  const [splash, setSplash] = useState<"shown" | "leaving" | "done">("shown");
   // Texte ouvert puis placé dans la corbeille ailleurs : il reste affiché avec un bandeau (D-023).
   const lastOpened = useRef<LocalDocument | null>(null);
-  const reopening = useRef(false);
+  const [minimum, setMinimum] = useState(false);
+  const ready = store !== null && documents !== null;
 
   useEffect(() => {
-    if (!store || reopening.current) {
+    const timer = window.setTimeout(() => setMinimum(true), SPLASH_MS);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (splash === "shown" && ready && minimum) {
+      setSplash("leaving");
+    }
+  }, [splash, ready, minimum]);
+
+  useEffect(() => {
+    if (splash !== "leaving") {
       return;
     }
-    reopening.current = true;
-    if (route.name !== "list") {
-      setReopened(true);
-      return;
-    }
-    store.reopenLast().then(
-      (last) => {
-        if (last) {
-          // La liste reste dans l'historique : un retour y ramène.
-          navigate({ name: "text", id: last.id });
-        }
-        setReopened(true);
-      },
-      () => {
-        setReopened(true);
-      },
-    );
-  }, [store, route.name]);
+    const timer = window.setTimeout(() => setSplash("done"), SPLASH_OUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [splash]);
 
   if (state.status === "error") {
     return <p role="alert">{t("storageError")}</p>;
   }
-  if (!store || documents === null || !reopened) {
-    return <p className="library-loading">{t("loading")}</p>;
+  if (!store || documents === null || splash !== "done") {
+    return <Splash label={t("loading")} leaving={splash === "leaving"} />;
   }
 
   if (route.name === "create") {
