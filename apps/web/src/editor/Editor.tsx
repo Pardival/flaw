@@ -31,7 +31,7 @@ import { convertSpacesForMode } from "./typography.ts";
 import { FORMATS_BY_MODE, defaultFormat } from "../library/formats-by-mode.ts";
 import { changeSize } from "./size.ts";
 import { typographyPlugin } from "./typography.ts";
-import { caretLineOffset, focusPlugin, setFocusMode } from "./focus.ts";
+import { caretTop, focusPlugin, setFocusMode } from "./focus.ts";
 import { searchPlugin } from "./search.ts";
 import { SearchBar } from "./SearchBar.tsx";
 import { ChapterJump } from "./ChapterJump.tsx";
@@ -48,11 +48,14 @@ import { paginationOf, paginationPlugin } from "./pagination/plugin.ts";
 import { lastFolio, runningHead } from "./pagination/paginate.ts";
 import { useEditorChrome } from "./useEditorChrome.ts";
 import { useKeyboardClearance } from "./useKeyboardClearance.ts";
+import { Logo } from "../shell/Logo.tsx";
 
 export type EditorProps = { store: LocalStore; document: LocalDocument; trashed?: boolean };
 
 const SAVE_DELAY_MS = 800;
 const TOAST_MS = 4_000;
+/** Lignes visibles dans la boîte du mode focus. */
+const FOCUS_LINES = 4;
 
 /** Contenu initial du mode, une seule fois, quand le fragment est vide. */
 function seed(doc: Y.Doc, fragment: Y.XmlFragment, mode: LocalDocument["mode"]): void {
@@ -124,9 +127,17 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
 
   /** En focus, la page ne laisse voir que la ligne du curseur. */
   const alignFocusLine = (view: EditorView) => {
-    const offset = caretLineOffset(view);
-    if (offset !== null && bookRef.current) {
-      bookRef.current.style.setProperty("--focus-offset", `${String(-offset)}px`);
+    const book = bookRef.current;
+    const caret = caretTop(view);
+    if (caret !== null && book) {
+      // La ligne du curseur est la dernière de la boîte ; les précédentes restent lisibles au-dessus.
+      // Correction relative à la translation en cours : insensible aux marges des blocs.
+      const line = parseFloat(getComputedStyle(view.dom).lineHeight) || 0;
+      const top = book.getBoundingClientRect().top + book.clientTop;
+      // Valeur réelle (transition comprise), cohérente avec la position mesurée du curseur.
+      const mounted = mount.current ? new DOMMatrixReadOnly(getComputedStyle(mount.current).transform) : null;
+      const current = mounted?.m42 ?? 0;
+      book.style.setProperty("--focus-offset", `${String(current + top + line * (FOCUS_LINES - 1) - caret)}px`);
     }
   };
 
@@ -489,6 +500,27 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     },
   });
 
+  // Page entière dès le départ : la dernière page va jusqu'à son pied, folio en bas.
+  useEffect(() => {
+    const book = bookRef.current;
+    const content = mount.current;
+    if (!book || !content || geometry.surface === "phone") {
+      return;
+    }
+    const measure = () => {
+      const gaps = book.querySelectorAll<HTMLElement>('.flaw-page-break:not([data-first="true"]) .flaw-gap');
+      const last = gaps[gaps.length - 1];
+      const top = last ? last.getBoundingClientRect().bottom - book.getBoundingClientRect().top : 0;
+      book.style.setProperty("--book-last-top", `${String(Math.round(top))}px`);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(content);
+    measure();
+    return () => {
+      observer.disconnect();
+    };
+  }, [geometry.surface, document.id]);
+
   const type = MODE_TYPE[document.mode];
   const fontFamily =
     document.mode === "screenplay" ? null : (meta?.fontFamily ?? document.fontFamily ?? null);
@@ -514,14 +546,12 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     >
       {/* Barre minimale (WF-05) : retour, titre · chapitre · synchro, chapitre, focus, réglages, export, plus. */}
       <header className="editor-bar">
-        <button type="button" className="editor-back" onClick={() => navigate({ name: "list" })} title="Alt+← / ⌘+[">
-          ‹ <span className="editor-back-label">{t("texts")}</span>
-        </button>
+        <Logo className="editor-logo" />
         <div className="editor-center">
           <span className="editor-title">{document.title}</span>
           <span className="editor-subline">
             {head.chapter ? <span className="editor-head">{head.chapter}</span> : null}
-            {head.chapter ? <span aria-hidden="true"> · </span> : null}
+            {head.chapter ? <span className="editor-sep" aria-hidden="true">·</span> : null}
             <SyncIndicator />
           </span>
         </div>
@@ -632,9 +662,12 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
         <SettingsPanel text={textSettings()} onClose={() => setSettingsOpen(false)} />
       ) : null}
       {focusMode ? (
-        <button type="button" className="focus-exit" aria-label={t("exitFocus")} onClick={() => toggleFocus(false)}>
-          ✕
-        </button>
+        <>
+          <Logo className="focus-logo" />
+          <button type="button" className="focus-exit" aria-label={t("exitFocus")} title={`${t("exitFocus")} (Échap)`} onClick={() => toggleFocus(false)}>
+            ✕
+          </button>
+        </>
       ) : null}
       {focusHint ? (
         <div className="focus-hint" role="status">

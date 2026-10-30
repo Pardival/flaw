@@ -1,0 +1,618 @@
+/*
+ * Finitions : logo, transitions, page entière, réglages détaillés, boîte du mode focus.
+ * Chargé en dernier ; toute animation tombe à zéro sous prefers-reduced-motion.
+ */
+
+/* ---------- Logo (retour à l'accueil) ---------- */
+.page .flaw-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--espace-2);
+  min-height: var(--cible-min);
+  padding: 0 var(--espace-2);
+  border: none;
+  border-radius: var(--rayon-m);
+  background: transparent;
+  color: var(--couleur-encre);
+  cursor: pointer;
+}
+
+.page .flaw-logo:hover {
+  background: var(--couleur-surface-survol);
+}
+
+.flaw-logo svg {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  transition: transform 260ms var(--courbe-standard);
+}
+
+.page .flaw-logo:hover svg {
+  transform: rotate(-6deg) scale(1.06);
+}
+
+.flaw-logo-tile { fill: var(--couleur-accent); }
+.flaw-logo-f { fill: var(--couleur-sur-accent); }
+.flaw-logo-dot { fill: var(--couleur-sur-accent); }
+
+.flaw-logo-word {
+  font-family: var(--police-roman);
+  font-style: italic;
+  font-weight: 700;
+  font-size: var(--taille-ui-xl);
+  line-height: 1;
+}
+
+.editor-logo .flaw-logo-word {
+  font-size: var(--taille-ui-l);
+}
+
+/* Séparateur chapitre · synchro, espacé de façon régulière. */
+.editor-subline {
+  gap: var(--espace-2);
+}
+
+.editor-sep {
+  color: var(--couleur-encre-3);
+}
+
+/* ---------- Transitions ---------- */
+@keyframes flaw-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flaw-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes flaw-pop {
+  from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flaw-rise {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flaw-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: none; }
+}
+
+@keyframes flaw-sheet-in {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+
+@keyframes flaw-page-in {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flaw-focus-in {
+  from { opacity: 0; transform: translate(-50%, -46%) scale(0.96); }
+  to { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+/* Changement d'écran : liste, création, corbeille, éditeur. */
+.library,
+.create,
+.create-step {
+  animation: flaw-enter 320ms var(--courbe-entree) both;
+}
+
+.library-row {
+  animation: flaw-enter 360ms var(--courbe-entree) both;
+}
+
+.library-row:nth-child(2) { animation-delay: 30ms; }
+.library-row:nth-child(3) { animation-delay: 60ms; }
+.library-row:nth-child(4) { animation-delay: 90ms; }
+.library-row:nth-child(5) { animation-delay: 120ms; }
+.library-row:nth-child(n + 6) { animation-delay: 150ms; }
+
+.editor-desk {
+  animation: flaw-fade 260ms var(--courbe-entree) both;
+}
+
+.editor-desk:not([data-focus="true"]) .book {
+  animation: flaw-page-in 480ms var(--courbe-entree) both;
+}
+
+/* Boutons : survol doux, léger enfoncement au clic. */
+.page button {
+  transition:
+    background-color 160ms var(--courbe-standard),
+    border-color 160ms var(--courbe-standard),
+    color 160ms var(--courbe-standard),
+    box-shadow 160ms var(--courbe-standard),
+    transform 120ms var(--courbe-standard),
+    opacity 160ms var(--courbe-standard);
+}
+
+.page button:hover:not(:disabled) {
+  border-color: var(--couleur-encre-2);
+}
+
+.page button:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.page .button-primary:hover:not(:disabled) {
+  box-shadow: 0 4px 14px rgba(47, 88, 115, 0.28);
+  border-color: var(--couleur-accent);
+}
+
+/* Menus, boîtes de dialogue, panneaux, bannières. */
+.row-menu-list,
+.selection-menu {
+  animation: flaw-pop 160ms var(--courbe-entree) both;
+  transform-origin: top right;
+}
+
+.dialog-veil {
+  animation: flaw-fade 200ms var(--courbe-entree) both;
+}
+
+.dialog {
+  animation: flaw-rise 260ms var(--courbe-entree) both;
+}
+
+.settings-panel {
+  animation: flaw-slide-in 300ms var(--courbe-entree) both;
+}
+
+@media (max-width: 599.98px) {
+  .settings-panel {
+    animation-name: flaw-sheet-in;
+  }
+}
+
+.toast,
+.banner,
+.search-bar {
+  animation: flaw-rise 240ms var(--courbe-entree) both;
+}
+
+/* ---------- Page entière dès le départ ---------- */
+/* La dernière page s'étend jusqu'à son pied ; le folio est posé dans la marge du bas. */
+.book:not([data-surface="phone"]) {
+  min-height: calc(var(--book-last-top, 0px) + var(--book-height) * var(--book-scale));
+}
+
+.editor-desk:not([data-focus="true"]) .book:not([data-surface="phone"]) .flaw-page-end {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: calc(var(--book-margin-bottom) * var(--book-scale));
+  padding: 0;
+}
+
+/* ---------- Réglages détaillés ---------- */
+.settings-panel {
+  width: min(var(--largeur-panneau), 100vw);
+  background: var(--couleur-bureau);
+}
+
+.settings-head {
+  background: var(--couleur-surface);
+  padding: var(--espace-2) var(--espace-3) 0;
+}
+
+.settings-tabs {
+  gap: var(--espace-1);
+  padding: var(--espace-1);
+  margin-bottom: var(--espace-2);
+  background: var(--couleur-bureau);
+  border-radius: var(--rayon-plein);
+}
+
+.page .settings-tabs button {
+  min-height: 34px;
+  padding: 0 var(--espace-4);
+  border-radius: var(--rayon-plein);
+  font-size: var(--taille-ui-s);
+}
+
+.page .settings-tabs button[aria-selected="true"] {
+  background: var(--couleur-surface);
+  box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14);
+  color: var(--couleur-encre);
+}
+
+.settings-body {
+  padding: var(--espace-4) var(--espace-3) var(--espace-6);
+}
+
+.settings-section {
+  gap: var(--espace-4);
+}
+
+.settings-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--espace-4);
+  padding: var(--espace-4);
+  background: var(--couleur-surface);
+  border: 1px solid var(--couleur-trait);
+  border-radius: var(--rayon-l);
+  box-shadow: 0 1px 2px rgba(60, 45, 25, 0.04);
+}
+
+.settings-group-title {
+  margin: 0;
+  font-size: var(--taille-ui-xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--couleur-encre-3);
+}
+
+.page .settings-field {
+  gap: var(--espace-2);
+}
+
+.settings-field > span,
+.settings-field legend {
+  font-weight: 500;
+  color: var(--couleur-encre);
+  margin-bottom: 2px;
+}
+
+.settings-field small {
+  font-size: var(--taille-ui-xs);
+  line-height: var(--interligne-ui);
+}
+
+/* Champs et listes déroulantes : coins arrondis, chevron dessiné, survol et focus. */
+.settings-panel input:not([type="checkbox"]):not([type="radio"]),
+.settings-panel select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 var(--espace-3);
+  border: 1px solid var(--couleur-trait);
+  border-radius: var(--rayon-m);
+  background-color: var(--couleur-papier);
+  font-size: var(--taille-ui-m);
+  transition: border-color 160ms, box-shadow 160ms;
+}
+
+.settings-panel select {
+  appearance: none;
+  padding-right: 2.4rem;
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--couleur-encre-2) 50%),
+    linear-gradient(135deg, var(--couleur-encre-2) 50%, transparent 50%);
+  background-position:
+    calc(100% - 19px) 50%,
+    calc(100% - 14px) 50%;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.settings-panel input:not([type="checkbox"]):not([type="radio"]):hover,
+.settings-panel select:hover {
+  border-color: var(--couleur-trait-fort);
+}
+
+.settings-panel input:not([type="checkbox"]):not([type="radio"]):focus,
+.settings-panel select:focus {
+  border-color: var(--couleur-accent);
+  box-shadow: 0 0 0 3px var(--couleur-accent-doux);
+  outline: none;
+}
+
+/* Formats : cartes à silhouette, nom et dimensions. */
+.settings-silhouettes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(76px, 1fr));
+  align-items: stretch;
+  gap: var(--espace-2);
+}
+
+.page .settings-silhouettes button {
+  justify-content: flex-end;
+  gap: 6px;
+  padding: var(--espace-3) var(--espace-1) var(--espace-2);
+  border: 1px solid var(--couleur-trait);
+  border-radius: var(--rayon-m);
+  background: var(--couleur-papier);
+}
+
+.page .settings-silhouettes button:hover {
+  border-color: var(--couleur-trait-fort);
+}
+
+.page .settings-silhouettes button[aria-checked="true"] {
+  border-color: var(--couleur-accent);
+  background: var(--couleur-accent-doux);
+  box-shadow: 0 0 0 1px var(--couleur-accent);
+}
+
+.settings-silhouette {
+  border-radius: 2px;
+  box-shadow: 0 1px 3px rgba(60, 45, 25, 0.12);
+  transition: transform 200ms var(--courbe-standard);
+}
+
+.page .settings-silhouettes button:hover .settings-silhouette {
+  transform: translateY(-2px);
+}
+
+.page .settings-silhouettes button[aria-checked="true"] .settings-silhouette {
+  border: 1px solid var(--couleur-accent);
+}
+
+.settings-silhouettes small {
+  font-size: var(--taille-ui-xs);
+  color: var(--couleur-encre);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.settings-dim {
+  font-size: 11px;
+  color: var(--couleur-encre-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Taille : pas à pas en pilule. */
+.settings-stepper {
+  border-color: var(--couleur-trait);
+  border-radius: var(--rayon-plein);
+  background: var(--couleur-papier);
+  overflow: hidden;
+}
+
+.page .settings-stepper button {
+  min-height: 38px;
+  border-radius: 0;
+  font-size: var(--taille-ui-l);
+}
+
+.page .settings-stepper button:hover {
+  background: var(--couleur-surface-survol);
+}
+
+/* Interrupteurs à la place des cases à cocher. */
+.page .settings-toggle {
+  justify-content: space-between;
+  flex-direction: row-reverse;
+  gap: var(--espace-4);
+  padding: var(--espace-1) 0;
+  cursor: pointer;
+}
+
+.settings-toggle > span {
+  flex: 1;
+}
+
+.settings-toggle small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--taille-ui-xs);
+}
+
+.page .settings-toggle input[type="checkbox"] {
+  appearance: none;
+  flex: none;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  min-height: 24px;
+  margin: 0;
+  border-radius: var(--rayon-plein);
+  background: var(--couleur-trait-fort);
+  cursor: pointer;
+  transition: background-color 200ms var(--courbe-standard);
+}
+
+.page .settings-toggle input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--couleur-sur-accent);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform 220ms var(--courbe-standard);
+}
+
+.page .settings-toggle input[type="checkbox"]:checked {
+  background: var(--couleur-accent);
+}
+
+.page .settings-toggle input[type="checkbox"]:checked::after {
+  transform: translateX(18px);
+}
+
+.page .settings-toggle input[type="checkbox"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Thème : contrôle segmenté. */
+.settings-segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--espace-1);
+  padding: var(--espace-1);
+  background: var(--couleur-bureau);
+  border-radius: var(--rayon-m);
+}
+
+.page .settings-segmented .settings-radio {
+  position: relative;
+  justify-content: center;
+  min-height: 36px;
+  border-radius: 6px;
+  font-size: var(--taille-ui-s);
+  color: var(--couleur-encre-2);
+  cursor: pointer;
+  transition: background-color 160ms, color 160ms, box-shadow 160ms;
+}
+
+.page .settings-segmented .settings-radio input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.page .settings-segmented .settings-radio:has(input:checked) {
+  background: var(--couleur-surface);
+  color: var(--couleur-encre);
+  box-shadow: 0 1px 3px rgba(40, 30, 20, 0.14);
+}
+
+.page .settings-segmented .settings-radio:has(input:focus-visible) {
+  outline: 2px solid var(--couleur-accent);
+  outline-offset: 1px;
+}
+
+.settings-group .settings-link {
+  min-height: 36px;
+}
+
+/* ---------- Mode focus : boîte réduite au centre ---------- */
+.editor-desk[data-focus="true"] {
+  background: var(--couleur-bureau);
+}
+
+.editor-desk[data-focus="true"] .book:not([data-surface="phone"]) {
+  box-sizing: content-box;
+  width: min(32em, calc(100vw - 8rem));
+  height: calc(4lh);
+  padding: 0 2.2rem;
+  border-block: 1.6rem solid var(--couleur-papier);
+  border-radius: var(--rayon-l);
+  background: var(--couleur-papier);
+  box-shadow: var(--ombre-flottante);
+  animation: flaw-focus-in var(--duree-focus-entree) var(--courbe-entree) both;
+}
+
+/* clip et non hidden : une boîte hidden défile quand le navigateur suit le curseur. */
+.editor-desk[data-focus="true"] .book {
+  overflow: clip;
+}
+
+.editor-desk[data-focus="true"] .book[data-surface="phone"] {
+  box-sizing: content-box;
+  left: var(--espace-3);
+  right: var(--espace-3);
+  width: auto;
+  height: calc(3lh);
+  padding: 0 var(--espace-4);
+  border-block: var(--espace-4) solid var(--couleur-papier);
+  border-radius: var(--rayon-l);
+  background: var(--couleur-papier);
+  box-shadow: var(--ombre-flottante);
+  transform: none;
+}
+
+/* Lignes déjà écrites : elles s'estompent vers le haut, seule la ligne en cours est nette. */
+.editor-desk[data-focus="true"] .book::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2.6lh;
+  background: linear-gradient(to bottom, var(--couleur-papier) 10%, transparent);
+  pointer-events: none;
+}
+
+.page .focus-logo {
+  position: fixed;
+  top: var(--espace-4);
+  left: var(--espace-4);
+  z-index: 7;
+  opacity: 0.75;
+  animation: flaw-fade 400ms var(--courbe-entree) both;
+}
+
+.page .focus-logo:hover {
+  opacity: 1;
+}
+
+.page .focus-exit,
+.page .focus-exit:hover {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  top: var(--espace-4);
+  right: var(--espace-4);
+  width: var(--cible-min);
+  border-radius: 50%;
+  opacity: 0.55;
+  animation: flaw-fade 400ms var(--courbe-entree) both;
+}
+
+.page .focus-exit:hover {
+  opacity: 1;
+  background: var(--couleur-surface-survol);
+}
+
+@media (min-width: 600px) {
+  .page .focus-exit {
+    display: inline-flex;
+  }
+}
+
+.focus-hint {
+  top: calc(50% - 4lh - 3rem);
+  animation: flaw-rise 300ms var(--courbe-entree) both;
+}
+
+/* ---------- Mouvement réduit ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* ---------- Pagination mesurée ---------- */
+/* Copie de mesure : hors écran, même largeur et mêmes styles que le texte. */
+.flaw-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  visibility: hidden;
+  pointer-events: none;
+  contain: layout style;
+}
+
+.flaw-measure > * {
+  content-visibility: visible !important;
+}
+
+.flaw-fill {
+  display: block;
+  flex: none;
+}
+
+.book-mount {
+  position: relative;
+}
+
+.flaw-cut {
+  display: block;
+  height: 0;
+}
+
+/* Un paragraphe coupé par un saut de page ne doit pas rogner la séparation (confinement du dessin). */
+.book-text > *:has(> .flaw-page-break) {
+  content-visibility: visible;
+}

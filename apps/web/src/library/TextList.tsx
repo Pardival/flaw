@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Logo } from "../shell/Logo.tsx";
 
 import { useTranslate } from "../i18n/i18n.ts";
 import type { LocalDocument, LocalStore } from "../local-store/index.ts";
@@ -83,7 +84,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
     <>
     <SyncBanners />
     <header className="library-bar">
-      <span className="library-logo">Flaw</span>
+      <Logo />
       <span className="library-bar-spacer" />
       <DailyGoal />
       <button type="button" className="library-import" onClick={() => picker.current?.click()} title="I">

@@ -3,6 +3,7 @@ import { Plugin, PluginKey, type EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
 
 import type { Geometry } from "./geometry.ts";
+import { measureFromDom } from "./dom.ts";
 import { createModel, integrate, measureChapter, type PaginationModel } from "./paginate.ts";
 
 export const paginationKey = new PluginKey<PaginationModel>("flaw-pagination");
@@ -53,6 +54,9 @@ export function paginationPlugin(geometry: Geometry): Plugin<PaginationModel> {
       },
     },
     view(view) {
+      if (!geometry.fluid) {
+        return measuredView(view);
+      }
       const { request, cancel } = idle();
       let handle: number | null = null;
       const queue = new Set<number>();
@@ -121,6 +125,63 @@ export function paginationPlugin(geometry: Geometry): Plugin<PaginationModel> {
       };
     },
   });
+}
+
+/** Délai de calme avant de remettre en pages (la frappe n'attend jamais la mesure). */
+const MEASURE_DELAY_MS = 350;
+
+/** Pages mesurées sur le rendu réel : remises en pages après chaque pause de frappe. */
+function measuredView(view: EditorView) {
+  let timer: number | null = null;
+  const run = (): void => {
+    timer = null;
+    const model = paginationKey.getState(view.state);
+    // En mode focus la colonne est réduite : on remesure à la sortie (changement de largeur).
+    if (model === undefined || view.isDestroyed || view.dom.closest('[data-focus="true"]') !== null) {
+      return;
+    }
+    const next = measureFromDom(view, model);
+    if (next !== null) {
+      view.dispatch(view.state.tr.setMeta(paginationKey, next).setMeta("addToHistory", false));
+    }
+  };
+  const schedule = (delay = MEASURE_DELAY_MS): void => {
+    if (timer !== null) {
+      window.clearTimeout(timer);
+    }
+    timer = window.setTimeout(run, delay);
+  };
+  // Largeur, police ou taille changées : on remesure aussi.
+  let width = view.dom.getBoundingClientRect().width;
+  const observer = new ResizeObserver(() => {
+    const current = view.dom.getBoundingClientRect().width;
+    if (current !== width) {
+      width = current;
+      schedule(120);
+    }
+  });
+  observer.observe(view.dom);
+  const book = view.dom.closest(".book");
+  const styles = new MutationObserver(() => schedule(120));
+  if (book !== null) {
+    styles.observe(book, { attributes: true, attributeFilter: ["style", "data-format", "data-mode"] });
+  }
+  schedule(0);
+  void document.fonts.ready.then(() => schedule(0));
+  return {
+    update(updated: EditorView, previous: EditorState) {
+      if (updated.state.doc !== previous.doc) {
+        schedule();
+      }
+    },
+    destroy() {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+      }
+      observer.disconnect();
+      styles.disconnect();
+    },
+  };
 }
 
 export function paginationOf(state: EditorState): PaginationModel | undefined {

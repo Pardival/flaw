@@ -99,6 +99,8 @@ function TextTab({ text }: { text: TextSettings }) {
 
   return (
     <div className="settings-section">
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("groupText")}</h3>
       <label className="settings-field">
         <span>{mode === "novel" ? t("bookTitle") : t("textTitle")}</span>
         <input
@@ -132,7 +134,9 @@ function TextTab({ text }: { text: TextSettings }) {
           ))}
         </select>
       </fieldset>
-
+      </section>
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("groupPage")}</h3>
       <fieldset className="settings-field">
         <legend>{t("format")}</legend>
         <div className="settings-silhouettes" role="radiogroup" aria-label={t("format")}>
@@ -150,12 +154,15 @@ function TextTab({ text }: { text: TextSettings }) {
               >
                 <span className="settings-silhouette" style={{ width: `${String(widthMm * scale)}px`, height: `${String(heightMm * scale)}px` }} />
                 <small>{t(`format_${format}`)}</small>
+                <span className="settings-dim">{formatDimensions(format)}</span>
               </button>
             );
           })}
         </div>
       </fieldset>
-
+      </section>
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("groupType")}</h3>
       <label className="settings-field">
         <span>{t("font")}</span>
         {mode === "screenplay" ? (
@@ -207,6 +214,7 @@ function TextTab({ text }: { text: TextSettings }) {
           {t("frenchTypography")} <small>{text.lang === "fr" ? t("frenchExample") : t("frenchEnglish")}</small>
         </span>
       </label>
+      </section>
 
       {pendingMode !== null ? (
         <ModeConfirm
@@ -281,15 +289,23 @@ function GeneralTab({ onTrash }: { onTrash?: () => void }) {
   const set = (patch: Partial<Preferences>) => update(patch);
   return (
     <div className="settings-section">
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("groupAppearance")}</h3>
       <fieldset className="settings-field">
         <legend>{t("theme")}</legend>
-        {(["light", "dark", "system"] as const).map((theme) => (
-          <label key={theme} className="settings-radio">
-            <input type="radio" name="theme" checked={prefs.theme === theme} onChange={() => set({ theme })} />
-            <span>{t(`theme_${theme}`)}</span>
-          </label>
-        ))}
+        <div className="settings-segmented">
+          {(["light", "dark", "system"] as const).map((theme) => (
+            <label key={theme} className="settings-radio">
+              <input type="radio" name="theme" checked={prefs.theme === theme} onChange={() => set({ theme })} />
+              <span>{t(`theme_${theme}`)}</span>
+            </label>
+          ))}
+        </div>
       </fieldset>
+      </section>
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("groupWriting")}</h3>
+
 
       <label className="settings-field">
         <span>{t("dailyGoal")}</span>
@@ -361,13 +377,16 @@ function GeneralTab({ onTrash }: { onTrash?: () => void }) {
           </button>
         </div>
       ) : null}
-
+      </section>
+      <section className="settings-group">
+        <h3 className="settings-group-title">{t("groupData")}</h3>
       {onTrash ? (
         <button type="button" className="settings-link" onClick={onTrash}>
           {t("trash")}
         </button>
       ) : null}
       <AccountExport />
+      </section>
     </div>
   );
 }

@@ -70,12 +70,10 @@ export function setFocusMode(view: EditorView, active: boolean): void {
   view.dispatch(view.state.tr.setMeta(focusKey, active).setMeta("addToHistory", false));
 }
 
-/** Décalage vertical qui ne laisse voir que la ligne du curseur. */
-export function caretLineOffset(view: EditorView): number | null {
+/** Haut de la ligne du curseur, à l'écran. */
+export function caretTop(view: EditorView): number | null {
   try {
-    const caret = view.coordsAtPos(view.state.selection.head);
-    const top = view.dom.getBoundingClientRect().top;
-    return caret.top - top;
+    return view.coordsAtPos(view.state.selection.head).top;
   } catch {
     return null;
   }

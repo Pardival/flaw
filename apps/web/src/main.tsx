@@ -10,6 +10,7 @@ import "./theme/design-tokens.css";
 import "./layout/layout.css";
 import "./library/library.css";
 import "./editor/editor.css";
+import "./layout/polish.css";
 
 applyThemeChoice(document.documentElement, readChoice(browserStorage()), browserPrefersDark());
 

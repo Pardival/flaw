@@ -11,6 +11,8 @@ export type Folio = number | "…";
 export type PageBreak = {
   pos: number;
   folio: Folio;
+  /** Blanc ajouté en bas de la page précédente pour qu'elle soit pleine (pagination mesurée). */
+  fill?: number;
 };
 
 export type ChapterModel = {
@@ -90,7 +92,7 @@ function chapterSpans(doc: PMNode): ChapterSpan[] {
  * Saut de page : pied de la page précédente (folio), espace du bureau, haut de la
  * page suivante (titre courant en en-tête, sauf en ouverture de chapitre).
  */
-function widget(pos: number, folio: Folio, layout: "pending" | "ready", key: string, head: string, opening: boolean) {
+function widget(pos: number, folio: Folio, layout: "pending" | "ready", key: string, head: string, opening: boolean, fill = 0) {
   return Decoration.widget(
     pos,
     () => {
@@ -100,6 +102,12 @@ function widget(pos: number, folio: Folio, layout: "pending" | "ready", key: str
       element.setAttribute("data-first", pos === 0 ? "true" : "false");
       element.setAttribute("contenteditable", "false");
       element.setAttribute("aria-hidden", "true");
+      if (fill > 0) {
+        const blank = document.createElement("span");
+        blank.className = "flaw-fill";
+        blank.style.height = `${String(fill)}px`;
+        element.append(blank);
+      }
       const previous = document.createElement("span");
       previous.className = "flaw-folio";
       previous.textContent = folio === "…" ? "…" : folio > 1 ? String(folio - 1) : "";
@@ -111,7 +119,7 @@ function widget(pos: number, folio: Folio, layout: "pending" | "ready", key: str
       element.append(previous, gap, running);
       return element;
     },
-    { side: -1, ignoreSelection: true, key: `${key}-${head}` },
+    { side: -1, ignoreSelection: true, key: `${key}-${head}-${String(fill)}` },
   );
 }
 
@@ -124,7 +132,7 @@ function decorationsFor(doc: PMNode, chapters: readonly ChapterModel[]): Decorat
     }
     for (const [order, page] of chapter.pages.entries()) {
       widgets.push(
-        widget(page.pos, page.folio, "ready", `p-${chapter.index}-${page.pos}-${String(page.folio)}`, chapter.title, order === 0),
+        widget(page.pos, page.folio, "ready", `p-${chapter.index}-${page.pos}-${String(page.folio)}`, chapter.title, order === 0, page.fill),
       );
     }
   }
@@ -194,6 +202,11 @@ function withWords(spans: readonly ChapterSpan[], counts: readonly number[], pre
       pages: samePlace ? prior.pages : [],
     };
   });
+}
+
+/** Décorations recalculées depuis des pages déjà connues (pagination mesurée). */
+export function rebuildDecorations(doc: PMNode, chapters: readonly ChapterModel[]): DecorationSet {
+  return decorationsFor(doc, chapters);
 }
 
 export function createModel(doc: PMNode, geometry: Geometry): PaginationModel {
