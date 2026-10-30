@@ -16,6 +16,8 @@ export function CreateFlow({ store }: { store: LocalStore }) {
   const [focusMode, setFocusMode] = useState<DocumentMode>("novel");
   const [format, setFormat] = useState<PageFormat>("novel_13x20");
   const [busy, setBusy] = useState(false);
+  // Sens du passage d'une étape à l'autre, pour l'animation (avancer ou revenir).
+  const [direction, setDirection] = useState<"forward" | "back" | "none">("none");
   const firstChoice = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -26,7 +28,13 @@ export function CreateFlow({ store }: { store: LocalStore }) {
     navigate({ name: "list" });
   };
 
+  const backToMode = () => {
+    setDirection("back");
+    setMode(null);
+  };
+
   const chooseMode = (next: DocumentMode) => {
+    setDirection("forward");
     setMode(next);
     setFormat(defaultFormat(next));
   };
@@ -53,14 +61,14 @@ export function CreateFlow({ store }: { store: LocalStore }) {
           if (mode === null) {
             close();
           } else {
-            setMode(null);
+            backToMode();
           }
         }
       }}
     >
       <header className="create-bar">
         <ol className="create-steps">
-          <li aria-current={mode === null ? "step" : undefined}>
+          <li aria-current={mode === null ? "step" : undefined} data-done={mode !== null ? "true" : "false"}>
             {mode === null ? "(1)" : "(✓)"} {mode === null ? t("stepMode") : t(`mode_${mode}`)}
           </li>
           <li aria-current={mode !== null ? "step" : undefined}>(2) {t("stepFormat")}</li>
@@ -72,7 +80,9 @@ export function CreateFlow({ store }: { store: LocalStore }) {
 
       {mode === null ? (
         <form
+          key="mode"
           className="create-step"
+          data-direction={direction}
           onSubmit={(event) => {
             event.preventDefault();
             chooseMode(focusMode);
@@ -118,7 +128,9 @@ export function CreateFlow({ store }: { store: LocalStore }) {
         </form>
       ) : (
         <form
+          key="format"
           className="create-step create-format"
+          data-direction={direction}
           onSubmit={(event) => {
             event.preventDefault();
             void start();
@@ -152,9 +164,7 @@ export function CreateFlow({ store }: { store: LocalStore }) {
             <div className="create-actions">
               <button
                 type="button"
-                onClick={() => {
-                  setMode(null);
-                }}
+                onClick={backToMode}
               >
                 {t("backToMode")}
               </button>

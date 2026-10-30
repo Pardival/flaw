@@ -687,3 +687,116 @@
   letter-spacing: 0.05em;
 }
 
+
+/* ---------- Création : passage d'une étape à l'autre ---------- */
+@keyframes flaw-step-forward {
+  from { opacity: 0; transform: translateX(48px); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes flaw-step-back {
+  from { opacity: 0; transform: translateX(-48px); }
+  to { opacity: 1; transform: none; }
+}
+
+.create-step[data-direction="forward"] {
+  animation: flaw-step-forward 380ms var(--courbe-entree) backwards;
+}
+
+.create-step[data-direction="back"] {
+  animation: flaw-step-back 380ms var(--courbe-entree) backwards;
+}
+
+/* Les éléments de l'étape arrivent l'un après l'autre. */
+.create-step h1 {
+  animation: flaw-enter 360ms 40ms var(--courbe-entree) backwards;
+}
+
+.mode-grid .mode-card,
+.format-list .format-option,
+.silhouettes,
+.create-note,
+.create-step .create-actions,
+.page-preview {
+  animation: flaw-enter 380ms var(--courbe-entree) backwards;
+}
+
+.mode-grid .mode-card:nth-child(2),
+.format-list .format-option:nth-child(1) { animation-delay: 80ms; }
+.mode-grid .mode-card:nth-child(3),
+.format-list .format-option:nth-child(2) { animation-delay: 120ms; }
+.mode-grid .mode-card:nth-child(4),
+.format-list .format-option:nth-child(3) { animation-delay: 160ms; }
+.mode-grid .mode-card:nth-child(5),
+.format-list .format-option:nth-child(4) { animation-delay: 200ms; }
+.format-list .format-option:nth-child(n + 5) { animation-delay: 240ms; }
+.silhouettes { animation-delay: 60ms; }
+.create-note { animation-delay: 220ms; }
+.create-step .create-actions { animation-delay: 260ms; }
+.page-preview { animation-delay: 120ms; }
+
+/* Cartes de mode : survol qui soulève, choix qui s'affirme. */
+.page .mode-card {
+  transition:
+    border-color 200ms var(--courbe-standard),
+    box-shadow 200ms var(--courbe-standard),
+    transform 200ms var(--courbe-standard),
+    background-color 200ms var(--courbe-standard);
+}
+
+.page .mode-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--ombre-page);
+}
+
+.mode-card:has(input:checked) {
+  transform: translateY(-3px);
+  box-shadow: 0 0 0 2px var(--couleur-accent), var(--ombre-page);
+}
+
+.mode-thumb-page {
+  transition: transform 260ms var(--courbe-standard);
+}
+
+.mode-card:hover .mode-thumb-page,
+.mode-card:has(input:checked) .mode-thumb-page {
+  transform: scale(1.06);
+}
+
+/* Formats : choix et aperçu qui suivent en douceur. */
+.page .format-option {
+  transition: background-color 180ms var(--courbe-standard), border-color 180ms var(--courbe-standard);
+}
+
+.silhouette {
+  cursor: pointer;
+  transition: border-color 200ms, background-color 200ms, transform 200ms var(--courbe-standard);
+}
+
+.silhouette:hover {
+  transform: translateY(-2px);
+}
+
+.preview-sheet {
+  transition: aspect-ratio 320ms var(--courbe-standard), width 320ms var(--courbe-standard);
+}
+
+.preview-margins {
+  transition: top 320ms var(--courbe-standard), right 320ms var(--courbe-standard), bottom 320ms var(--courbe-standard),
+    left 320ms var(--courbe-standard);
+}
+
+/* Étapes : l'étape faite et l'étape en cours changent de teinte en fondu. */
+.create-steps li {
+  transition: color 240ms var(--courbe-standard), opacity 240ms var(--courbe-standard);
+}
+
+.create-steps li[data-done="true"] {
+  color: var(--couleur-succes);
+}
+
+/* Réglages : le contenu d'un onglet arrive en fondu. */
+.settings-section,
+.settings-account {
+  animation: flaw-enter 280ms var(--courbe-entree) backwards;
+}
