@@ -4,14 +4,14 @@ import type { ImportResponse } from "./import.worker.ts";
 
 export type ImportJob = { promise: Promise<ImportResponse>; cancel: () => void };
 
-const ACCEPTED = /\.(docx|md|markdown|txt)$/iu;
+const ACCEPTED = /\.(docx|pdf|md|markdown|txt)$/iu;
 
 /** Contrôle avant toute lecture (SEC-IMP-03) : extension et taille du fichier. */
 export function precheck(file: File): ImportErrorCode | null {
   const lower = file.name.toLowerCase();
   if (lower.endsWith(".zip")) return "zip_archive";
   if (!ACCEPTED.test(lower)) return "unsupported";
-  const limit = lower.endsWith(".docx") ? LIMITS.docxFileBytes : LIMITS.textFileBytes;
+  const limit = lower.endsWith(".pdf") ? LIMITS.pdfFileBytes : lower.endsWith(".docx") ? LIMITS.docxFileBytes : LIMITS.textFileBytes;
   return file.size > limit ? "too_large" : null;
 }
 

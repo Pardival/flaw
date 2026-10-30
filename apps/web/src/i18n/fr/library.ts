@@ -16,7 +16,7 @@ export const library = {
   welcomeImport: "Importer un fichier",
   welcomeSamples: "Découvrir avec des exemples",
   welcomeSamplesBusy: "Préparation des exemples…",
-  welcomeImportHint: "Word, Markdown ou texte brut — ou glissez-le n'importe où sur cette page.",
+  welcomeImportHint: "Word, PDF, Markdown ou texte brut — ou glissez-le n'importe où sur cette page.",
   welcomeTipsTitle: "Bon à savoir",
   welcomeTipDash: "Tapez -- pour un tiret de dialogue « — ».",
   welcomeTipFocus: "Ctrl/⌘ + Maj + F : le mode focus, rien que la ligne en cours.",

@@ -2,6 +2,8 @@
 export const LIMITS = {
   textFileBytes: 10 * 1024 * 1024,
   docxFileBytes: 20 * 1024 * 1024,
+  pdfFileBytes: 50 * 1024 * 1024,
+  pdfPages: 2000,
   outputBytes: 10 * 1024 * 1024,
   zipTotalBytes: 100 * 1024 * 1024,
   zipPartBytes: 50 * 1024 * 1024,

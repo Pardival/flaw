@@ -13,7 +13,7 @@ export const PAGE_FORMATS = ["novel_13x20", "pocket_11x17_8", "trade_15x23", "a5
 
 export type PageFormat = (typeof PAGE_FORMATS)[number];
 
-export const IMPORT_SOURCES = ["docx", "txt", "md"] as const;
+export const IMPORT_SOURCES = ["docx", "txt", "md", "pdf"] as const;
 
 export type ImportSource = (typeof IMPORT_SOURCES)[number];
 

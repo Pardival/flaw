@@ -1,5 +1,5 @@
 /// <reference lib="webworker" />
-import { ImportError, importFile, type ImportErrorCode, type ImportResult } from "@flaw/importers/src/index.ts";
+import { ImportError, importFileAsync, type ImportErrorCode, type ImportResult } from "@flaw/importers/src/index.ts";
 
 /**
  * Worker d'import (SEC-IMP-01) : un par fichier, tué à 30 s ou sur Annuler par la page.
@@ -27,9 +27,9 @@ try {
   // Rien.
 }
 
-scope.onmessage = (event: MessageEvent<ImportRequest>) => {
+scope.onmessage = async (event: MessageEvent<ImportRequest>) => {
   try {
-    const result = importFile(event.data.bytes, event.data.name);
+    const result = await importFileAsync(event.data.bytes, event.data.name);
     scope.postMessage({ ok: true, result } satisfies ImportResponse);
   } catch (error) {
     const code: ImportErrorCode = error instanceof ImportError ? error.code : "xml";

@@ -1,0 +1,16 @@
+{
+  "name": "@flaw/desktop",
+  "private": true,
+  "version": "0.1.0",
+  "license": "AGPL-3.0-or-later",
+  "description": "Application de bureau Flaw (Tauri 2) : 100 % locale, sans compte ni serveur.",
+  "type": "module",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "icons": "tauri icon icon-1024.png"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.3"
+  }
+}

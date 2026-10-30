@@ -12,7 +12,7 @@ export type Block =
 
 export type ImportMode = "novel" | "screenplay" | "document" | "blank";
 
-export type ImportReport = { simplified: boolean; invisible: number; externalLinks: number; footnotes: number; windows1252?: boolean };
+export type ImportReport = { simplified: boolean; invisible: number; externalLinks: number; footnotes: number; windows1252?: boolean; pdf?: boolean };
 
 export type ImportResult = { title: string; suggestedMode: ImportMode; blocks: Block[]; report: ImportReport };
 

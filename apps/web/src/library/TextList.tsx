@@ -96,7 +96,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
         ref={picker}
         type="file"
         hidden
-        accept=".docx,.md,.markdown,.txt"
+        accept=".docx,.pdf,.md,.markdown,.txt"
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
           event.currentTarget.value = "";

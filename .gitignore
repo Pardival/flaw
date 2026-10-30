@@ -20,3 +20,4 @@ coverage/
 
 # Environnement de développement local (secrets générés, jamais commités)
 .dev/
+dist-desktop/

@@ -29,7 +29,7 @@ export type DocumentCreate = {
   title?: string;
   pageFormat?: PageFormat;
   fontFamily?: string;
-  importedFrom?: "docx" | "txt" | "md";
+  importedFrom?: "docx" | "txt" | "md" | "pdf";
 };
 
 export type DocumentPatch = {

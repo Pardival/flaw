@@ -58,7 +58,7 @@ export function ImportFlow({ store, file, onClose }: { store: LocalStore; file: 
       mode,
       pageFormat: format,
       title: result.title.slice(0, 300),
-      importedFrom: lower.endsWith(".docx") ? "docx" : lower.endsWith(".txt") ? "txt" : "md",
+      importedFrom: lower.endsWith(".docx") ? "docx" : lower.endsWith(".pdf") ? "pdf" : lower.endsWith(".txt") ? "txt" : "md",
     });
     const ydoc = await store.openDocument(doc.id);
     const fragment = ydoc.getXmlFragment(PROSEMIRROR_FRAGMENT);
@@ -118,7 +118,7 @@ export function ImportFlow({ store, file, onClose }: { store: LocalStore; file: 
             <h2 id="import-title">{t("confirmTitle", { title: state.result.title })}</h2>
             {state.result.report.simplified || state.result.report.windows1252 ? (
               <p className="banner" role="status">
-                {state.result.report.windows1252 ? t("windows1252") : t("simplified")}
+                {state.result.report.windows1252 ? t("windows1252") : state.result.report.pdf ? t("pdfNote") : t("simplified")}
                 {state.result.report.invisible > 0 ? ` ${t("invisible", { count: state.result.report.invisible })}` : ""}
               </p>
             ) : null}

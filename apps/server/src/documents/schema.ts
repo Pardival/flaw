@@ -24,7 +24,7 @@ export const documentCreateSchema = z
     mode: z.enum(MODES),
     pageFormat: z.enum(PAGE_FORMATS).optional(),
     fontFamily: z.string().min(1).max(200).optional(),
-    importedFrom: z.enum(["docx", "txt", "md"]).optional(),
+    importedFrom: z.enum(["docx", "txt", "md", "pdf"]).optional(),
   })
   .strict();
 

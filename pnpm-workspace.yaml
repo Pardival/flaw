@@ -12,6 +12,11 @@ blockExoticSubdeps: true
 allowBuilds:
   esbuild: true
 
+# pdfjs-dist (import PDF) propose @napi-rs/canvas pour le rendu sous Node :
+# inutile ici, l'import ne lit que le texte.
+ignoredOptionalDependencies:
+  - "@napi-rs/canvas"
+
 # minimatch 10+ est sous BlueOak-1.0.0, hors liste A-002. 9.0.9 est ISC.
 # vite est épinglé en 7.3.7. Sans épingle, Vitest 4.1.11 a installé lightningcss (MPL-2.0, hors A-002).
 # rollup 4.64.6 et postcss 8.5.30 ont moins de 7 jours (minimumReleaseAge).

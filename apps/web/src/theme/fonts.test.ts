@@ -16,7 +16,7 @@ const TEXT_EXTENSIONS = new Set([".css", ".ts", ".tsx", ".html", ".json", ".js",
 function walk(directory: string): string[] {
   const found: string[] = [];
   for (const entry of readdirSync(directory)) {
-    if (entry === "node_modules" || entry === "dist") {
+    if (entry === "node_modules" || entry === "dist" || entry === "dist-desktop") {
       continue;
     }
     const path = join(directory, entry);

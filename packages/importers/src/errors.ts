@@ -26,6 +26,9 @@ export const IMPORT_ERRORS = [
   "unsupported",
   "zip_archive",
   "timeout",
+  "pdf_invalid",
+  "pdf_encrypted",
+  "pdf_no_text",
 ] as const;
 
 export type ImportErrorCode = (typeof IMPORT_ERRORS)[number];
