@@ -51,6 +51,7 @@ import { useEditorChrome } from "./useEditorChrome.ts";
 import { useKeyboardClearance } from "./useKeyboardClearance.ts";
 import { Logo } from "../shell/Logo.tsx";
 import { InlineEdit } from "./InlineEdit.tsx";
+import { Icon } from "../shell/Icon.tsx";
 import { assetUrl, exportAssets, getAsset, putAsset } from "./images/assets.ts";
 import { CropDialog } from "./images/CropDialog.tsx";
 import { isImageFile, prepareImage, type Crop } from "./images/process.ts";
@@ -111,6 +112,8 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
   const [panel, setPanel] = useState<EditorPanel | null>(() => takePendingPanel());
   const [cropping, setCropping] = useState<number | null>(null);
   const [imageError, setImageError] = useState(false);
+  const [savedToast, setSavedToast] = useState(false);
+  const saveNow = useRef<(() => void) | null>(null);
   const imagePicker = useRef<HTMLInputElement>(null);
   const meta = useMeta(ydoc);
   const typographyRef = useRef({ on: true, mode: document.mode });
@@ -356,6 +359,8 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
       }
     };
 
+    saveNow.current = save;
+
     // Version de bureau : l'historique vient des instantanés de cet appareil.
     let unsnapshotted = false;
     const snapshot = (reason: string) => {
@@ -596,6 +601,25 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
     // La géométrie change avec la surface ou le format : on remonte l'éditeur.
   }, [store, document.id, document.mode, surfaceKey]);
 
+  // ⌘/Ctrl+S : tout s'enregistre déjà tout seul ; on force l'écriture et on le confirme brièvement.
+  useEffect(() => {
+    let timer: number | undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        saveNow.current?.();
+        setSavedToast(true);
+        window.clearTimeout(timer);
+        timer = window.setTimeout(() => setSavedToast(false), 1_600);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
   // Revenir à la liste : Alt+← / ⌘+[ (l'éditeur est une route, le retour du navigateur marche aussi).
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -743,16 +767,18 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
                 <InlineEdit className="editor-head" value={head.chapter} label={t("renameChapter")} onCommit={renameChapter} />
               </span>
             ) : null}
-            {head.chapter ? <span className="editor-sep" aria-hidden="true">·</span> : null}
-            <SyncIndicator />
+            {head.chapter && !LOCAL_ONLY ? <span className="editor-sep" aria-hidden="true">·</span> : null}
+            {/* Version de bureau : l'enregistrement est automatique, rien à afficher. */}
+            {LOCAL_ONLY ? null : <SyncIndicator />}
           </span>
         </div>
         <div className="editor-actions">
           {document.mode === "novel" ? (
             <button
               type="button"
-              className="editor-chapter"
-              title="Ctrl/⌘+Maj+Entrée"
+              className="editor-icon"
+              title={`${t("chapter")} (Ctrl/⌘+Maj+Entrée)`}
+              aria-label={t("chapter")}
               onClick={() => {
                 const view = viewRef.current;
                 if (view && insertChapter(view.state, view.dispatch)) {
@@ -762,17 +788,28 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
                 }
               }}
             >
-              {t("chapter")}
+              <Icon name="chapter" />
             </button>
           ) : null}
+          {document.mode !== "screenplay" ? (
+            <>
+              <button type="button" className="editor-icon" title={t("menu_image")} aria-label={t("menu_image")} onClick={() => imagePicker.current?.click()}>
+                <Icon name="image" />
+              </button>
+              <button type="button" className="editor-icon" title={t("menu_cover")} aria-label={t("menu_cover")} onClick={() => setPanel("cover")}>
+                <Icon name="cover" />
+              </button>
+              <span className="editor-actions-sep" aria-hidden="true" />
+            </>
+          ) : null}
           <button type="button" className="editor-icon" onClick={() => toggleFocus(true)} title={`${t("focus")} (Ctrl/⌘+Maj+F)`} aria-label={t("focus")}>
-            F
+            <Icon name="focus" />
           </button>
           <button type="button" className="editor-icon" onClick={() => setSettingsOpen(true)} title={t("settings")} aria-label={t("settings")}>
-            Aa
+            <Icon name="type" />
           </button>
           <button type="button" className="editor-icon editor-export" onClick={() => setPanel("export")} title={t("menu_export")} aria-label={t("menu_export")}>
-            ⇪
+            <Icon name="export" />
           </button>
           <EditorMenu
             mode={document.mode}
@@ -789,7 +826,7 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
               }
               setPanel(next);
             }}
-            available={["search", "chapters", "history", "export", "shortcuts", "image", "cover"]}
+            available={["search", "chapters", "history", "export", "shortcuts"]}
           />
           <input
             ref={imagePicker}
@@ -914,6 +951,12 @@ export function Editor({ store, document, trashed = false }: EditorProps) {
           />
         ) : null;
       })() : null}
+      {savedToast ? (
+        <div className="toast toast-saved" role="status">
+          <Icon name="check" size={16} />
+          <span>{t("savedNow")}</span>
+        </div>
+      ) : null}
       {imageError ? (
         <div className="toast" role="alert">
           <span>{t("imageFailed")}</span>

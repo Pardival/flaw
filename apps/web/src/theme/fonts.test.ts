@@ -63,7 +63,10 @@ describe("polices auto-hébergées", () => {
       expect(isThirdPartyFontReference(source), relative(repoRoot, path)).toBe(false);
       // L'espace de noms SVG n'est pas une requête réseau,
       // Ni le proxy de développement local.
-      const fetched = source.replaceAll('xmlns="http://www.w3.org/2000/svg"', "").replaceAll("http://127.0.0.1:3000", "");
+      const fetched = source
+        .replaceAll('xmlns="http://www.w3.org/2000/svg"', "")
+        .replaceAll('"http://www.w3.org/2000/svg"', "")
+        .replaceAll("http://127.0.0.1:3000", "");
       expect(fetched, relative(repoRoot, path)).not.toMatch(/https?:\/\//i);
     }
     expect(isThirdPartyFontReference("https://fonts.googleapis.com/css2?family=Inter")).toBe(true);

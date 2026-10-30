@@ -1,5 +1,6 @@
 import { useTranslate } from "../i18n/i18n.ts";
 import type { DocumentMode } from "../local-store/index.ts";
+import { useClosing } from "../shell/presence.ts";
 
 const COMMON: Array<[string, string]> = [
   ["shortcut_focus", "Ctrl/⌘+Maj+F"],
@@ -32,10 +33,11 @@ const BY_MODE: Record<DocumentMode, Array<[string, string]>> = {
 };
 
 /** Fiche des raccourcis (D-104), propre au mode du texte. */
-export function Shortcuts({ mode, onClose }: { mode: DocumentMode; onClose: () => void }) {
+export function Shortcuts({ mode, onClose: closeNow }: { mode: DocumentMode; onClose: () => void }) {
   const t = useTranslate("editor");
+  const { closing, close: onClose } = useClosing(closeNow);
   return (
-    <div className="dialog-veil" onClick={onClose}>
+    <div className={`dialog-veil${closing ? " is-closing" : ""}`} onClick={onClose}>
       <div className="dialog shortcuts" role="dialog" aria-label={t("menu_shortcuts")} onClick={(event) => event.stopPropagation()}>
         <h2>{t("menu_shortcuts")}</h2>
         <dl>

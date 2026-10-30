@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type * as Y from "yjs";
 
 import { useTranslate } from "../i18n/i18n.ts";
+import { Icon } from "../shell/Icon.tsx";
 import { assetUrl, getAsset, putAsset } from "../editor/images/assets.ts";
 import { CropDialog } from "../editor/images/CropDialog.tsx";
 import { isImageFile, prepareImage, type Crop } from "../editor/images/process.ts";
@@ -16,6 +17,7 @@ import {
   type Cover,
 } from "./model.ts";
 import { drawCover, loadCoverFonts, type Side } from "./render.ts";
+import { useClosing } from "../shell/presence.ts";
 
 type Bitmap = CanvasImageSource & { width: number; height: number };
 
@@ -41,7 +43,23 @@ function useCoverBitmap(doc: Y.Doc, asset: string | null): Bitmap | null {
   return bitmap;
 }
 
-function Preview({ side, cover, ratio, image, label }: { side: Side; cover: Cover; ratio: number; image: Bitmap | null; label: string }) {
+function Preview({
+  side,
+  cover,
+  ratio,
+  image,
+  label,
+  active,
+  onSelect,
+}: {
+  side: Side;
+  cover: Cover;
+  ratio: number;
+  image: Bitmap | null;
+  label: string;
+  active: boolean;
+  onSelect: () => void;
+}) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     let alive = true;
@@ -58,11 +76,12 @@ function Preview({ side, cover, ratio, image, label }: { side: Side; cover: Cove
       alive = false;
     };
   }, [side, cover, ratio, image]);
+  // Cliquer sur une face l'ouvre dans le panneau de droite.
   return (
-    <figure className="cover-preview">
-      <canvas ref={canvas} style={{ aspectRatio: `1 / ${String(ratio)}` }} role="img" aria-label={label} />
-      <figcaption>{label}</figcaption>
-    </figure>
+    <button type="button" role="tab" aria-selected={active} className="cover-preview" onClick={onSelect}>
+      <canvas ref={canvas} style={{ aspectRatio: `1 / ${String(ratio)}` }} aria-hidden="true" />
+      <span className="cover-preview-label">{label}</span>
+    </button>
   );
 }
 
@@ -70,8 +89,9 @@ function Preview({ side, cover, ratio, image, label }: { side: Side; cover: Cove
  * Atelier de couverture : 1re (modèle, titre, sous-titre, auteur, image, couleurs,
  * police) et 4e (résumé). Aperçu au format du livre ; chaque changement est enregistré.
  */
-export function CoverStudio({ doc, title, pageMm, onClose }: { doc: Y.Doc; title: string; pageMm: { width: number; height: number }; onClose: () => void }) {
+export function CoverStudio({ doc, title, pageMm, onClose: closeNow }: { doc: Y.Doc; title: string; pageMm: { width: number; height: number }; onClose: () => void }) {
   const t = useTranslate("cover");
+  const { closing, close: onClose } = useClosing(closeNow);
   const [cover, setCover] = useState<Cover>(() => readCover(doc) ?? defaultCover(title));
   const [side, setSide] = useState<Side>("front");
   const [cropping, setCropping] = useState(false);
@@ -123,28 +143,22 @@ export function CoverStudio({ doc, title, pageMm, onClose }: { doc: Y.Doc; title
   const cropSource = cover.image ? assetUrl(doc, cover.image.original ?? cover.image.asset) : null;
 
   return (
-    <div className="dialog-veil cover-veil" onClick={onClose}>
+    <div className={`dialog-veil cover-veil${closing ? " is-closing" : ""}`} onClick={onClose}>
       <div className="cover-studio" role="dialog" aria-label={t("title")} onClick={(event) => event.stopPropagation()}>
         <header className="cover-head">
           <h2>{t("title")}</h2>
-          <div role="tablist" className="settings-tabs cover-tabs">
-            <button type="button" role="tab" aria-selected={side === "front"} onClick={() => setSide("front")}>
-              {t("front")}
-            </button>
-            <button type="button" role="tab" aria-selected={side === "back"} onClick={() => setSide("back")}>
-              {t("back")}
-            </button>
-          </div>
+          <p className="cover-hint">{t("pickSide")}</p>
           <button type="button" className="icon-button" aria-label={t("close")} onClick={onClose}>
-            ×
+            <Icon name="close" size={16} />
           </button>
         </header>
         <div className="cover-body">
-          <div className="cover-stage" data-side={side}>
-            <Preview side="back" cover={cover} ratio={ratio} image={image} label={t("back")} />
-            <Preview side="front" cover={cover} ratio={ratio} image={image} label={t("front")} />
+          <div className="cover-stage" role="tablist" aria-label={t("title")} data-side={side}>
+            <Preview side="back" cover={cover} ratio={ratio} image={image} label={t("back")} active={side === "back"} onSelect={() => setSide("back")} />
+            <Preview side="front" cover={cover} ratio={ratio} image={image} label={t("front")} active={side === "front"} onSelect={() => setSide("front")} />
           </div>
-          <div className="cover-form" key={side}>
+          <div className="cover-form" key={side} role="tabpanel">
+            <h3 className="cover-form-title">{side === "front" ? t("front") : t("back")}</h3>
             {side === "front" ? (
               <>
                 <fieldset className="settings-field">
@@ -260,7 +274,7 @@ export function CoverStudio({ doc, title, pageMm, onClose }: { doc: Y.Doc; title
               >
                 {t("remove")}
               </button>
-              <small>{t("savedHint")}</small>
+              <span className="cover-footer-spacer" />
               <button type="button" className="button-primary" onClick={onClose}>
                 {t("done")}
               </button>

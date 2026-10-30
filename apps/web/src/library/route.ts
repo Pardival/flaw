@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { flushSync } from "react-dom";
+
+import { withViewTransition } from "../shell/presence.ts";
 
 /**
  * Routes de l'app. Les URL ne portent que des UUID, jamais de titre (SEC-CLI-01).
@@ -59,7 +62,11 @@ export function useRoute(): Route {
   );
   useEffect(() => {
     const update = () => {
-      setRoute(parseRoute(window.location.pathname));
+      const next = parseRoute(window.location.pathname);
+      // Fondu enchaîné entre l'accueil, la création et un texte (entrée comme sortie).
+      withViewTransition(() => {
+        flushSync(() => setRoute(next));
+      });
     };
     window.addEventListener("popstate", update);
     window.addEventListener(ROUTE_EVENT, update);

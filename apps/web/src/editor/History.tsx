@@ -6,6 +6,7 @@ import { CSRF_HEADER, CSRF_VALUE } from "../auth-ui/api.ts";
 import { useTranslate } from "../i18n/i18n.ts";
 import { LOCAL_ONLY } from "../platform/target.ts";
 import { listBeforeMerge, saveSnapshot } from "../sync-client/before-merge.ts";
+import { useClosing } from "../shell/presence.ts";
 
 type Version = {
   id: string;
@@ -52,8 +53,9 @@ function restoreLocal(target: Y.Doc, update: Uint8Array): void {
  * (avant réunion, avant changement de mode), groupés par jour ; aperçu, Restaurer,
  * point de sauvegarde manuel. Restaurer garde d'abord la version courante.
  */
-export function History({ documentId, doc, onClose }: { documentId: string; doc: Y.Doc | null; onClose: () => void }) {
+export function History({ documentId, doc, onClose: closeNow }: { documentId: string; doc: Y.Doc | null; onClose: () => void }) {
   const t = useTranslate("editor");
+  const { closing, close: onClose } = useClosing(closeNow);
   const [versions, setVersions] = useState<Version[] | null>(null);
   const [preview, setPreview] = useState<{ version: Version; text: string } | null>(null);
   const [label, setLabel] = useState("");
@@ -139,7 +141,7 @@ export function History({ documentId, doc, onClose }: { documentId: string; doc:
   }
 
   return (
-    <aside className="settings-panel history" aria-label={t("menu_history")}>
+    <aside className={`settings-panel history${closing ? " is-closing" : ""}`} aria-label={t("menu_history")}>
       <header className="settings-head">
         <strong>{t("menu_history")}</strong>
         <button type="button" className="icon-button" aria-label={t("close")} onClick={onClose}>
@@ -147,6 +149,8 @@ export function History({ documentId, doc, onClose }: { documentId: string; doc:
         </button>
       </header>
       <div className="settings-body">
+        <p className="history-intro">{t("historyIntro")}</p>
+        <p className="history-save-hint">{t("historySaveHint")}</p>
         <form
           className="history-save"
           onSubmit={(event) => {

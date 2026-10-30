@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 
 import { useTranslate } from "../../i18n/i18n.ts";
 import type { Crop } from "./process.ts";
+import { useClosing } from "../../shell/presence.ts";
 
 type Aspect = { key: string; value: number | null };
 
@@ -56,7 +57,7 @@ export function CropDialog({
   pageAspect,
   title,
   onApply,
-  onClose,
+  onClose: closeNow,
 }: {
   src: string;
   initial: Crop | null;
@@ -66,6 +67,7 @@ export function CropDialog({
   onClose: () => void;
 }) {
   const t = useTranslate("editor");
+  const { closing, close: onClose } = useClosing(closeNow);
   const [crop, setCrop] = useState<Crop>(initial ?? [0, 0, 1, 1]);
   const [aspect, setAspect] = useState<number | null>(null);
   const [imageRatio, setImageRatio] = useState(1);
@@ -133,7 +135,7 @@ export function CropDialog({
   const percent = (value: number) => `${String(value * 100)}%`;
 
   return (
-    <div className="dialog-veil" onClick={onClose}>
+    <div className={`dialog-veil${closing ? " is-closing" : ""}`} onClick={onClose}>
       <div className="dialog crop-dialog" role="dialog" aria-label={title ?? t("cropTitle")} onClick={(event) => event.stopPropagation()}>
         <h2>{title ?? t("cropTitle")}</h2>
         <div className="crop-aspects" role="radiogroup" aria-label={t("cropAspect")}>

@@ -3,9 +3,10 @@ import { toggleMark } from "prosemirror-commands";
 import type { MarkType } from "prosemirror-model";
 import { NodeSelection, type Command, type EditorState } from "prosemirror-state";
 import type { EditorView } from "prosemirror-view";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 import { useTranslate } from "../i18n/i18n.ts";
+import { Icon } from "../shell/Icon.tsx";
 import type { DocumentMode } from "../local-store/index.ts";
 import { toggleHeading } from "./modes/document/keys.ts";
 import { inList, toggleList } from "./modes/document/lists.ts";
@@ -141,11 +142,12 @@ export function SelectionMenu({
   const heading = state.selection.$from.parent.type.name === "heading" ? (state.selection.$from.parent.attrs.level as number) : 0;
   const list = mode === "document" ? inList(state) : null;
   const align = state.selection.$from.parent.attrs.align as string | null | undefined;
-  const button = (label: string, title: string, active: boolean, command: Command) => (
+  const button = (label: ReactNode, title: string, active: boolean, command: Command) => (
     <button
       type="button"
       aria-pressed={active}
       title={title}
+      aria-label={title}
       onPointerDown={(event) => {
         event.preventDefault();
       }}
@@ -175,10 +177,10 @@ export function SelectionMenu({
       </span>
       {button("+", t("larger"), false, changeSize(0.5, baseSize))}
       <span className="selection-menu-sep" />
-      {button("⇤", t("alignLeft"), align === "left", setAlign("left"))}
-      {button("↔", t("alignCenter"), align === "center", setAlign("center"))}
-      {button("⇥", t("alignRight"), align === "right", setAlign("right"))}
-      {button("☰", t("alignJustify"), align === "justify", setAlign("justify"))}
+      {button(<Icon name="alignLeft" size={16} />, t("alignLeft"), align === "left", setAlign("left"))}
+      {button(<Icon name="alignCenter" size={16} />, t("alignCenter"), align === "center", setAlign("center"))}
+      {button(<Icon name="alignRight" size={16} />, t("alignRight"), align === "right", setAlign("right"))}
+      {button(<Icon name="alignJustify" size={16} />, t("alignJustify"), align === "justify", setAlign("justify"))}
       {mode === "document" ? (
         <>
           <span className="selection-menu-sep" />

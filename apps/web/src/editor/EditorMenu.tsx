@@ -2,6 +2,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTranslate } from "../i18n/i18n.ts";
 import type { DocumentMode } from "../local-store/index.ts";
+import { usePresence } from "../shell/presence.ts";
+import { Icon, type IconName } from "../shell/Icon.tsx";
+
+const ICONS: Record<string, IconName> = { search: "search", chapters: "jump", history: "history", export: "export", shortcuts: "keyboard" };
 
 export type EditorPanel = "search" | "chapters" | "history" | "export" | "shortcuts" | "image" | "cover";
 
@@ -15,6 +19,7 @@ export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "
 }) {
   const t = useTranslate("editor");
   const [open, setOpen] = useState(false);
+  const presence = usePresence(open);
   const root = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) {
@@ -31,14 +36,14 @@ export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "
       document.removeEventListener("pointerdown", onPointer);
     };
   }, [open]);
-  const items: EditorPanel[] = ["image", "cover", "search", "chapters", "history", "export", "shortcuts"];
+  const items: EditorPanel[] = ["search", "chapters", "history", "export", "shortcuts"];
   return (
     <div ref={root} className="row-menu editor-menu">
       <button type="button" className="row-menu-trigger" aria-haspopup="menu" aria-expanded={open} aria-label={t("menu")} onClick={() => setOpen(!open)}>
-        ⋯
+        <Icon name="more" />
       </button>
-      {open ? (
-        <div className="row-menu-list" role="menu" onKeyDown={(event) => event.key === "Escape" && setOpen(false)}>
+      {presence.mounted ? (
+        <div className={presence.closing ? "row-menu-list is-closing" : "row-menu-list"} role="menu" onKeyDown={(event) => event.key === "Escape" && setOpen(false)}>
           {mode === "novel" && onChapter ? (
             <button
               type="button"
@@ -49,7 +54,8 @@ export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "
                 onChapter();
               }}
             >
-              {t("insertChapter")}
+              <Icon name="chapter" size={16} />
+              <span>{t("insertChapter")}</span>
             </button>
           ) : null}
           {items
@@ -65,7 +71,8 @@ export function EditorMenu({ mode, onSelect, onChapter, available = ["search", "
                   onSelect(item);
                 }}
               >
-                {t(`menu_${item}`)}
+                <Icon name={ICONS[item]} size={16} />
+                <span>{t(`menu_${item}`)}</span>
               </button>
             ))}
         </div>

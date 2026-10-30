@@ -3,6 +3,7 @@ export const cover = {
   front: "1re de couverture",
   back: "4e de couverture",
   close: "Fermer",
+  pickSide: "Cliquez sur une face pour la modifier. Tout est enregistré au fur et à mesure.",
   template: "Modèle",
   template_classic: "Classique",
   template_photo: "Photo pleine page",

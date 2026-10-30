@@ -4,10 +4,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTranslate } from "../i18n/i18n.ts";
 import { paginationOf } from "./pagination/plugin.ts";
+import { useClosing } from "../shell/presence.ts";
 
 /** Aller au chapitre (D-036, AC-068) : liste filtrable, chapitre courant, pages ; ↑ ↓ puis Entrée. */
-export function ChapterJump({ view, onClose }: { view: EditorView; onClose: () => void }) {
+export function ChapterJump({ view, onClose: closeNow }: { view: EditorView; onClose: () => void }) {
   const t = useTranslate("editor");
+  const { closing, close: onClose } = useClosing(closeNow);
   const [filter, setFilter] = useState("");
   const [active, setActive] = useState(0);
   const input = useRef<HTMLInputElement>(null);
@@ -32,7 +34,7 @@ export function ChapterJump({ view, onClose }: { view: EditorView; onClose: () =
   };
 
   return (
-    <div className="dialog-veil" onClick={onClose}>
+    <div className={`dialog-veil${closing ? " is-closing" : ""}`} onClick={onClose}>
       <div className="dialog chapter-jump" role="dialog" aria-label={t("goToChapter")} onClick={(event) => event.stopPropagation()}>
         <input
           ref={input}

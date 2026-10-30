@@ -28,7 +28,7 @@ export const library = {
   rowMenu: "Actions pour « {{title}} »",
   open: "Ouvrir",
   rename: "Renommer",
-  history: "Historique",
+  history: "Versions précédentes",
   export: "Exporter…",
   trash: "Placer dans la corbeille",
   soon: "Bientôt disponible",

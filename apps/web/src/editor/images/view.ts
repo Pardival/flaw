@@ -4,6 +4,7 @@ import { NodeSelection, type EditorState, type Transaction } from "prosemirror-s
 import type { EditorView, NodeView } from "prosemirror-view";
 import type * as Y from "yjs";
 
+import { iconElement, type IconName } from "../../shell/Icon.tsx";
 import { assetUrl } from "./assets.ts";
 
 export type ImageViewOptions = {
@@ -64,10 +65,10 @@ class ImageView implements NodeView {
     const bar = document.createElement("div");
     bar.className = "flaw-image-toolbar";
     bar.setAttribute("role", "toolbar");
-    const button = (label: string, title: string, action: () => void, key?: Align) => {
+    const button = (icon: IconName, title: string, action: () => void, key?: Align) => {
       const element = document.createElement("button");
       element.type = "button";
-      element.textContent = label;
+      element.append(iconElement(icon));
       element.title = title;
       element.setAttribute("aria-label", title);
       if (key !== undefined) element.dataset.align = key;
@@ -79,17 +80,17 @@ class ImageView implements NodeView {
       bar.append(element);
     };
     const { labels } = this.options;
-    button("⇤", labels.left, () => this.setAttrs({ align: "left" }), "left");
-    button("↔", labels.center, () => this.setAttrs({ align: "center" }), "center");
-    button("⇥", labels.right, () => this.setAttrs({ align: "right" }), "right");
+    button("alignLeft", labels.left, () => this.setAttrs({ align: "left" }), "left");
+    button("alignCenter", labels.center, () => this.setAttrs({ align: "center" }), "center");
+    button("alignRight", labels.right, () => this.setAttrs({ align: "right" }), "right");
     const sep = document.createElement("span");
     sep.className = "flaw-image-sep";
     bar.append(sep);
-    button("✂", labels.crop, () => {
+    button("crop", labels.crop, () => {
       const pos = this.getPos();
       if (pos !== undefined) this.options.onCrop(pos);
     });
-    button("🗑", labels.remove, () => {
+    button("trash", labels.remove, () => {
       const pos = this.getPos();
       if (pos === undefined) return;
       this.view.dispatch(this.view.state.tr.delete(pos, pos + this.node.nodeSize));

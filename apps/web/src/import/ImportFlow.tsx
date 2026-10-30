@@ -8,6 +8,7 @@ import { FORMATS_BY_MODE, defaultFormat } from "../library/formats-by-mode.ts";
 import { navigate } from "../library/route.ts";
 import { DOCUMENT_MODES, PROSEMIRROR_FRAGMENT, type LocalStore, type PageFormat } from "../local-store/index.ts";
 import { precheck, startImport, type ImportJob } from "./run.ts";
+import { useClosing } from "../shell/presence.ts";
 
 type State =
   | { name: "busy"; file: string; job: ImportJob }
@@ -18,8 +19,9 @@ type State =
  * Parcours d'import (T-040, D-013 à D-018) : un fichier à la fois, traité sur
  * l'appareil ; mode proposé et modifiable ; toujours un nouveau texte.
  */
-export function ImportFlow({ store, file, onClose }: { store: LocalStore; file: File; onClose: () => void }) {
+export function ImportFlow({ store, file, onClose: closeNow }: { store: LocalStore; file: File; onClose: () => void }) {
   const t = useTranslate("import");
+  const { closing, close: onClose } = useClosing(closeNow);
   const [state, setState] = useState<State | null>(null);
   const started = useRef(false);
 
@@ -77,7 +79,7 @@ export function ImportFlow({ store, file, onClose }: { store: LocalStore; file: 
   }
 
   return (
-    <div className="dialog-veil">
+    <div className={`dialog-veil${closing ? " is-closing" : ""}`}>
       <div className="dialog import-dialog" role="dialog" aria-labelledby="import-title">
         {state.name === "busy" ? (
           <>

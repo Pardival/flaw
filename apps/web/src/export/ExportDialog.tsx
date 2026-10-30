@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslate } from "../i18n/i18n.ts";
 import { download, runExport } from "./run.ts";
 import { exportPdf, type PdfOptions } from "./pdf.ts";
+import { useClosing } from "../shell/presence.ts";
 
 /**
  * Export (D-054, D-055) : formats du mode seulement (AC-047), fichier créé sur
@@ -15,7 +16,7 @@ type CoverSource = (include: boolean) => Promise<{ front?: ExportAsset; back?: E
 export function ExportDialog({
   input,
   id,
-  onClose,
+  onClose: closeNow,
   cover,
   hasCover = false,
   onEditCover,
@@ -28,6 +29,7 @@ export function ExportDialog({
   onEditCover?: () => void;
 }) {
   const t = useTranslate("export");
+  const { closing, close: onClose } = useClosing(closeNow);
   const mode = input().mode;
   const kinds = formatsForMode(mode);
   const [kind, setKind] = useState<ExportKind>(kinds[0] ?? "pdf");
@@ -65,7 +67,7 @@ export function ExportDialog({
   };
 
   return (
-    <div className="dialog-veil" onClick={onClose}>
+    <div className={`dialog-veil${closing ? " is-closing" : ""}`} onClick={onClose}>
       <form
         className="dialog export-dialog"
         role="dialog"

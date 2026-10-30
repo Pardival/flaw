@@ -11,6 +11,9 @@ import { ImportFlow } from "../import/ImportFlow.tsx";
 import { navigate, openTextWith } from "./route.ts";
 import { createWithMode } from "./CreateFlow.tsx";
 import { ModeSketch } from "./ModeSketch.tsx";
+import { usePresence } from "../shell/presence.ts";
+import { Icon } from "../shell/Icon.tsx";
+import { LOCAL_ONLY } from "../platform/target.ts";
 
 const DATE = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
 const TIME = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -105,7 +108,7 @@ export function TextList({ store, documents }: { store: LocalStore; documents: L
           }
         }}
       />
-      <SyncIndicator />
+      {LOCAL_ONLY ? null : <SyncIndicator />}
       {/* Réglages : discrets, en bas à droite (à gauche sur téléphone, le bouton Écrire y est). */}
       <button type="button" className="library-settings" aria-label={t("settings")} title={t("settings")} onClick={() => setSettingsOpen(true)}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -397,6 +400,7 @@ function RowMenu({
   const menu = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const toggle = useRef(onToggle);
+  const presence = usePresence(open);
   toggle.current = onToggle;
 
   useEffect(() => {
@@ -443,30 +447,36 @@ function RowMenu({
           onToggle(!open);
         }}
       >
-        ⋯
+        <Icon name="more" />
       </button>
-      {open ? (
-        <div ref={menu} className="row-menu-list" role="menu" onKeyDown={onKeyDown}>
+      {presence.mounted ? (
+        <div ref={menu} className={presence.closing ? "row-menu-list is-closing" : "row-menu-list"} role="menu" onKeyDown={onKeyDown}>
           <button type="button" role="menuitem" onClick={onOpen}>
-            {t("open")}
+            <Icon name="open" size={16} />
+            <span>{t("open")}</span>
           </button>
           <button type="button" role="menuitem" onClick={onRename}>
-            {t("rename")}
+            <Icon name="rename" size={16} />
+            <span>{t("rename")}</span>
           </button>
           <button type="button" role="menuitem" onClick={onHistory}>
-            {t("history")}
+            <Icon name="history" size={16} />
+            <span>{t("history")}</span>
           </button>
           {onCover ? (
             <button type="button" role="menuitem" onClick={onCover}>
-              {t("cover")}
+              <Icon name="cover" size={16} />
+              <span>{t("cover")}</span>
             </button>
           ) : null}
           <button type="button" role="menuitem" onClick={onExport}>
-            {t("export")}
+            <Icon name="export" size={16} />
+            <span>{t("export")}</span>
           </button>
           <hr />
           <button type="button" role="menuitem" className="danger" onClick={onTrash}>
-            {t("trash")}
+            <Icon name="trash" size={16} />
+            <span>{t("trash")}</span>
           </button>
         </div>
       ) : null}

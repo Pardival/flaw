@@ -13,6 +13,7 @@ import { BackupError, exportLibrary, importLibrary } from "../library/backup.ts"
 import { useLocalStore } from "../library/store-context.tsx";
 import { saveFile } from "../platform/files.ts";
 import { LOCAL_ONLY } from "../platform/target.ts";
+import { useClosing } from "../shell/presence.ts";
 
 /** Écran Compte existant (T-014b), fourni par l'App pour l'onglet Compte. */
 export const AccountSlot = createContext<ReactNode>(null);
@@ -44,9 +45,10 @@ export type TextSettings = {
 type Tab = "text" | "general" | "account";
 
 /** Panneau Réglages (P7, D-051, D-052) : latéral non modal sur ordinateur, feuille sur téléphone. */
-export function SettingsPanel({ text, onClose, onTrash }: { text?: TextSettings; onClose: () => void; onTrash?: () => void }) {
+export function SettingsPanel({ text, onClose: closeNow, onTrash }: { text?: TextSettings; onClose: () => void; onTrash?: () => void }) {
   const t = useTranslate("settings");
   const [tab, setTab] = useState<Tab>(text ? "text" : "general");
+  const { closing, close: onClose } = useClosing(closeNow);
   const account = useContext(AccountSlot);
   const panel = useRef<HTMLElement>(null);
 
@@ -64,7 +66,7 @@ export function SettingsPanel({ text, onClose, onTrash }: { text?: TextSettings;
   }, [onClose]);
 
   return (
-    <aside ref={panel} className="settings-panel" tabIndex={-1} aria-label={t("title")}>
+    <aside ref={panel} className={`settings-panel${closing ? " is-closing" : ""}`} tabIndex={-1} aria-label={t("title")}>
       <header className="settings-head">
         <div role="tablist" className="settings-tabs">
           {text ? (
