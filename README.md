@@ -52,7 +52,7 @@ corepack pnpm local
 
 Then open <http://localhost:5173>. On first run, the command generates secrets in `.dev/secrets` (never committed), creates the PostgreSQL database in Docker, applies migrations and creates the local account. Later runs pick up where you left off.
 
-On the empty home screen, **Découvrir avec des exemples** loads four demo texts, one per mode.
+On the empty home screen, **Discover with examples** loads four demo texts, one per mode.
 
 | Command | Effect |
 | --- | --- |
