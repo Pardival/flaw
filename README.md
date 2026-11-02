@@ -1,44 +1,46 @@
 # Flaw
 
-**Écrire sans distraction, sur une vraie page de livre.**
+**Distraction-free writing, on a real book page.**
 
-*[English version](README.en.md)*
+![Flaw — writing on a real page](site/media/en-02-ecrire.jpg)
 
-Flaw est une application d'écriture libre, pensée pour les textes longs : romans, scénarios, essais, journaux. On écrit directement sur une page au format réel (roman broché, A4, US Letter…), avec ses marges, son folio et ses sauts de page, sans menus qui encombrent l'écran. Tout est enregistré sur l'appareil, même hors ligne, puis synchronisé avec votre propre serveur.
+*[Version française](README.fr.md)*
 
-## Télécharger
+Flaw is a free and open-source writing app built for long-form work: novels, screenplays, essays, journals. You write directly on a page at its real size (trade paperback, A4, US Letter…), with margins, page numbers and page breaks, and no menus cluttering the screen. Everything is saved on your device, even offline, then synced with your own server.
 
-**Application de bureau pour Mac et Windows**, 100 % locale : ni compte, ni serveur, vos textes restent sur votre ordinateur.
+> The interface is available in English, French, Spanish, German, Italian and Portuguese: pick it on first launch, then in Settings › General. Other translations are welcome: catalogs live in `apps/web/src/i18n`.
 
-- [Flaw pour Mac](https://github.com/Pardival/flaw/releases/latest/download/Flaw-mac.dmg) (macOS 11 ou plus, Intel et Apple Silicon)
-- [Flaw pour Windows](https://github.com/Pardival/flaw/releases/latest/download/Flaw-windows.exe) (Windows 10 et 11, 64 bits)
+## Download
 
-L'application n'est pas signée par un certificat payant : au premier lancement, ouvrez-la via Réglages Système › Confidentialité et sécurité › « Ouvrir quand même » (Mac), ou « Informations complémentaires » › « Exécuter quand même » (Windows). Pensez à **Réglages › Données › Sauvegarder la bibliothèque** de temps en temps.
+**Desktop app for Mac and Windows**, fully local: no account, no server, your texts stay on your computer.
 
-L'interface existe en français, anglais, espagnol, allemand, italien et portugais : on la choisit au premier lancement, puis dans Réglages › Général.
+- [Flaw for Mac](https://github.com/Pardival/flaw/releases/latest/download/Flaw-mac.dmg) (macOS 11+, Intel and Apple Silicon)
+- [Flaw for Windows](https://github.com/Pardival/flaw/releases/latest/download/Flaw-windows.exe) (Windows 10 and 11, 64-bit)
 
-## Fonctionnalités
+The app is not signed with a paid certificate: on first launch, allow it in System Settings › Privacy & Security › “Open Anyway” (Mac), or “More info” › “Run anyway” (Windows). Use **Settings › Data › Back up library** from time to time.
 
-- **Quatre modes d'écriture**
-  - *Roman* : chapitres, en-têtes courants, pages numérotées.
-  - *Script de film* : scène, action, personnage, dialogue, transition (mise en page standard).
-  - *Document* : titres, listes, paragraphes.
-  - *Page blanche* : aucune structure, juste le texte.
-- **Une vraie page** : pagination mesurée sur le rendu, coupure à la ligne près, folio en bas de chaque page.
-- **Typographie française automatique** : espaces insécables avant `; : ! ?`, guillemets « », `--` devient un tiret de dialogue « — ».
-- **Mode focus** : une boîte réduite au centre de l'écran, rien que les dernières lignes.
-- **Local d'abord** : l'écriture ne dépend jamais du réseau ; la synchronisation (Yjs) rattrape quand la connexion revient.
-- **Images** dans le texte : insertion, glisser-déposer, largeur à la souris, alignement, recadrage.
-- **Couvertures** : atelier pour la 1re et la 4e (modèles, image, couleurs, résumé), incluses dans les exports.
-- **Historique des versions**, corbeille de 30 jours, objectif de mots quotidien.
-- **Import** Word, PDF, Markdown, texte brut ; **export** PDF, Word, EPUB, Fountain, traités sur l'appareil.
-- **Sauvegarde** de toute la bibliothèque dans un fichier `.flaw`, et restauration.
-- **Chiffrement au repos** côté serveur (enveloppe KEK → DEK, XChaCha20-Poly1305).
-- Thèmes clair et sombre, installable comme application (PWA).
+## Features
 
-## Démarrage rapide (sur votre machine)
+- **Four writing modes**
+  - *Novel*: chapters, running heads, numbered pages.
+  - *Screenplay*: scene heading, action, character, dialogue, transition (standard layout).
+  - *Document*: headings, lists, paragraphs.
+  - *Blank page*: no structure, just text.
+- **A real page**: pagination measured on the rendered text, line-accurate breaks, page number at the foot of every page.
+- **Automatic French typography**: non-breaking spaces before `; : ! ?`, « » quotes, `--` becomes a dialogue dash "—".
+- **Focus mode**: a small box in the middle of the screen, showing only the last few lines.
+- **Local-first**: writing never waits for the network; sync (Yjs) catches up when the connection returns.
+- **Images** in the text: insert, drag and drop, resize with the mouse, align, crop.
+- **Covers**: a studio for the front and back cover (templates, image, colors, blurb), included in exports.
+- **Version history**, 30-day trash, daily word goal.
+- **Import** Word, PDF, Markdown, plain text; **export** PDF, Word, EPUB, Fountain, processed on the device.
+- **Backup** of the whole library to a single `.flaw` file, and restore.
+- **Encryption at rest** on the server (KEK → DEK envelope, XChaCha20-Poly1305).
+- Light and dark themes, installable as an app (PWA).
 
-Prérequis : [Docker](https://docs.docker.com/get-docker/), [Node.js 24](https://nodejs.org/) et `openssl`.
+## Quick start (on your machine)
+
+Requirements: [Docker](https://docs.docker.com/get-docker/), [Node.js 24](https://nodejs.org/) and `openssl`.
 
 ```bash
 git clone https://github.com/Pardival/flaw.git
@@ -48,61 +50,61 @@ corepack pnpm install
 corepack pnpm local
 ```
 
-Ouvrez ensuite <http://localhost:5173>. Au premier lancement, la commande génère les secrets dans `.dev/secrets` (jamais commités), crée la base PostgreSQL dans Docker, applique les migrations et crée le compte local. Les lancements suivants reprennent là où vous en étiez.
+Then open <http://localhost:5173>. On first run, the command generates secrets in `.dev/secrets` (never committed), creates the PostgreSQL database in Docker, applies migrations and creates the local account. Later runs pick up where you left off.
 
-Sur l'accueil vide, **Découvrir avec des exemples** charge quatre textes de démonstration, un par mode.
+On the empty home screen, **Découvrir avec des exemples** loads four demo texts, one per mode.
 
-| Commande | Effet |
+| Command | Effect |
 | --- | --- |
-| `corepack pnpm local` | démarre Flaw (base, serveur, interface) |
-| `corepack pnpm local:stop` | arrête la base (vos textes sont conservés) |
-| `corepack pnpm local:reset` | supprime la base et les secrets locaux, après confirmation |
+| `corepack pnpm local` | starts Flaw (database, server, interface) |
+| `corepack pnpm local:stop` | stops the database (your texts are kept) |
+| `corepack pnpm local:reset` | deletes the local database and secrets, after confirmation |
 
-> **Mode local = une seule personne, sur cette machine.** Pour aller vite, la connexion est désactivée (`FLAW_DEV_NO_AUTH`) : toute personne qui atteint le serveur agit comme le compte local. Ce mode est refusé hors `NODE_ENV=development` et n'écoute que sur `localhost`. Ne l'exposez jamais sur un réseau. Pour un serveur accessible en ligne, voir [docs/deploiement](docs/deploiement/publication.md).
+> **Local mode = one person, on this machine.** To keep things simple, sign-in is disabled (`FLAW_DEV_NO_AUTH`): anyone who can reach the server acts as the local account. This mode is refused outside `NODE_ENV=development` and only listens on `localhost`. Never expose it on a network. For an online server, see [docs/deploiement](docs/deploiement/publication.md).
 
-## Construire l'application de bureau
+## Building the desktop app
 
-Prérequis supplémentaires : [Rust](https://rustup.rs/) (stable) et, sous Windows, les outils de compilation C++ de Visual Studio.
+Extra requirements: [Rust](https://rustup.rs/) (stable) and, on Windows, the Visual Studio C++ build tools.
 
 ```bash
-corepack pnpm --filter @flaw/desktop dev     # fenêtre de développement
-corepack pnpm --filter @flaw/desktop build   # .dmg (Mac) ou installateur .exe (Windows)
+corepack pnpm --filter @flaw/desktop dev     # development window
+corepack pnpm --filter @flaw/desktop build   # .dmg (Mac) or .exe installer (Windows)
 ```
 
-Une version publique se publie en poussant un tag `desktop-vX.Y.Z` (même numéro que `apps/desktop/src-tauri/tauri.conf.json`) : le workflow `desktop` construit les deux systèmes et crée la version GitHub. La page de téléchargement (`site/`) est publiée par le workflow `pages`.
+Push a `desktop-vX.Y.Z` tag (matching `apps/desktop/src-tauri/tauri.conf.json`) to publish a release: the `desktop` workflow builds both systems and creates the GitHub release. The download page (`site/`) is deployed by the `pages` workflow.
 
-## Développement
+## Development
 
 ```bash
-corepack pnpm lint        # ESLint (et rejet des sinks DOM dangereux)
-corepack pnpm typecheck   # TypeScript strict sur tous les paquets
-corepack pnpm test        # Vitest ; les tests de base lancent PostgreSQL dans Docker
+corepack pnpm lint        # ESLint (and rejection of dangerous DOM sinks)
+corepack pnpm typecheck   # strict TypeScript across all packages
+corepack pnpm test        # Vitest; database tests start PostgreSQL in Docker
 corepack pnpm licenses:check
 ```
 
-Organisation du dépôt (monorepo pnpm) :
+Repository layout (pnpm monorepo):
 
-| Dossier | Contenu |
+| Folder | Contents |
 | --- | --- |
-| `apps/web` | interface React 19 + Vite, éditeur ProseMirror, stockage local (IndexedDB) |
-| `apps/desktop` | application de bureau Tauri 2 (Mac, Windows), 100 % locale |
-| `site` | page de téléchargement (GitHub Pages) |
-| `apps/server` | API Fastify 5, synchronisation Hocuspocus, PostgreSQL 18 avec RLS |
-| `packages/schema` | schéma de document commun (ProseMirror) |
-| `packages/sync` | protocole de synchronisation partagé |
-| `packages/crypto` | chiffrement par enveloppe |
-| `packages/importers`, `packages/exporters` | import Word / Markdown / texte ; export PDF (Typst), Word, EPUB, Fountain |
-| `infra` | Docker Compose, Caddy, sauvegardes |
-| `docs` | décisions, déploiement, [référence technique](docs/reference-technique.md) |
+| `apps/web` | React 19 + Vite interface, ProseMirror editor, local storage (IndexedDB) |
+| `apps/desktop` | Tauri 2 desktop app (Mac, Windows), fully local |
+| `site` | download page (GitHub Pages) |
+| `apps/server` | Fastify 5 API, Hocuspocus sync, PostgreSQL 18 with row-level security |
+| `packages/schema` | shared document schema (ProseMirror) |
+| `packages/sync` | shared sync protocol |
+| `packages/crypto` | envelope encryption |
+| `packages/importers`, `packages/exporters` | Word / Markdown / text import; PDF (Typst), Word, EPUB, Fountain export |
+| `infra` | Docker Compose, Caddy, backups |
+| `docs` | decisions, deployment, [technical reference](docs/reference-technique.md) (French) |
 
-## Contribuer
+## Contributing
 
-Les contributions sont bienvenues : voir [CONTRIBUTING.md](CONTRIBUTING.md). Pour signaler une faille de sécurité, suivez [SECURITY.md](SECURITY.md) plutôt que d'ouvrir un ticket public.
+Contributions are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md). To report a security vulnerability, follow [SECURITY.md](SECURITY.md) instead of opening a public issue.
 
-## Licence
+## License
 
-Flaw est un logiciel libre sous licence [GNU AGPL-3.0-or-later](LICENSE) : vous pouvez l'utiliser, l'étudier, le modifier et le redistribuer. Si vous proposez une version modifiée comme service en ligne, vous devez en publier le code source.
+Flaw is free software under the [GNU AGPL-3.0-or-later](LICENSE): you may use, study, modify and redistribute it. If you offer a modified version as an online service, you must publish its source code.
 
-Les polices fournies (EB Garamond, Courier Prime, Source Serif 4, Inter, et les autres dans `assets/fonts`) sont sous licence SIL Open Font License 1.1 ; leurs textes de licence sont à côté des fichiers.
+The bundled fonts (EB Garamond, Courier Prime, Source Serif 4, Inter, and the others in `assets/fonts`) are licensed under the SIL Open Font License 1.1; their license texts sit next to the files.
 
-© 2026 Kevin Dufour et les contributeurs de Flaw.
+© 2026 Kevin Dufour and the Flaw contributors.
